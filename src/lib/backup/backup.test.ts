@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
 import { BackupError, decodeRestoreCode, encodeRestoreCode, parseBackupText, readBackup, toBackup } from './backup';
 
+const spell = (id: string, name: string) => ({
+	id,
+	name,
+	source: 'PHB',
+	level: 0,
+	school: 'Necromancy',
+	time: '1 action',
+	range: '60 ft',
+	components: 'V, S',
+	duration: 'Instantaneous',
+	concentration: false,
+	ritual: false,
+	classes: ['wizard'],
+	text: 'A bell tolls.'
+});
+
 const lyra = () => ({
 	...newCharacter(),
 	name: 'Lyra Ashwood',
@@ -18,6 +34,13 @@ describe('backup files', () => {
 	it('round-trips a character', () => {
 		const c = lyra();
 		expect(parseBackupText(JSON.stringify(toBackup(c)))).toEqual(c);
+	});
+
+	it('keeps saved copies of pack spells', () => {
+		const c = { ...lyra(), spellCache: [{ ...spell('toll the dead|xge', 'Toll the Dead'), source: 'XGE' }] };
+		const back = parseBackupText(JSON.stringify(toBackup(c)));
+		expect(back.spellCache[0].source).toBe('XGE');
+		expect(back.spellCache[0].name).toBe('Toll the Dead');
 	});
 
 	it('rejects files from other apps and newer versions', () => {
@@ -43,7 +66,7 @@ describe('restore codes', () => {
 		const code = await encodeRestoreCode(c);
 		expect(code).toMatch(/^[A-Za-z0-9_-]+$/);
 		const { image: _image, ...rest } = c;
-		expect(await decodeRestoreCode(code)).toEqual({ ...rest, image: undefined });
+		expect(await decodeRestoreCode(code)).toEqual({ ...rest, image: undefined, spellCache: [] });
 	});
 
 	it('rejects damaged codes', async () => {

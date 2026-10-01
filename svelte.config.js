@@ -15,6 +15,9 @@ const config = {
 	},
 	kit: {
 		adapter: adapter(),
+		// Set when the site is served from a subfolder, e.g. BASE_PATH=/pc-tracker for
+		// https://<user>.github.io/pc-tracker/. Empty for localhost and root domains.
+		paths: { base: process.env.BASE_PATH ?? '' },
 		// Hash routing: the whole app is one index.html, so it works on any static host
 		// (or a subfolder of one) without server rewrite rules.
 		router: { type: 'hash' }

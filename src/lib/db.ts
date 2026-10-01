@@ -1,14 +1,25 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Character } from '$lib/types';
+import type { Character, SpellPack } from '$lib/types';
 
 class PcTrackerDB extends Dexie {
 	characters!: EntityTable<Character, 'id'>;
+	spellPacks!: EntityTable<SpellPack, 'id'>;
 
 	constructor() {
 		super('pc-tracker');
 		this.version(1).stores({
 			characters: 'id, name, updatedAt'
 		});
+		this.version(2)
+			.stores({ spellPacks: 'id' })
+			.upgrade((tx) =>
+				tx
+					.table('characters')
+					.toCollection()
+					.modify((c: Character) => {
+						c.spellCache ??= [];
+					})
+			);
 	}
 }
 

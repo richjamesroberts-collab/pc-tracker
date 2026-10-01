@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import SpellDetails from '$lib/components/SpellDetails.svelte';
 	import CustomSpellSheet from '$lib/components/CustomSpellSheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { ALL_SPELLS, spellListClass } from '$lib/spells';
+	import { cacheSpell, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { cantripsKnown, ordinal, prepStyle, spellLimit } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
@@ -17,11 +18,14 @@
 	let query = $state('');
 	let filter = $state<Filter>('class');
 	let level = $state<number | null>(null);
+	let source = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
 	let customOpen = $state(false);
 
 	const mine = $derived(new Set(c.spells.map((s) => s.id)));
-	const pool = $derived([...ALL_SPELLS, ...c.customSpells]);
+	const pool = $derived(spellPool(c));
+	/** Source chips, only worth showing once there's more than the bundled SRD. */
+	const sources = $derived([...new Set(pool.map((s) => s.pack ?? 'srd'))]);
 	const myCantrips = $derived(pool.filter((s) => s.level === 0 && mine.has(s.id)).length);
 	const myLevelled = $derived(pool.filter((s) => s.level > 0 && mine.has(s.id)).length);
 	const cantripLimit = $derived(cantripsKnown(c));
@@ -33,8 +37,9 @@
 			(s) =>
 				(filter === 'all' ||
 					(filter === 'mine' && mine.has(s.id)) ||
-					(filter === 'class' && (s.classes.includes(listClass) || s.source === 'Custom'))) &&
+					(filter === 'class' && (s.classes.includes(listClass) || s.pack === 'custom'))) &&
 				(level === null || s.level === level) &&
+				(source === null || s.pack === source) &&
 				(!q || s.name.toLowerCase().includes(q))
 		);
 	});
@@ -49,10 +54,14 @@
 		if (mine.has(s.id)) {
 			session.mutate(`Removed ${s.name}`, (ch) => {
 				ch.spells = ch.spells.filter((x) => x.id !== s.id);
+				uncacheSpell(ch, s.id);
 				if (ch.concentration === s.name) ch.concentration = undefined;
 			});
 		} else {
-			session.mutate(`Added ${s.name}`, (ch) => ch.spells.push({ id: s.id, prepared: true }));
+			session.mutate(`Added ${s.name}`, (ch) => {
+				ch.spells.push({ id: s.id, prepared: true });
+				cacheSpell(ch, s);
+			});
 		}
 	}
 
@@ -86,6 +95,15 @@
 	<button type="button" class="custom" onclick={() => (customOpen = true)}>+ Custom</button>
 </div>
 
+{#if sources.length > 1}
+	<div class="sources" role="radiogroup" aria-label="Source">
+		<button type="button" role="radio" aria-checked={source === null} onclick={() => (source = null)}>All sources</button>
+		{#each sources as id (id)}
+			<button type="button" role="radio" aria-checked={source === id} onclick={() => (source = id)}>{library.packName(id)}</button>
+		{/each}
+	</div>
+{/if}
+
 <div class="levels" role="radiogroup" aria-label="Spell level">
 	{#each LEVELS as l (l)}
 		<button type="button" role="radio" aria-checked={level === l} onclick={() => (level = l)}>
@@ -98,6 +116,12 @@
 	<p class="none">No spells match.</p>
 {/if}
 
+{#if library.loaded && library.packs.length === 0 && !query}
+	<p class="srd-note">
+		Showing the free SRD spells. Have a spell pack from your DM? <a href={resolve('/packs')}>Import it</a> to add more.
+	</p>
+{/if}
+
 {#each groups as [lvl, spells] (lvl)}
 	<h2 class="label group">{lvl === 0 ? 'Cantrips' : `${ordinal(lvl)} level`} · {spells.length}</h2>
 	<ul class="card list">
@@ -108,7 +132,7 @@
 					<button type="button" class="info" aria-expanded={expanded === s.id} onclick={() => (expanded = expanded === s.id ? null : s.id)}>
 						<span class="name">{s.name}</span>
 						<span class="meta">
-							{s.school || 'Custom'} · {s.time}{s.concentration ? ' · Conc' : ''}{s.ritual ? ' · Ritual' : ''}{s.source !== 'PHB' ? ` · ${s.source}` : ''}
+							{s.school || 'Custom'} · {s.time}{s.concentration ? ' · Conc' : ''}{s.ritual ? ' · Ritual' : ''}{s.source !== 'PHB' && s.source !== 'SRD' ? ` · ${s.source}` : ''}
 						</span>
 					</button>
 					<button type="button" class="add" class:added aria-label="{added ? 'Remove' : 'Add'} {s.name}" onclick={() => toggle(s)}>
@@ -118,7 +142,7 @@
 				{#if expanded === s.id}
 					<div class="details">
 						<SpellDetails spell={s} compact />
-						{#if s.source === 'Custom'}
+						{#if s.pack === 'custom'}
 							<button type="button" class="delete" onclick={() => deleteCustom(s)}>Delete custom spell</button>
 						{/if}
 					</div>
@@ -186,6 +210,7 @@
 	}
 
 	.filters,
+	.sources,
 	.levels {
 		display: flex;
 		gap: 6px;
@@ -197,6 +222,7 @@
 	}
 
 	.filters button,
+	.sources button,
 	.levels button {
 		flex-shrink: 0;
 		min-height: 38px;
@@ -211,6 +237,17 @@
 		background: var(--color-text);
 		border-color: var(--color-text);
 		color: var(--color-bg);
+	}
+
+	.sources button {
+		min-height: 34px;
+		font-size: 12px;
+	}
+
+	.sources button[aria-checked='true'] {
+		background: var(--color-spell-bg);
+		border-color: var(--color-spell-edge);
+		color: var(--color-spell-ink);
 	}
 
 	.filters .custom {
@@ -228,6 +265,17 @@
 		background: var(--color-spell-ink);
 		border-color: var(--color-spell-ink);
 		color: var(--color-bg);
+	}
+
+	.srd-note {
+		margin-top: 12px;
+		font-size: 13px;
+		color: var(--color-text-muted);
+	}
+
+	.srd-note a {
+		color: var(--color-accent);
+		font-weight: 700;
 	}
 
 	.none {

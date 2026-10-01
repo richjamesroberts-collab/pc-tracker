@@ -38,15 +38,16 @@ function spellList(v: unknown): CharacterSpell[] {
 	return v.filter((s) => isObj(s) && typeof s.id === 'string').map((s) => ({ id: s.id as string, prepared: !!s.prepared }));
 }
 
-function customSpells(v: unknown): Spell[] {
+/** Check spells from a backup or spell pack, keeping only known fields. `source` overrides the file's own when given. */
+export function readSpells(v: unknown, source?: string): Spell[] {
 	if (!Array.isArray(v)) return [];
 	return v
 		.filter((s): s is Record<string, unknown> => isObj(s) && typeof s.id === 'string' && typeof s.name === 'string')
 		.map((s) => ({
 			id: s.id as string,
 			name: s.name as string,
-			source: 'Custom',
-			level: num(s.level, 0),
+			source: source ?? str(s.source, 'Custom'),
+			level: Math.min(9, Math.max(0, num(s.level, 0))),
 			school: str(s.school),
 			time: str(s.time),
 			range: str(s.range),
@@ -98,7 +99,8 @@ export function readBackup(data: unknown): Character {
 		sorceryPointsUsed: num(raw.sorceryPointsUsed, 0),
 		metamagic: Array.isArray(raw.metamagic) ? raw.metamagic.filter((x): x is string => typeof x === 'string') : [],
 		spells: spellList(raw.spells),
-		customSpells: customSpells(raw.customSpells),
+		customSpells: readSpells(raw.customSpells, 'Custom'),
+		spellCache: readSpells(raw.spellCache),
 		concentration: typeof raw.concentration === 'string' ? raw.concentration : undefined,
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
@@ -135,10 +137,13 @@ function fromBase64Url(s: string): Uint8Array {
 	return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
 }
 
-/** Encode without the portrait, which would make links and QR codes far too long. */
+/**
+ * Encode without the portrait or saved spell copies, which would make links and QR codes far too long.
+ * Spells from packs the other phone hasn't installed show as missing until it imports the pack.
+ */
 export async function encodeRestoreCode(c: Character): Promise<string> {
 	const { image: _image, ...rest } = c;
-	const json = JSON.stringify(toBackup(rest as Character));
+	const json = JSON.stringify(toBackup({ ...rest, spellCache: [] } as Character));
 	return toBase64Url(await pipe(new TextEncoder().encode(json), new CompressionStream('deflate-raw')));
 }
 

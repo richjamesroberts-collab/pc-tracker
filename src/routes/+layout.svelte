@@ -5,10 +5,13 @@
 	import { resolve } from '$app/paths';
 	import Toast from '$lib/components/Toast.svelte';
 	import { pendingRestore } from '$lib/backup/pending';
+	import { library } from '$lib/library.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
+		void library.load();
+
 		// Restore links look like https://host/?restore=<code>; hand the code to the import page.
 		const url = new URL(location.href);
 		const code = url.searchParams.get('restore');

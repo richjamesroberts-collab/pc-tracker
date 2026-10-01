@@ -22,6 +22,7 @@ export function newCharacter(): Character {
 		metamagic: [],
 		spells: [],
 		customSpells: [],
+		spellCache: [],
 		notes: '',
 		createdAt: now,
 		updatedAt: now

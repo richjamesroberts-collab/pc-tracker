@@ -17,7 +17,7 @@
 			{#if spell.ritual}<span class="tag">Ritual</span>{/if}
 		</div>
 	</div>
-	<p class="kind">{kind}{spell.source !== 'PHB' ? ` · ${spell.source}` : ''}</p>
+	<p class="kind">{kind}{spell.source !== 'PHB' && spell.source !== 'SRD' ? ` · ${spell.source}` : ''}</p>
 {/if}
 
 <dl class="facts">

@@ -1,8 +1,10 @@
-// Builds src/lib/data/spells.json from a local 5etools (2014) checkout.
+// Builds spell data from a local 5etools (2014) checkout:
+//   src/lib/data/srd-spells.json       SRD 5.1 spells only (CC-BY-4.0). Committed and bundled in the app.
+//   packs/phb-xge-tce.spellpack.json   Every PHB/XGE/TCE spell. Copyrighted: gitignored, shared privately
+//                                      with players, who import it into the app on their own phones.
 // Usage: npm run spells            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run spells
-// The output is gitignored: it holds copyrighted spell text for private use only.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -147,14 +149,11 @@ function classesFor(source, name) {
 	return [...names].sort();
 }
 
-const spells = [];
-for (const source of SOURCES) {
-	const file = readJson(`spells/spells-${source.toLowerCase()}.json`);
-	for (const s of file.spell) {
-		const higher = flatten(s.entriesHigherLevel?.flatMap((e) => e.entries) ?? []).join('\n');
-		spells.push({
+function convert(s, name = s.name) {
+	const higher = flatten(s.entriesHigherLevel?.flatMap((e) => e.entries) ?? []).join('\n');
+	return {
 			id: `${s.name}|${s.source}`.toLowerCase(),
-			name: s.name,
+			name,
 			source: s.source,
 			level: s.level,
 			school: SCHOOLS[s.school] ?? s.school,
@@ -167,11 +166,49 @@ for (const source of SOURCES) {
 			classes: classesFor(s.source, s.name),
 			text: flatten(s.entries).join('\n'),
 			...(higher ? { higher } : {})
-		});
+	};
+}
+
+const bySort = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
+const all = [];
+const srd = [];
+for (const source of SOURCES) {
+	const file = readJson(`spells/spells-${source.toLowerCase()}.json`);
+	for (const s of file.spell) {
+		all.push(convert(s));
+		if (!s.srd) continue;
+		// Some SRD spells drop the PHB's character names ("Bigby's Hand" is "Arcane Hand" in the SRD).
+		// The id stays the PHB one so an installed pack's version replaces it rather than duplicating it.
+		const srdName = typeof s.srd === 'string' ? s.srd : s.name;
+		const spell = convert(s, srdName);
+		if (srdName !== s.name) {
+			spell.text = spell.text.replaceAll(s.name, srdName).replaceAll(s.name.toLowerCase(), srdName.toLowerCase());
+		}
+		spell.source = 'SRD';
+		srd.push(spell);
 	}
 }
 
-spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-const out = join(root, 'src/lib/data/spells.json');
-writeFileSync(out, JSON.stringify(spells));
-console.log(`Wrote ${spells.length} spells from ${SOURCES.join(', ')} to ${out}`);
+srd.sort(bySort);
+all.sort(bySort);
+
+const srdOut = join(root, 'src/lib/data/srd-spells.json');
+writeFileSync(srdOut, JSON.stringify(srd));
+console.log(`Wrote ${srd.length} SRD spells to ${srdOut}`);
+
+const pack = {
+	app: '5e-pc-tracker',
+	kind: 'spell-pack',
+	schemaVersion: 1,
+	pack: {
+		id: 'phb-xge-tce',
+		name: "PHB + Xanathar's + Tasha's",
+		version: new Date().toISOString().slice(0, 10),
+		description: `All ${all.length} spells from the Player's Handbook, Xanathar's Guide to Everything and Tasha's Cauldron of Everything.`
+	},
+	spells: all
+};
+mkdirSync(join(root, 'packs'), { recursive: true });
+const packOut = join(root, 'packs/phb-xge-tce.spellpack.json');
+writeFileSync(packOut, JSON.stringify(pack));
+console.log(`Wrote ${all.length} spells from ${SOURCES.join(', ')} to ${packOut} (private: share with your players directly)`);

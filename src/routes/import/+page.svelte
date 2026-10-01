@@ -4,12 +4,15 @@
 	import { resolve } from '$app/paths';
 	import Portrait from '$lib/components/Portrait.svelte';
 	import { db, requestPersistentStorage } from '$lib/db';
-	import { BackupError, decodeRestoreCode, parseBackupText } from '$lib/backup/backup';
+	import { BackupError, decodeRestoreCode, readBackup } from '$lib/backup/backup';
+	import { isSpellPackFile, readSpellPack } from '$lib/backup/packs';
 	import { pendingRestore } from '$lib/backup/pending';
 	import { CLASSES } from '$lib/data/classes';
-	import type { Character } from '$lib/types';
+	import { library } from '$lib/library.svelte';
+	import type { Character, SpellPack } from '$lib/types';
 
 	let candidate = $state<Character | null>(null);
+	let pack = $state.raw<SpellPack | null>(null);
 	let existing = $state<Character | null>(null);
 	let error = $state('');
 	let pasted = $state('');
@@ -22,21 +25,46 @@
 		}
 	});
 
-	async function load(read: () => Promise<Character> | Character) {
+	async function load(read: () => Promise<Character | SpellPack> | Character | SpellPack) {
 		error = '';
+		candidate = null;
+		pack = null;
 		try {
-			const c = await read();
+			const result = await read();
+			if ('spells' in result && 'importedAt' in result) {
+				pack = result;
+				return;
+			}
+			const c = result as Character;
 			existing = (await db.characters.get(c.id)) ?? null;
 			candidate = c;
 		} catch (err) {
-			candidate = null;
-			error = err instanceof BackupError ? err.message : "Couldn't read that backup. Check the file or link is complete.";
+			error = err instanceof BackupError ? err.message : "Couldn't read that file. Check it's a complete backup or spell pack.";
 		}
 	}
 
+	/** One picker for both kinds of file: character backups and spell packs. */
 	function pickFile(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
-		if (file) void load(async () => parseBackupText(await file.text()));
+		if (!file) return;
+		void load(async () => {
+			let data: unknown;
+			try {
+				data = JSON.parse(await file.text());
+			} catch {
+				throw new BackupError("Couldn't read the file. Is it a .pctracker.json backup or a .spellpack.json?");
+			}
+			return isSpellPackFile(data) ? readSpellPack(data) : readBackup(data);
+		});
+	}
+
+	const installedPack = $derived(pack ? library.packs.find((p) => p.id === pack!.id) : undefined);
+
+	async function installPack() {
+		if (!pack) return;
+		await library.install(pack);
+		void requestPersistentStorage();
+		goto(resolve('/packs'), { replaceState: true });
 	}
 
 	function usePasted() {
@@ -68,9 +96,22 @@
 
 <main>
 	<a class="back" href={resolve('/')}>‹ All characters</a>
-	<h1>Import backup</h1>
+	<h1>Import</h1>
 
-	{#if candidate}
+	{#if pack}
+		<div class="card preview">
+			<div>
+				<p class="name">{pack.name}</p>
+				<p class="meta">Spell pack · {pack.spells.length} spells · version {pack.version}</p>
+				{#if pack.description}<p class="meta">{pack.description}</p>{/if}
+			</div>
+		</div>
+		{#if installedPack}
+			<p class="note">Version {installedPack.version} of this pack is already on this phone.</p>
+		{/if}
+		<button type="button" class="primary" onclick={installPack}>{installedPack ? 'Replace pack' : 'Add spell pack'}</button>
+		<button type="button" class="link" onclick={() => (pack = null)}>Choose a different file</button>
+	{:else if candidate}
 		<div class="card preview">
 			<Portrait name={candidate.name} image={candidate.image ?? existing?.image} size={64} />
 			<div>
@@ -95,10 +136,13 @@
 		<button type="button" class="link" onclick={() => (candidate = null)}>Choose a different backup</button>
 	{:else}
 		<label class="primary file">
-			Choose backup file
+			Choose file
 			<input class="sr-only" type="file" accept=".json,application/json" onchange={pickFile} />
 		</label>
-		<p class="hint">Pick the <code>.pctracker.json</code> file you saved from Files, iCloud Drive or Downloads.</p>
+		<p class="hint">
+			Pick a character backup (<code>.pctracker.json</code>) or a spell pack (<code>.spellpack.json</code>) from Files,
+			iCloud Drive or Downloads.
+		</p>
 
 		<div class="or"><span>or</span></div>
 

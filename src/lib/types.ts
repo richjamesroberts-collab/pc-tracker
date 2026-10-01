@@ -15,6 +15,18 @@ export interface Spell {
 	classes: string[];
 	text: string;
 	higher?: string;
+	/** Where the spell was loaded from at runtime: 'srd', a pack id, or 'custom'. Not saved. */
+	pack?: string;
+}
+
+/** A set of spells imported from a .spellpack.json file and stored on this device. */
+export interface SpellPack {
+	id: string;
+	name: string;
+	version: string;
+	description?: string;
+	spells: Spell[];
+	importedAt: string;
 }
 
 export interface CharacterSpell {
@@ -62,6 +74,11 @@ export interface Character {
 
 	spells: CharacterSpell[];
 	customSpells: Spell[];
+	/**
+	 * Copies of the non-SRD pack spells this character uses, so a backup restored on a phone
+	 * without the pack still shows them. An installed pack's version takes priority.
+	 */
+	spellCache: Spell[];
 	concentration?: string;
 
 	notes: string;

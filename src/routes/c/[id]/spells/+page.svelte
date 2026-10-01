@@ -4,7 +4,7 @@
 	import CastSheet from '$lib/components/CastSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { characterSpells, spellMeta } from '$lib/spells';
+	import { characterSpells, missingSpellIds, nameFromId, spellMeta } from '$lib/library.svelte';
 	import { longRest, restoreSlot, shortRest, sorceryPointsLeft, sorceryPointsMax, spendSlot } from '$lib/rules/resources';
 	import {
 		arcanumLevels,
@@ -26,6 +26,7 @@
 	const arcanum = $derived(arcanumLevels(c));
 	const spMax = $derived(sorceryPointsMax(c));
 	const all = $derived(characterSpells(c));
+	const missing = $derived(missingSpellIds(c));
 	const cantrips = $derived(all.filter((x) => x.spell.level === 0));
 	const levelled = $derived(all.filter((x) => x.spell.level > 0));
 	const preparedCount = $derived(levelled.filter((x) => x.prepared).length);
@@ -139,7 +140,17 @@
 	</div>
 {/if}
 
-{#if all.length === 0}
+{#if missing.length}
+	<div class="missing" role="note">
+		<p>
+			{missing.length} of your spells need a spell pack on this phone:
+			{missing.map(nameFromId).join(', ')}.
+		</p>
+		<a href={resolve('/packs')}>Import a spell pack</a>
+	</div>
+{/if}
+
+{#if all.length === 0 && !missing.length}
 	<div class="empty card">
 		<p>No spells yet.</p>
 		<a href={resolve('/c/[id]/book', { id: c.id })}>Add spells from the spellbook</a>
@@ -422,6 +433,24 @@
 		background: var(--color-spell-ink);
 		color: var(--color-bg);
 		font-size: 14px;
+		font-weight: 800;
+	}
+
+	.missing {
+		margin-top: 14px;
+		padding: 12px 14px;
+		border-radius: var(--radius-lg);
+		background: var(--color-alert-bg);
+		border: 1px solid var(--color-alert-edge);
+		color: var(--color-alert-ink);
+		font-size: 14px;
+		font-weight: 600;
+	}
+
+	.missing a {
+		display: inline-block;
+		margin-top: 6px;
+		color: inherit;
 		font-weight: 800;
 	}
 

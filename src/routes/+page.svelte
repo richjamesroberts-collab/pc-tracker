@@ -6,6 +6,7 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { backupIsStale } from '$lib/backup/staleness';
+	import { library } from '$lib/library.svelte';
 	import type { Character } from '$lib/types';
 
 	let characters = $state<Character[] | null>(null);
@@ -52,8 +53,13 @@
 
 	<div class="actions">
 		<a class="btn primary" href={resolve('/new')}>New character</a>
-		<a class="btn" href={resolve('/import')}>Import backup</a>
+		<a class="btn" href={resolve('/import')}>Import</a>
 	</div>
+
+	<a class="packs" href={resolve('/packs')}>
+		Spell packs
+		<span>{library.loaded ? `${library.packs.length} imported` : ''} ›</span>
+	</a>
 
 	<p class="foot">Everything is saved on this device. Back up after each session so a cleared browser or new phone doesn't lose your character.</p>
 </main>
@@ -169,6 +175,26 @@
 		border-color: var(--color-accent-edge);
 		color: var(--color-on-accent);
 		box-shadow: var(--shadow-btn);
+	}
+
+	.packs {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		min-height: 52px;
+		margin-top: 12px;
+		padding: 0 14px;
+		border-radius: 14px;
+		background: var(--color-surface-raised);
+		color: var(--color-text);
+		font-weight: 800;
+		text-decoration: none;
+	}
+
+	.packs span {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-text-muted);
 	}
 
 	.foot {
