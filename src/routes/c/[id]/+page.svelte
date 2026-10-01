@@ -8,6 +8,7 @@
 	import Sheet from '$lib/components/Sheet.svelte';
 	import BackupSheet from '$lib/components/BackupSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { isDead, isDown } from '$lib/rules/hp';
@@ -67,7 +68,22 @@
 		<p>{subclass ? `${subclass} · ` : ''}{cls?.name ?? c.classKey} {c.level}</p>
 	</div>
 	<AcShield ac={c.ac} />
-	<button type="button" class="menu" aria-label="Menu" onclick={() => (menuOpen = true)}>
+	<button
+		type="button"
+		class="icon-btn"
+		aria-label={theme.resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+		onclick={() => theme.toggle()}
+	>
+		{#if theme.resolved === 'dark'}
+			<svg viewBox="0 0 24 24" aria-hidden="true" class="line">
+				<circle cx="12" cy="12" r="4.5" />
+				<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+			</svg>
+		{:else}
+			<svg viewBox="0 0 24 24" aria-hidden="true" class="line"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+		{/if}
+	</button>
+	<button type="button" class="icon-btn menu" aria-label="Menu" onclick={() => (menuOpen = true)}>
 		<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
 	</button>
 </header>
@@ -164,7 +180,7 @@
 	header {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 10px;
 		margin-bottom: 14px;
 	}
 
@@ -186,20 +202,41 @@
 		margin-top: 2px;
 	}
 
-	.menu {
-		width: 44px;
+	.icon-btn {
+		flex-shrink: 0;
+		width: 40px;
 		height: 44px;
 		padding: 0;
 		border: 0;
 		background: transparent;
 		color: var(--color-text-muted);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.icon-btn + .icon-btn {
+		margin-left: -10px;
+	}
+
+	.menu {
 		margin-right: -8px;
 	}
 
-	.menu svg {
+	.icon-btn svg {
 		width: 24px;
 		height: 24px;
 		fill: currentColor;
+	}
+
+	.icon-btn svg.line {
+		width: 22px;
+		height: 22px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
 	.alert {

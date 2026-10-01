@@ -1,7 +1,7 @@
 /*
  * Theme: "Sunlit Desk" (light) and "Dusk Desk" (dark), shared with the 5e combat tracker.
  * The active theme is set as data-theme on <html> by the inline script in app.html
- * and switched by ThemeToggle. Every component colour must come from these tokens.
+ * and kept in sync by $lib/theme.svelte.ts (Auto / Light / Dark). Every component colour must come from these tokens.
  */
 :root {
 	color-scheme: light;

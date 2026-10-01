@@ -6,11 +6,13 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { pendingRestore } from '$lib/backup/pending';
 	import { library } from '$lib/library.svelte';
+	import { theme } from '$lib/theme.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
 		void library.load();
+		theme.start();
 
 		// Restore links look like https://host/?restore=<code>; hand the code to the import page.
 		const url = new URL(location.href);
