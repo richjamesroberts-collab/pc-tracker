@@ -1,0 +1,15 @@
+{
+	"name": "PC Tracker",
+	"short_name": "PC Tracker",
+	"description": "Track your D&D 5e character's HP, death saves and spells at the table.",
+	"start_url": "./",
+	"scope": "./",
+	"display": "standalone",
+	"background_color": "#fffdf9",
+	"theme_color": "#3f2484",
+	"icons": [
+		{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{ "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	]
+}

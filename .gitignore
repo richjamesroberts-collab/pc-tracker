@@ -1,0 +1,13 @@
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/settings.local.json
+vite.config.ts.timestamp-*
+
+# Generated from a local 5etools copy (copyrighted text): never commit.
+/src/lib/data/spells.json

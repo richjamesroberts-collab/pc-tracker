@@ -1,0 +1,339 @@
+/*
+ * Theme: "Sunlit Desk" (light) and "Dusk Desk" (dark), shared with the 5e combat tracker.
+ * The active theme is set as data-theme on <html> by the inline script in app.html
+ * and switched by ThemeToggle. Every component colour must come from these tokens.
+ */
+:root {
+	color-scheme: light;
+
+	/* Backgrounds */
+	--color-bg:             #fffdf9;
+	--color-surface:        #ffffff;
+	--color-surface-raised: #f5f3ee;
+	--color-chip:           #f0ede7;
+
+	/* Borders */
+	--color-border:         #e4e1d9;
+	--color-border-strong:  #cfcac0;
+
+	/* Typography */
+	--color-text:           #242422;
+	--color-text-muted:     #63635f;
+	--color-text-faint:     #8a8a84;
+
+	/* Accent: action blue */
+	--color-accent:         #2459e8;
+	--color-accent-hover:   #1d4ad0;
+	--color-accent-edge:    #123ab1;
+	--color-accent-dim:     rgba(36, 89, 232, 0.14);
+	--color-on-accent:      #fffdf9;
+	--color-current-bg:     #eef3ff;
+
+	/* Functional */
+	--color-danger:         #d63c3c;
+	--color-danger-hover:   #b82e2e;
+	--color-success:        #2f9e55;
+	--color-warning:        #c9650c;
+	--color-on-solid:       #ffffff;
+
+	/* Solid action fills (Damage / Heal), dark enough for white text */
+	--color-hit:            #c23030;
+	--color-hit-edge:       #8a1c1c;
+	--color-heal:           #23793f;
+	--color-heal-edge:      #1d5e33;
+
+	/* HP bar states */
+	--color-hp-high:        #3aa55c;
+	--color-hp-mid:         #f58220;
+	--color-hp-low:         #d63c3c;
+
+	/* Sides: party vs foe stripe */
+	--color-party:          #2f9e55;
+	--color-foe:            #d63c3c;
+	--color-lair:           #7a4ddb;
+
+	/* Resource state: available (green) / used (red) */
+	--color-ready-bg:       #dcf5e3;
+	--color-ready-edge:     #8fd3a5;
+	--color-ready-ink:      #1d5e33;
+	--color-used-bg:        #ffe1e1;
+	--color-used-edge:      #f0a3a3;
+	--color-used-ink:       #8a1c1c;
+
+	/* Effect chips */
+	--color-conc-bg:        #e5edff;
+	--color-conc-edge:      #c7d6ff;
+	--color-conc-ink:       #12296b;
+	--color-cond-bg:        #ffcbe2;
+	--color-cond-edge:      #f0a6c7;
+	--color-cond-ink:       #6e1a3f;
+	--color-spell-bg:       #ece4ff;
+	--color-spell-edge:     #d2c2fb;
+	--color-spell-ink:      #3f2484;
+	--color-effect-bg:      #ffe3b8;
+	--color-effect-edge:    #e9b464;
+	--color-effect-ink:     #693e16;
+
+	/* Alerts / notifications */
+	--color-alert-bg:       #fff1df;
+	--color-alert-edge:     #e8bf8e;
+	--color-alert-ink:      #844214;
+
+	/* Overlays */
+	--color-scrim:          rgba(40, 36, 30, 0.45);
+	--color-nav-bg:         rgba(255, 253, 249, 0.88);
+
+	/* Shape */
+	--radius:      8px;
+	--radius-lg:   14px;
+	--radius-xl:   18px;
+	--radius-pill: 999px;
+
+	/* Elevation */
+	--shadow-sm: 0 1px 2px rgba(40, 36, 30, 0.08);
+	--shadow:    0 4px 16px rgba(40, 36, 30, 0.10);
+	--shadow-lg: 0 12px 40px rgba(40, 36, 30, 0.18);
+	--shadow-btn: 0 2px 0 var(--color-accent-edge);
+
+	/* Type */
+	--font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	--font-display: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, sans-serif;
+
+	font-family: var(--font-body);
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+
+	--color-bg:             #191a1d;
+	--color-surface:        #222327;
+	--color-surface-raised: #2a2b30;
+	--color-chip:           #303136;
+
+	--color-border:         #393b40;
+	--color-border-strong:  #4d4f55;
+
+	--color-text:           #f2f0eb;
+	--color-text-muted:     #b8b8b2;
+	--color-text-faint:     #8c8c87;
+
+	--color-accent:         #90b0ff;
+	--color-accent-hover:   #a9c2ff;
+	--color-accent-edge:    #90b0ff;
+	--color-accent-dim:     rgba(144, 176, 255, 0.18);
+	--color-on-accent:      #141a2e;
+	--color-current-bg:     #26334e;
+
+	--color-danger:         #ff6b6b;
+	--color-danger-hover:   #ff8585;
+	--color-success:        #5fcf80;
+	--color-warning:        #ffb057;
+	--color-on-solid:       #141414;
+
+	--color-hit:            #ff6b6b;
+	--color-hit-edge:       #ff6b6b;
+	--color-heal:           #5fcf80;
+	--color-heal-edge:      #5fcf80;
+
+	--color-hp-high:        #5fcf80;
+	--color-hp-mid:         #ffb057;
+	--color-hp-low:         #ff6b6b;
+
+	--color-party:          #5fcf80;
+	--color-foe:            #ff6b6b;
+	--color-lair:           #b49cff;
+
+	--color-ready-bg:       #1f4a2d;
+	--color-ready-edge:     #3c8a55;
+	--color-ready-ink:      #bff0cd;
+	--color-used-bg:        #552426;
+	--color-used-edge:      #8a3c3f;
+	--color-used-ink:       #ffd2d2;
+
+	--color-conc-bg:        #26334e;
+	--color-conc-edge:      #3a4d75;
+	--color-conc-ink:       #c9d8ff;
+	--color-cond-bg:        #5c2a45;
+	--color-cond-edge:      #7a3a5d;
+	--color-cond-ink:       #ffd9ea;
+	--color-spell-bg:       #3a2d5e;
+	--color-spell-edge:     #54437f;
+	--color-spell-ink:      #e1d6ff;
+	--color-effect-bg:      #624524;
+	--color-effect-edge:    #7d5a30;
+	--color-effect-ink:     #ffe0af;
+
+	--color-alert-bg:       #3d2c18;
+	--color-alert-edge:     #7d5a30;
+	--color-alert-ink:      #ffe0af;
+
+	--color-scrim:          rgba(0, 0, 0, 0.65);
+	--color-nav-bg:         rgba(25, 26, 29, 0.88);
+
+	--shadow-sm: none;
+	--shadow:    0 4px 16px rgba(0, 0, 0, 0.4);
+	--shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+	--shadow-btn: none;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	background: var(--color-bg);
+	color: var(--color-text);
+	line-height: 1.5;
+	min-height: 100dvh;
+}
+
+button {
+	cursor: pointer;
+	font: inherit;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-pill);
+	padding: 0.4rem 0.875rem;
+	font-size: 0.875rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+input,
+select,
+textarea {
+	font: inherit;
+	color: var(--color-text);
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	padding: 0.4rem 0.6rem;
+	transition: border-color 0.1s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+	outline: none;
+	border-color: var(--color-accent);
+	box-shadow: 0 0 0 3px var(--color-accent-dim);
+}
+
+.btn-primary {
+	background: var(--color-accent);
+	border-color: var(--color-accent-edge);
+	color: var(--color-on-accent);
+	font-weight: 700;
+	box-shadow: var(--shadow-btn);
+}
+
+.btn-primary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn-primary:hover {
+	background: var(--color-accent-hover);
+}
+
+.btn-danger {
+	background: var(--color-danger);
+	border-color: transparent;
+	color: var(--color-on-solid);
+	font-weight: 600;
+}
+
+.btn-danger:hover {
+	background: var(--color-danger-hover);
+}
+
+.btn-ghost {
+	background: var(--color-surface);
+	color: var(--color-text-muted);
+	border: 1px solid var(--color-border);
+}
+
+.btn-ghost:hover {
+	background: var(--color-surface-raised);
+	border-color: var(--color-border-strong);
+	color: var(--color-text);
+}
+
+h1,
+h2,
+h3,
+h4 {
+	font-family: var(--font-display);
+	font-weight: 800;
+	letter-spacing: -0.01em;
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+input[type='number'] {
+	font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition: none !important;
+		animation: none !important;
+	}
+}
+
+/* ── Phone app basics ───────────────────────────────────── */
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	-webkit-tap-highlight-color: transparent;
+	overscroll-behavior-y: none;
+}
+
+/* 16px stops iOS zooming the page when a field is focused. */
+input,
+select,
+textarea {
+	font-size: 16px;
+}
+
+button {
+	touch-action: manipulation;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.label {
+	font-size: 0.75rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-text-muted);
+}
+
+.card {
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--shadow-sm);
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
