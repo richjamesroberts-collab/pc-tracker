@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 D&D 5e (2014) **player** tracker: a phone-first web app each player uses at the table for their own character. Sister project to `../5e-combat-tracker` (the DM's tool) but fully standalone: no sync, no backend, each phone keeps its own data.
 
-Tracks: name, portrait, AC, HP (current/max), temp HP, death saves, spell slots (incl. warlock pact slots and Mystic Arcanum), sorcery points with Font of Magic and metamagic, known/prepared spells, concentration.
+Tracks: name, portrait, AC, HP (current/max), temp HP, death saves, spell slots (incl. warlock pact slots and Mystic Arcanum), sorcery points with Font of Magic and metamagic, known/prepared spells, concentration, race/subrace, limited-use class/subclass/racial feature counters (plus custom counters) and feature text.
 
 ## Tech Stack
 
@@ -29,7 +29,7 @@ Spell packs (`.spellpack.json`, stored in the `spellPacks` table) are for extra 
 - `src/lib/library.svelte.ts` — spell library (bundled spells + installed packs), spell lookup for a character, spell copies.
 - `src/lib/data/` — `classes.ts` (class/subclass keys, saves), `races.ts` (race/subrace keys, dragon ancestry, `raceLabel`), `content.ts` (`loadContent` lazy-loads the generated JSON; `featureGroups`), plus the generated `spells.json`, `classes.json`, `races.json`.
 - `src/lib/backup/` — backup file format (`{ app, schemaVersion, character }`), validation/migration in `readBackup`, restore links (`?restore=<deflate+base64url>`, no portrait or spell copies), spell pack files (`packs.ts`), share-sheet saving.
-- Routes: `/` list, `/new`, `/import` (backups and spell packs), `/packs`, `/c/[id]` (Vitals), `/c/[id]/spells`, `/c/[id]/book`, `/c/[id]/edit`.
+- Routes: `/` list, `/new`, `/import` (backups and spell packs), `/packs`, `/c/[id]` (Vitals), `/c/[id]/spells`, `/c/[id]/features`, `/c/[id]/book`, `/c/[id]/edit`.
 
 When the `Character` shape changes, give new fields defaults in `readBackup` (and a Dexie upgrade) so old backups still import. Bump `SCHEMA_VERSION` only for changes older apps can't read.
 

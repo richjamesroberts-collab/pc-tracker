@@ -57,7 +57,7 @@
 
 	function rest(kind: 'short' | 'long') {
 		menuOpen = false;
-		if (kind === 'long') session.mutate('Long rest: HP, slots and points restored', longRest);
+		if (kind === 'long') session.mutate('Long rest: HP, slots, points and features restored', longRest);
 		else session.mutate('Short rest taken', shortRest);
 	}
 </script>
@@ -168,8 +168,8 @@
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
-		<button type="button" onclick={() => rest('short')}>Short rest <span>Pact slots back</span></button>
-		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points</span></button>
+		<button type="button" onclick={() => rest('short')}>Short rest <span>Short-rest features and pact slots back</span></button>
+		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points and features</span></button>
 		<button type="button" onclick={() => ((menuOpen = false), (backupOpen = true))}>Back up character</button>
 		<a href={resolve('/c/[id]/edit', { id: c.id })}>Edit character</a>
 		<a href={resolve('/')}>All characters</a>

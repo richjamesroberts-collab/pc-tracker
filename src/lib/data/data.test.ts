@@ -4,6 +4,7 @@ import classesJson from './classes.json';
 import racesJson from './races.json';
 import { CLASSES } from './classes';
 import { RACES, raceLabel } from './races';
+import { RESOURCES } from '../rules/features';
 import { featureGroups, type ClassContent, type Content, type RaceContent } from './content';
 
 const classes = classesJson as Record<string, ClassContent>;
@@ -81,5 +82,19 @@ describe('class and race content', () => {
 		expect(g.map((x) => x.title)).toEqual(['Dwarf', 'Hill Dwarf', 'Fighter', 'Champion']);
 		expect(g[2].features.some((f) => f.name === 'Action Surge')).toBe(true);
 		expect(g[2].features.some((f) => f.name === 'Extra Attack')).toBe(false);
+	});
+});
+
+describe('resource owners', () => {
+	it('every ResourceDef.owner key exists', () => {
+		for (const def of RESOURCES) {
+			const { kind, key } = def.owner;
+			const [a, b] = key.split('/');
+			const label = `${def.key} -> ${kind}:${key}`;
+			if (kind === 'class') expect(CLASSES.some((c) => c.key === key), label).toBe(true);
+			else if (kind === 'subclass') expect(CLASSES.find((c) => c.key === a)?.subclasses.some((x) => x.key === b), label).toBe(true);
+			else if (kind === 'race') expect(RACES.some((r) => r.key === key), label).toBe(true);
+			else expect(RACES.find((r) => r.key === a)?.subraces.some((x) => x.key === b), label).toBe(true);
+		}
 	});
 });

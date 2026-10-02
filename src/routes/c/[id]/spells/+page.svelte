@@ -55,7 +55,7 @@
 	<h1>Spells</h1>
 	<div class="rests">
 		<button type="button" onclick={() => session.mutate('Short rest taken', shortRest)}>Short rest</button>
-		<button type="button" onclick={() => session.mutate('Long rest: HP, slots and points restored', longRest)}>Long rest</button>
+		<button type="button" onclick={() => session.mutate('Long rest: HP, slots, points and features restored', longRest)}>Long rest</button>
 	</div>
 </div>
 
