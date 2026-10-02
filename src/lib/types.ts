@@ -47,6 +47,10 @@ export interface Character {
 	image?: string;
 	classKey: string;
 	subclassKey?: string;
+	/** Race key from `RACES` in src/lib/data/races.ts. */
+	raceKey?: string;
+	/** Subrace (or dragon ancestry) key within the race. */
+	subraceKey?: string;
 	level: number;
 
 	ac: number;

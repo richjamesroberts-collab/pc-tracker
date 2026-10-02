@@ -32,7 +32,7 @@ Loading: `classes.json` and `races.json` are loaded with dynamic `import()` from
 Keeps the hand data (saves, weakSaves). Adds the missing TCE subclasses with new keys:
 
 - Barbarian: `beast`, `wild-magic`
-- Bard: `creation`
+- Bard: `whispers`, `creation`
 - Cleric: `order`, `peace`, `twilight`
 - Druid: `stars`, `wildfire`
 - Fighter: `psi-warrior`, `rune-knight`

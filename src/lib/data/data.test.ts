@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import spells from './spells.json';
+import classesJson from './classes.json';
+import racesJson from './races.json';
+import { CLASSES } from './classes';
+import { RACES, raceLabel } from './races';
+import { featureGroups, type ClassContent, type Content, type RaceContent } from './content';
+
+const classes = classesJson as Record<string, ClassContent>;
+const races = racesJson as RaceContent[];
 
 describe('bundled spells', () => {
 	it('has every PHB/XGE/TCE spell', () => {
@@ -10,5 +18,47 @@ describe('bundled spells', () => {
 	it('keeps PHB ids so existing characters still resolve', () => {
 		expect(spells.find((s) => s.id === "bigby's hand|phb")?.name).toBe("Bigby's Hand");
 		expect(spells.some((s) => s.id === 'toll the dead|xge')).toBe(true);
+	});
+});
+
+describe('class and race content', () => {
+	it('has features for every class and subclass key', () => {
+		for (const cls of CLASSES) {
+			expect(classes[cls.key]?.features.length, cls.key).toBeGreaterThan(0);
+			for (const s of cls.subclasses) expect(classes[cls.key].subclasses[s.key]?.length, `${cls.key}/${s.key}`).toBeGreaterThan(0);
+		}
+	});
+	it('marks TCE optional class features', () => {
+		expect(classes.barbarian.features.find((f) => f.name === 'Primal Knowledge')?.optional).toBe(true);
+		expect(classes.barbarian.features.find((f) => f.name === 'Rage')?.optional).toBeUndefined();
+	});
+	it('every race and subrace key exists in races.json', () => {
+		for (const r of RACES) {
+			const data = races.find((x) => x.key === r.key);
+			expect(data, r.key).toBeDefined();
+			for (const s of r.subraces)
+				expect(
+					data!.subraces.some((x) => x.key === s.key),
+					`${r.key}/${s.key}`
+				).toBe(true);
+		}
+	});
+	it('labels races', () => {
+		expect(raceLabel({ raceKey: 'elf', subraceKey: 'high' })).toBe('High Elf');
+		expect(raceLabel({ raceKey: 'dragonborn', subraceKey: 'red' })).toBe('Red Dragonborn');
+		expect(raceLabel({ raceKey: 'tiefling' })).toBe('Tiefling');
+		expect(raceLabel({})).toBe('');
+	});
+	it('groups features up to the character level', () => {
+		const g = featureGroups({ classes, races } as Content, {
+			raceKey: 'dwarf',
+			subraceKey: 'hill',
+			classKey: 'fighter',
+			subclassKey: 'champion',
+			level: 3
+		});
+		expect(g.map((x) => x.title)).toEqual(['Dwarf', 'Hill Dwarf', 'Fighter', 'Champion']);
+		expect(g[2].features.some((f) => f.name === 'Action Surge')).toBe(true);
+		expect(g[2].features.some((f) => f.name === 'Extra Attack')).toBe(false);
 	});
 });

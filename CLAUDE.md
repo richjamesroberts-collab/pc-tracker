@@ -18,7 +18,7 @@ Tracks: name, portrait, AC, HP (current/max), temp HP, death saves, spell slots 
 
 ## Game data
 
-`npm run data` (alias `npm run spells`) regenerates the bundled JSON in `src/lib/data/` from a local 5etools checkout (`../5etools-2014-src`, override with `FIVETOOLS_DIR`): `spells.json` (all PHB/XGE/TCE spells), with classes and races JSON to come from the same script. The output is committed and shipped publicly, by the owner's choice.
+`npm run data` (alias `npm run spells`) regenerates the bundled JSON in `src/lib/data/` from a local 5etools checkout (`../5etools-2014-src`, override with `FIVETOOLS_DIR`): `spells.json` (all PHB/XGE/TCE spells), `classes.json` (class and subclass features, keyed by our class and subclass keys) and `races.json` (PHB races and Custom Lineage). Subclasses are PHB/XGE/TCE plus three older ones that already had keys: Cleric Arcana (SCAG), Paladin Oathbreaker (DMG), Warlock Undead (VRGR). The script fails if counts drop or a PHB/XGE/TCE subclass has no key in its `SUBCLASS_KEYS` table. The output is committed and shipped publicly, by the owner's choice.
 
 Spell packs (`.spellpack.json`, stored in the `spellPacks` table) are for extra spells players import on their own phone. Characters keep a `spellCache` copy of pack spells they use, so backups restore on phones without the pack. Lookup order: installed library (bundled spells, overridden by packs with the same id) → custom spells → cache.
 
@@ -26,7 +26,8 @@ Spell packs (`.spellpack.json`, stored in the `spellPacks` table) are for extra 
 
 - `src/lib/rules/` — pure 5e rules (slot tables, HP/temp/death saves, sorcery points, rests). Mutate a `Character` draft in place. Tested in `rules.test.ts`.
 - `src/lib/session.svelte.ts` — the open character. All changes go through `session.mutate(label, fn)`, which copies, applies, saves to IndexedDB and offers Undo via the toast. `session.record` saves bookkeeping without an undo step.
-- `src/lib/library.svelte.ts` — spell library (SRD + installed packs), spell lookup for a character, spell copies.
+- `src/lib/library.svelte.ts` — spell library (bundled spells + installed packs), spell lookup for a character, spell copies.
+- `src/lib/data/` — `classes.ts` (class/subclass keys, saves), `races.ts` (race/subrace keys, dragon ancestry, `raceLabel`), `content.ts` (`loadContent` lazy-loads the generated JSON; `featureGroups`), plus the generated `spells.json`, `classes.json`, `races.json`.
 - `src/lib/backup/` — backup file format (`{ app, schemaVersion, character }`), validation/migration in `readBackup`, restore links (`?restore=<deflate+base64url>`, no portrait or spell copies), spell pack files (`packs.ts`), share-sheet saving.
 - Routes: `/` list, `/new`, `/import` (backups and spell packs), `/packs`, `/c/[id]` (Vitals), `/c/[id]/spells`, `/c/[id]/book`, `/c/[id]/edit`.
 
