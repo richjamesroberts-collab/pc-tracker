@@ -80,6 +80,7 @@ describe('class and race content', () => {
 			level: 3
 		});
 		expect(g.map((x) => x.title)).toEqual(['Dwarf', 'Hill Dwarf', 'Fighter', 'Champion']);
+		expect(g.map((x) => x.kind)).toEqual(['race', 'subrace', 'class', 'subclass']);
 		expect(g[2].features.some((f) => f.name === 'Action Surge')).toBe(true);
 		expect(g[2].features.some((f) => f.name === 'Extra Attack')).toBe(false);
 	});

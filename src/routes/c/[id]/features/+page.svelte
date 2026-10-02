@@ -162,7 +162,7 @@
 {:else if !content}
 	<p class="status muted">Loading features…</p>
 {:else}
-	{#each groups as group (group.title)}
+	{#each groups as group (group.kind)}
 		<h2 class="label group">{group.title}</h2>
 		<div class="card list">
 			{#each group.features as f, i (i)}

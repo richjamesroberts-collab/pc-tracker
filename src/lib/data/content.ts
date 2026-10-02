@@ -55,6 +55,8 @@ export function loadContent(): Promise<Content> {
 }
 
 export interface FeatureGroup {
+	/** One group of each kind at most, so it doubles as a unique key. */
+	kind: 'race' | 'subrace' | 'class' | 'subclass';
 	title: string;
 	features: (Feature | (Trait & { level: 0 }))[];
 }
@@ -70,16 +72,18 @@ export function featureGroups(
 	const race = content.races.find((r) => r.key === c.raceKey);
 	if (race) {
 		groups.push({
+			kind: 'race',
 			title: RACE_MAP.get(race.key)?.name ?? race.name,
 			features: traits(race.traits)
 		});
 		const sub = race.subraces.find((s) => s.key === c.subraceKey);
-		if (sub) groups.push({ title: raceLabel(c), features: traits(sub.traits) });
+		if (sub) groups.push({ kind: 'subrace', title: raceLabel(c), features: traits(sub.traits) });
 	}
 
 	const cls = content.classes[c.classKey];
 	if (cls) {
 		groups.push({
+			kind: 'class',
 			title: cls.name,
 			features: cls.features.filter((f) => f.level <= c.level)
 		});
@@ -87,6 +91,7 @@ export function featureGroups(
 		if (subFeatures) {
 			const title = CLASS_MAP.get(c.classKey)?.subclasses.find((s) => s.key === c.subclassKey)?.name ?? c.subclassKey!;
 			groups.push({
+				kind: 'subclass',
 				title,
 				features: subFeatures.filter((f) => f.level <= c.level)
 			});
