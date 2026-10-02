@@ -187,6 +187,11 @@ describe('limited-use features', () => {
 		expect(RESOURCES.find((r) => r.key === 'hexblades-curse')!.reset(c)).toBe('short');
 		expect(max(pc({ classKey: 'warlock', subclassKey: 'fiend', level: 1 }), 'hexblades-curse')).toBe(0);
 	});
+	it('bladesong: proficiency bonus uses per long rest from 2nd level', () => {
+		const at = (level: number) => pc({ classKey: 'wizard', subclassKey: 'bladesinging', level });
+		expect([1, 2, 5, 17].map((level) => max(at(level), 'bladesong'))).toEqual([0, 2, 3, 6]);
+		expect(RESOURCES.find((r) => r.key === 'bladesong')!.reset(at(2))).toBe('long');
+	});
 	it('race and subrace resources', () => {
 		expect(resourcesFor(pc({ raceKey: 'elf', subraceKey: 'drow', level: 5 })).map((r) => r.key)).toEqual(expect.arrayContaining(['faerie-fire', 'drow-darkness']));
 		expect(max(pc({ raceKey: 'tiefling', level: 2 }), 'hellish-rebuke')).toBe(0);

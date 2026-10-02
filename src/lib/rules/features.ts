@@ -87,6 +87,7 @@ export const RESOURCES: ResourceDef[] = [
 	sub('sorcerer/wild-magic', { key: 'tides-of-chaos', name: 'Tides of Chaos', max: () => 1, reset: long }),
 	sub('sorcerer/divine-soul', { key: 'favored-by-the-gods', name: 'Favored by the Gods', max: () => 1, reset: short }),
 	sub('wizard/divination', { key: 'portent', name: 'Portent', max: (c) => byLevel(c.level, [[2, 2], [14, 3]]), reset: long }),
+	sub('wizard/bladesinging', { key: 'bladesong', name: 'Bladesong', max: (c) => (c.level >= 2 ? prof(c) : 0), reset: long }),
 	sub('cleric/light', { key: 'warding-flare', name: 'Warding Flare', max: mod1, reset: long }),
 	sub('cleric/tempest', { key: 'wrath-of-the-storm', name: 'Wrath of the Storm', max: mod1, reset: long }),
 	sub('cleric/war', { key: 'war-priest', name: 'War Priest', max: mod1, reset: long }),
