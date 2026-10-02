@@ -20,6 +20,8 @@ export function newCharacter(): Character {
 		arcanumUsed: [],
 		sorceryPointsUsed: 0,
 		metamagic: [],
+		resourcesUsed: {},
+		customResources: [],
 		spells: [],
 		customSpells: [],
 		spellCache: [],

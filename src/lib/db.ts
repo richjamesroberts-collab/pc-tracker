@@ -20,6 +20,15 @@ class PcTrackerDB extends Dexie {
 						c.spellCache ??= [];
 					})
 			);
+		this.version(3).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => {
+					c.resourcesUsed ??= {};
+					c.customResources ??= [];
+				})
+		);
 	}
 }
 

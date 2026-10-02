@@ -40,6 +40,14 @@ export interface DeathSaves {
 	failures: number;
 }
 
+export interface CustomResource {
+	id: string;
+	name: string;
+	max: number;
+	reset: 'short' | 'long';
+	used: number;
+}
+
 export interface Character {
 	id: string;
 	name: string;
@@ -75,6 +83,10 @@ export interface Character {
 	arcanumUsed: number[];
 	sorceryPointsUsed: number;
 	metamagic: string[];
+	/** Uses spent per class/race feature counter, keyed by resource id (e.g. { rage: 2 }). */
+	resourcesUsed: Record<string, number>;
+	/** Player-defined counters. */
+	customResources: CustomResource[];
 
 	spells: CharacterSpell[];
 	customSpells: Spell[];
