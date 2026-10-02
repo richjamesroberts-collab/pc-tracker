@@ -1,5 +1,5 @@
 import { newCharacter } from '$lib/character';
-import type { Character, CharacterSpell, CustomResource, InventoryItem, Spell } from '$lib/types';
+import type { Character, CharacterSpell, Coins, CustomResource, InventoryItem, Spell } from '$lib/types';
 
 export const APP_ID = '5e-pc-tracker';
 export const SCHEMA_VERSION = 1;
@@ -59,8 +59,10 @@ function items(v: unknown): InventoryItem[] {
 		if (!isObj(i) || typeof i.id !== 'string' || typeof i.name !== 'string' || !i.name) continue;
 		const ch = isObj(i.charges) ? i.charges : undefined;
 		const max = ch ? Math.min(99, Math.max(0, Math.floor(num(ch.max, 0)))) : 0;
+		const weight = num(i.weight, 0);
 		out.push({
 			id: i.id,
+			kind: i.kind === 'gear' ? 'gear' : 'magic',
 			...(typeof i.ref === 'string' ? { ref: i.ref } : {}),
 			name: i.name,
 			type: str(i.type),
@@ -68,6 +70,7 @@ function items(v: unknown): InventoryItem[] {
 			attunement: !!i.attunement,
 			attuned: !!i.attunement && !!i.attuned,
 			quantity: Math.max(1, Math.floor(num(i.quantity, 1))),
+			...(weight > 0 ? { weight } : {}),
 			...(ch && max > 0
 				? {
 						charges: {
@@ -81,6 +84,12 @@ function items(v: unknown): InventoryItem[] {
 		});
 	}
 	return out;
+}
+
+function coins(v: unknown): Coins {
+	const raw = isObj(v) ? v : {};
+	const count = (k: string) => Math.max(0, Math.floor(num(raw[k], 0)));
+	return { cp: count('cp'), sp: count('sp'), ep: count('ep'), gp: count('gp'), pp: count('pp') };
 }
 
 function spellList(v: unknown): CharacterSpell[] {
@@ -157,6 +166,7 @@ export function readBackup(data: unknown): Character {
 		spellCache: readSpells(raw.spellCache),
 		concentration: typeof raw.concentration === 'string' ? raw.concentration : undefined,
 		items: items(raw.items),
+		coins: coins(raw.coins),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

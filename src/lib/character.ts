@@ -26,6 +26,7 @@ export function newCharacter(): Character {
 		customSpells: [],
 		spellCache: [],
 		items: [],
+		coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
 		notes: '',
 		createdAt: now,
 		updatedAt: now

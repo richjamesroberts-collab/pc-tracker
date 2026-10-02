@@ -46,6 +46,7 @@ describe('backup files', () => {
 	it('keeps inventory items and cleans bad ones', () => {
 		const wand = {
 			id: 'w1',
+			kind: 'magic' as const,
 			ref: 'wand of magic missiles|dmg',
 			name: 'Wand of Magic Missiles',
 			type: 'Wand',
@@ -63,7 +64,19 @@ describe('backup files', () => {
 		const bad = [{ id: 'x', name: '' }, { id: 'y', name: 'Ring', attuned: true, quantity: -2, charges: { max: 3, used: 9 } }];
 		const back = readBackup({ ...raw, character: { ...raw.character, items: bad } });
 		expect(back.items).toHaveLength(1);
-		expect(back.items[0]).toMatchObject({ attuned: false, quantity: 1, charges: { max: 3, used: 3 }, type: '', notes: '' });
+		expect(back.items[0]).toMatchObject({ kind: 'magic', attuned: false, quantity: 1, charges: { max: 3, used: 3 }, type: '', notes: '' });
+	});
+
+	it('keeps coins and gear, and cleans bad coin counts', () => {
+		const torch = { id: 't', kind: 'gear' as const, ref: 'torch|phb', name: 'Torch', type: 'Adventuring gear', rarity: '', attunement: false, attuned: false, quantity: 10, weight: 1, notes: '' };
+		const c = { ...lyra(), items: [torch], coins: { cp: 3, sp: 0, ep: 0, gp: 42, pp: 1 } };
+		const back = parseBackupText(JSON.stringify(toBackup(c)));
+		expect(back.items).toEqual([torch]);
+		expect(back.coins).toEqual(c.coins);
+
+		const raw = toBackup(lyra());
+		const odd = readBackup({ ...raw, character: { ...raw.character, coins: { gp: -4, sp: 2.7, pp: 'lots' } } });
+		expect(odd.coins).toEqual({ cp: 0, sp: 2, ep: 0, gp: 0, pp: 0 });
 	});
 
 	it('rejects files from other apps and newer versions', () => {
@@ -80,6 +93,7 @@ describe('backup files', () => {
 		expect(c.level).toBe(20);
 		expect(c.spells).toEqual([]);
 		expect(c.items).toEqual([]);
+		expect(c.coins).toEqual({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 });
 		expect(c.deathSaves).toEqual({ successes: 0, failures: 0 });
 	});
 });

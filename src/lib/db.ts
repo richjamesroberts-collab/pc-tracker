@@ -37,6 +37,15 @@ class PcTrackerDB extends Dexie {
 					c.items ??= [];
 				})
 		);
+		this.version(5).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => {
+					for (const i of c.items) i.kind ??= 'magic';
+					c.coins ??= { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+				})
+		);
 	}
 }
 
