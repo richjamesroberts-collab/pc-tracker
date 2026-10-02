@@ -1,5 +1,5 @@
 import { newCharacter } from '$lib/character';
-import type { Character, CharacterSpell, Spell } from '$lib/types';
+import type { Character, CharacterSpell, CustomResource, Spell } from '$lib/types';
 
 export const APP_ID = '5e-pc-tracker';
 export const SCHEMA_VERSION = 1;
@@ -30,6 +30,25 @@ function numRecord(v: unknown): Record<number, number> {
 	if (!isObj(v)) return {};
 	const out: Record<number, number> = {};
 	for (const [k, n] of Object.entries(v)) if (typeof n === 'number' && n > 0) out[Number(k)] = n;
+	return out;
+}
+
+function usedRecord(v: unknown): Record<string, number> {
+	if (!isObj(v)) return {};
+	const out: Record<string, number> = {};
+	for (const [k, n] of Object.entries(v)) if (typeof n === 'number' && Number.isFinite(n) && n >= 0) out[k] = n;
+	return out;
+}
+
+function customResources(v: unknown): CustomResource[] {
+	if (!Array.isArray(v)) return [];
+	const out: CustomResource[] = [];
+	for (const r of v) {
+		if (!isObj(r) || typeof r.id !== 'string' || typeof r.name !== 'string' || !r.name) continue;
+		if (r.reset !== 'short' && r.reset !== 'long') continue;
+		const max = Math.max(1, num(r.max, 1));
+		out.push({ id: r.id, name: r.name, max, reset: r.reset, used: Math.min(max, Math.max(0, num(r.used, 0))) });
+	}
 	return out;
 }
 
@@ -81,6 +100,8 @@ export function readBackup(data: unknown): Character {
 		image: typeof raw.image === 'string' && raw.image.startsWith('data:image/') ? raw.image : undefined,
 		classKey: raw.classKey,
 		subclassKey: typeof raw.subclassKey === 'string' ? raw.subclassKey : undefined,
+		raceKey: typeof raw.raceKey === 'string' ? raw.raceKey : undefined,
+		subraceKey: typeof raw.subraceKey === 'string' ? raw.subraceKey : undefined,
 		level: Math.min(20, Math.max(1, num(raw.level, 1))),
 		ac: num(raw.ac, base.ac),
 		hpMax,
@@ -98,6 +119,8 @@ export function readBackup(data: unknown): Character {
 		arcanumUsed: Array.isArray(raw.arcanumUsed) ? raw.arcanumUsed.filter((x): x is number => typeof x === 'number') : [],
 		sorceryPointsUsed: num(raw.sorceryPointsUsed, 0),
 		metamagic: Array.isArray(raw.metamagic) ? raw.metamagic.filter((x): x is string => typeof x === 'string') : [],
+		resourcesUsed: usedRecord(raw.resourcesUsed),
+		customResources: customResources(raw.customResources),
 		spells: spellList(raw.spells),
 		customSpells: readSpells(raw.customSpells, 'Custom'),
 		spellCache: readSpells(raw.spellCache),

@@ -1,5 +1,5 @@
 # Builds the app and publishes it to GitHub Pages on every push to main.
-# Only the bundled SRD spells are in the repo; spell packs are never committed or published.
+# Game data (spells, classes, races) is committed in the repo and bundled in the build.
 name: Deploy to GitHub Pages
 
 on:
@@ -31,12 +31,6 @@ jobs:
         env:
           # Pages serves the site at /<repo-name>/ unless the repo is <user>.github.io.
           BASE_PATH: ${{ github.event.repository.name == format('{0}.github.io', github.repository_owner) && '' || format('/{0}', github.event.repository.name) }}
-      - name: Fail if a spell pack slipped into the build
-        run: |
-          if grep -rqE "Toll the Dead|Booming Blade|Bigby" build; then
-            echo "Non-SRD spell text found in the build. Spell packs must not be published." >&2
-            exit 1
-          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build

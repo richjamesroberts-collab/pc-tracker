@@ -15,7 +15,7 @@ export interface Spell {
 	classes: string[];
 	text: string;
 	higher?: string;
-	/** Where the spell was loaded from at runtime: 'srd', a pack id, or 'custom'. Not saved. */
+	/** Where the spell was loaded from at runtime: 'builtin', a pack id, or 'custom'. Not saved. */
 	pack?: string;
 }
 
@@ -40,6 +40,14 @@ export interface DeathSaves {
 	failures: number;
 }
 
+export interface CustomResource {
+	id: string;
+	name: string;
+	max: number;
+	reset: 'short' | 'long';
+	used: number;
+}
+
 export interface Character {
 	id: string;
 	name: string;
@@ -47,6 +55,10 @@ export interface Character {
 	image?: string;
 	classKey: string;
 	subclassKey?: string;
+	/** Race key from `RACES` in src/lib/data/races.ts. */
+	raceKey?: string;
+	/** Subrace (or dragon ancestry) key within the race. */
+	subraceKey?: string;
 	level: number;
 
 	ac: number;
@@ -71,11 +83,15 @@ export interface Character {
 	arcanumUsed: number[];
 	sorceryPointsUsed: number;
 	metamagic: string[];
+	/** Uses spent per class/race feature counter, keyed by resource id (e.g. { rage: 2 }). */
+	resourcesUsed: Record<string, number>;
+	/** Player-defined counters. */
+	customResources: CustomResource[];
 
 	spells: CharacterSpell[];
 	customSpells: Spell[];
 	/**
-	 * Copies of the non-SRD pack spells this character uses, so a backup restored on a phone
+	 * Copies of the pack spells this character uses, so a backup restored on a phone
 	 * without the pack still shows them. An installed pack's version takes priority.
 	 */
 	spellCache: Spell[];

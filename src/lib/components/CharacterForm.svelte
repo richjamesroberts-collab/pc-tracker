@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import Portrait from './Portrait.svelte';
 	import { CLASSES } from '$lib/data/classes';
+	import { RACES, RACE_MAP } from '$lib/data/races';
 	import { portraitFromFile } from '$lib/image';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { isCaster, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
@@ -19,6 +20,7 @@
 	let photoError = $state('');
 
 	const cls = $derived(CLASSES.find((x) => x.key === c.classKey));
+	const race = $derived(c.raceKey ? RACE_MAP.get(c.raceKey) : undefined);
 	const caster = $derived(isCaster(c));
 	const ability = $derived(SPELL_ABILITY[c.classKey] ?? 'spellcasting');
 	const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
@@ -35,6 +37,10 @@
 		} catch {
 			photoError = "Couldn't read that image. Try a JPEG or PNG.";
 		}
+	}
+
+	function onRaceChange() {
+		c.subraceKey = undefined;
 	}
 
 	function onClassChange() {
@@ -79,6 +85,29 @@
 		<span>Character name</span>
 		<input bind:value={c.name} required autocomplete="off" autocapitalize="words" placeholder="Lyra Ashwood" />
 	</label>
+
+	<div class="two even">
+		<label class="field">
+			<span>Race</span>
+			<select bind:value={c.raceKey} onchange={onRaceChange}>
+				<option value={undefined}>Choose…</option>
+				{#each RACES as r (r.key)}
+					<option value={r.key}>{r.name}</option>
+				{/each}
+			</select>
+		</label>
+		{#if race && race.subraces.length}
+			<label class="field">
+				<span>{race.key === 'dragonborn' ? 'Ancestry' : 'Subrace'}</span>
+				<select bind:value={c.subraceKey}>
+					<option value={undefined}>Choose…</option>
+					{#each race.subraces as s (s.key)}
+						<option value={s.key}>{s.name}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
+	</div>
 
 	<div class="two">
 		<label class="field">
@@ -238,6 +267,10 @@
 		display: grid;
 		grid-template-columns: 2fr 1fr;
 		gap: 10px;
+	}
+
+	.two.even {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.three {

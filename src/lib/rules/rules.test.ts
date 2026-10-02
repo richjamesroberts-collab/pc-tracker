@@ -12,7 +12,17 @@ import {
 	spellLimit,
 	spellSaveDC
 } from './spellcasting';
-import { longRest, metamagicCost, pointsToSlot, slotToPoints, sorceryPointsLeft, spendSlot } from './resources';
+import { longRest, metamagicCost, pointsToSlot, shortRest, slotToPoints, sorceryPointsLeft, spendSlot } from './resources';
+import {
+	RESOURCES,
+	proficiencyBonus,
+	resourceLeft,
+	resourcesFor,
+	restoreCustom,
+	restoreResource,
+	spendCustom,
+	spendResource
+} from './features';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', classKey: 'sorcerer', level: 7, hpMax: 52, hpCurrent: 38, spellMod: 4, ...overrides };
@@ -139,5 +149,95 @@ describe('resources', () => {
 		expect(metamagicCost('twinned', 0)).toBe(1);
 		expect(metamagicCost('twinned', 3)).toBe(3);
 		expect(metamagicCost('quickened', 3)).toBe(2);
+	});
+});
+
+describe('limited-use features', () => {
+	const max = (c: Character, key: string) => resourcesFor(c).find((r) => r.key === key)?.max(c) ?? 0;
+	it('proficiency bonus', () => expect([1, 4, 5, 9, 13, 17, 20].map(proficiencyBonus)).toEqual([2, 2, 3, 4, 5, 6, 6]));
+	it('rage breakpoints', () => expect([1, 2, 3, 6, 12, 17, 20].map((level) => max(pc({ classKey: 'barbarian', level }), 'rage'))).toEqual([2, 2, 3, 4, 5, 6, 0]));
+	it('action surge hidden before 2', () => {
+		expect(resourcesFor(pc({ classKey: 'fighter', level: 1 })).map((r) => r.key)).toEqual(['second-wind']);
+		expect(max(pc({ classKey: 'fighter', level: 17 }), 'action-surge')).toBe(2);
+	});
+	it('ki equals level from 2', () => expect([1, 2, 11].map((level) => max(pc({ classKey: 'monk', level }), 'ki'))).toEqual([0, 2, 11]));
+	it('bardic inspiration die and reset', () => {
+		const b4 = pc({ classKey: 'bard', level: 4, spellMod: 3 });
+		const b5 = pc({ classKey: 'bard', level: 5, spellMod: 0 });
+		const def = RESOURCES.find((r) => r.key === 'bardic-inspiration')!;
+		expect([def.max(b4), def.reset(b4), def.die!(b4)]).toEqual([3, 'long', 'd6']);
+		expect([def.max(b5), def.reset(b5), def.die!(b5)]).toEqual([1, 'short', 'd8']);
+	});
+	it('subclass resources need the matching class', () => {
+		expect(max(pc({ classKey: 'fighter', subclassKey: 'battle-master', level: 7 }), 'superiority-dice')).toBe(5);
+		expect(max(pc({ classKey: 'sorcerer', subclassKey: 'shadow', level: 7 }), 'superiority-dice')).toBe(0);
+	});
+	it('bolstering magic starts at 6th level (text says so)', () =>
+		expect([5, 6, 13].map((level) => max(pc({ classKey: 'barbarian', subclassKey: 'wild-magic', level }), 'bolstering-magic'))).toEqual([0, 3, 5]));
+	it('race and subrace resources', () => {
+		expect(resourcesFor(pc({ raceKey: 'elf', subraceKey: 'drow', level: 5 })).map((r) => r.key)).toEqual(expect.arrayContaining(['faerie-fire', 'drow-darkness']));
+		expect(max(pc({ raceKey: 'tiefling', level: 2 }), 'hellish-rebuke')).toBe(0);
+	});
+	it('left is clamped when used exceeds a lowered max', () => {
+		const c = pc({ classKey: 'monk', level: 3, resourcesUsed: { ki: 9 } });
+		expect(resourceLeft(c, RESOURCES.find((r) => r.key === 'ki')!)).toBe(0);
+	});
+	it('restore clamps used to the current max first', () => {
+		const c = pc({ classKey: 'monk', level: 3, resourcesUsed: { ki: 9 } });
+		const ki = RESOURCES.find((r) => r.key === 'ki')!;
+		restoreResource(c, 'ki');
+		expect(c.resourcesUsed.ki).toBe(2);
+		expect(resourceLeft(c, ki)).toBe(1);
+	});
+	it('spend rejects non-integer and NaN amounts', () => {
+		const p = pc({ classKey: 'paladin', level: 4 });
+		expect(spendResource(p, 'lay-on-hands', 1.5)).toBe(false);
+		expect(spendResource(p, 'lay-on-hands', NaN)).toBe(false);
+		expect(p.resourcesUsed['lay-on-hands']).toBeUndefined();
+	});
+	it('spend and pool spend', () => {
+		const p = pc({ classKey: 'paladin', level: 4 });
+		expect(spendResource(p, 'lay-on-hands', 15)).toBe(true);
+		expect(spendResource(p, 'lay-on-hands', 6)).toBe(false);
+		expect(p.resourcesUsed['lay-on-hands']).toBe(15);
+		restoreResource(p, 'lay-on-hands', 20);
+		expect(p.resourcesUsed['lay-on-hands'] ?? 0).toBe(0);
+	});
+	it('short rest resets short resources and custom; long resets all', () => {
+		const c = pc({
+			classKey: 'fighter',
+			level: 9,
+			resourcesUsed: { 'action-surge': 1, indomitable: 1, stale: 3 },
+			customResources: [
+				{ id: 'a', name: 'A', max: 2, reset: 'short', used: 2 },
+				{ id: 'b', name: 'B', max: 1, reset: 'long', used: 1 }
+			]
+		});
+		shortRest(c);
+		expect(c.resourcesUsed).toEqual({ indomitable: 1, stale: 3 });
+		expect(c.customResources.map((r) => r.used)).toEqual([0, 1]);
+		longRest(c);
+		expect(c.resourcesUsed).toEqual({});
+		expect(c.customResources.map((r) => r.used)).toEqual([0, 0]);
+	});
+	it('custom counters stay within 0..max and act on the first matching id', () => {
+		const c = pc({
+			customResources: [
+				{ id: 'x', name: 'X', max: 2, reset: 'long', used: 0 },
+				{ id: 'x', name: 'X2', max: 2, reset: 'long', used: 0 }
+			]
+		});
+		expect(spendCustom(c, 'x')).toBe(true);
+		expect(spendCustom(c, 'x')).toBe(true);
+		expect(spendCustom(c, 'x')).toBe(false);
+		expect(c.customResources.map((r) => r.used)).toEqual([2, 0]);
+		restoreCustom(c, 'x');
+		restoreCustom(c, 'x');
+		restoreCustom(c, 'x');
+		expect(c.customResources.map((r) => r.used)).toEqual([0, 0]);
+		expect(spendCustom(c, 'nope')).toBe(false);
+		const odd = pc({ customResources: [{ id: 'y', name: 'Y', max: 1.5, reset: 'long', used: 1 }] });
+		expect(spendCustom(odd, 'y')).toBe(false);
+		expect(odd.customResources[0].used).toBe(1);
 	});
 });

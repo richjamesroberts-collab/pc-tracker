@@ -27,7 +27,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'totem-wolf', name: 'Path of the Totem Warrior (Wolf)' },
 			{ key: 'zealot', name: 'Path of the Zealot' },
 			{ key: 'storm-herald', name: 'Path of the Storm Herald' },
-			{ key: 'ancestral', name: 'Path of the Ancestral Guardian' }
+			{ key: 'ancestral', name: 'Path of the Ancestral Guardian' },
+			{ key: 'beast', name: 'Path of the Beast' },
+			{ key: 'wild-magic', name: 'Path of Wild Magic' }
 		]
 	},
 	{
@@ -40,7 +42,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'valor', name: 'College of Valor' },
 			{ key: 'glamour', name: 'College of Glamour' },
 			{ key: 'swords', name: 'College of Swords' },
-			{ key: 'eloquence', name: 'College of Eloquence' }
+			{ key: 'eloquence', name: 'College of Eloquence' },
+			{ key: 'whispers', name: 'College of Whispers' },
+			{ key: 'creation', name: 'College of Creation' }
 		]
 	},
 	{
@@ -58,7 +62,10 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'war', name: 'War Domain' },
 			{ key: 'forge', name: 'Forge Domain' },
 			{ key: 'grave', name: 'Grave Domain' },
-			{ key: 'arcana', name: 'Arcana Domain' }
+			{ key: 'arcana', name: 'Arcana Domain' },
+			{ key: 'order', name: 'Order Domain' },
+			{ key: 'peace', name: 'Peace Domain' },
+			{ key: 'twilight', name: 'Twilight Domain' }
 		]
 	},
 	{
@@ -71,7 +78,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'moon', name: 'Circle of the Moon' },
 			{ key: 'dreams', name: 'Circle of Dreams' },
 			{ key: 'shepherd', name: 'Circle of the Shepherd' },
-			{ key: 'spores', name: 'Circle of Spores' }
+			{ key: 'spores', name: 'Circle of Spores' },
+			{ key: 'stars', name: 'Circle of Stars' },
+			{ key: 'wildfire', name: 'Circle of Wildfire' }
 		]
 	},
 	{
@@ -85,7 +94,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'eldritch-knight', name: 'Eldritch Knight' },
 			{ key: 'arcane-archer', name: 'Arcane Archer' },
 			{ key: 'cavalier', name: 'Cavalier' },
-			{ key: 'samurai', name: 'Samurai' }
+			{ key: 'samurai', name: 'Samurai' },
+			{ key: 'psi-warrior', name: 'Psi Warrior' },
+			{ key: 'rune-knight', name: 'Rune Knight' }
 		]
 	},
 	{
@@ -101,7 +112,8 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'kensei', name: 'Way of the Kensei' },
 			{ key: 'sun-soul', name: 'Way of the Sun Soul' },
 			{ key: 'drunken-master', name: 'Way of the Drunken Master' },
-			{ key: 'astral-self', name: 'Way of the Astral Self' }
+			{ key: 'astral-self', name: 'Way of the Astral Self' },
+			{ key: 'mercy', name: 'Way of Mercy' }
 		]
 	},
 	{
@@ -131,7 +143,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'beast-master', name: 'Beast Master' },
 			{ key: 'gloom-stalker', name: 'Gloom Stalker' },
 			{ key: 'horizon-walker', name: 'Horizon Walker' },
-			{ key: 'monster-slayer', name: 'Monster Slayer' }
+			{ key: 'monster-slayer', name: 'Monster Slayer' },
+			{ key: 'fey-wanderer', name: 'Fey Wanderer' },
+			{ key: 'swarmkeeper', name: 'Swarmkeeper' }
 		]
 	},
 	{
@@ -162,7 +176,9 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'wild-magic', name: 'Wild Magic' },
 			{ key: 'divine-soul', name: 'Divine Soul' },
 			{ key: 'shadow', name: 'Shadow Magic' },
-			{ key: 'storm', name: 'Storm Sorcery' }
+			{ key: 'storm', name: 'Storm Sorcery' },
+			{ key: 'aberrant-mind', name: 'Aberrant Mind' },
+			{ key: 'clockwork-soul', name: 'Clockwork Soul' }
 		]
 	},
 	{
@@ -178,7 +194,8 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'hexblade', name: 'The Hexblade' },
 			{ key: 'celestial', name: 'The Celestial' },
 			{ key: 'undead', name: 'The Undead' },
-			{ key: 'fathomless', name: 'The Fathomless' }
+			{ key: 'fathomless', name: 'The Fathomless' },
+			{ key: 'genie', name: 'The Genie' }
 		]
 	},
 	{
@@ -196,7 +213,8 @@ export const CLASSES: ClassDef[] = [
 			{ key: 'necromancy', name: 'School of Necromancy' },
 			{ key: 'transmutation', name: 'School of Transmutation' },
 			{ key: 'bladesinging', name: 'Bladesinging' },
-			{ key: 'war-magic', name: 'War Magic' }
+			{ key: 'war-magic', name: 'War Magic' },
+			{ key: 'scribes', name: 'Order of Scribes' }
 		]
 	},
 	{

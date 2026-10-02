@@ -4,7 +4,8 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"spells": "node scripts/build-spells.mjs",
+		"data": "node scripts/build-data.mjs",
+		"spells": "node scripts/build-data.mjs",
 		"dev": "vite dev",
 		"dev:phone": "vite dev --host",
 		"build": "vite build",

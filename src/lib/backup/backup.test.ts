@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
-import { BackupError, decodeRestoreCode, encodeRestoreCode, parseBackupText, readBackup, toBackup } from './backup';
+import { APP_ID, BackupError, decodeRestoreCode, encodeRestoreCode, parseBackupText, readBackup, toBackup } from './backup';
 
 const spell = (id: string, name: string) => ({
 	id,
@@ -71,5 +71,44 @@ describe('restore codes', () => {
 
 	it('rejects damaged codes', async () => {
 		await expect(decodeRestoreCode('abc')).rejects.toThrow(BackupError);
+	});
+});
+
+describe('race and resource fields', () => {
+	it('fills new fields when importing an old backup', () => {
+		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
+		expect(c.resourcesUsed).toEqual({});
+		expect(c.customResources).toEqual([]);
+		expect(c.raceKey).toBeUndefined();
+	});
+
+	it('keeps race, counters and custom counters, dropping junk', () => {
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: {
+				id: 'a',
+				name: 'X',
+				classKey: 'barbarian',
+				raceKey: 'half-orc',
+				subraceKey: 5,
+				resourcesUsed: { rage: 2, bad: 'x' },
+				customResources: [
+					{ id: 'c1', name: 'Luck', max: 3, reset: 'long', used: 1 },
+					{ name: 'no id' },
+					{ id: 'c2', name: 'Bad', max: 2, reset: 'weekly', used: 0 }
+				]
+			}
+		});
+		expect(c.raceKey).toBe('half-orc');
+		expect(c.subraceKey).toBeUndefined();
+		expect(c.resourcesUsed).toEqual({ rage: 2 });
+		expect(c.customResources).toEqual([{ id: 'c1', name: 'Luck', max: 3, reset: 'long', used: 1 }]);
+	});
+
+	it('restore links carry race and counters', async () => {
+		const c = { ...newCharacter(), name: 'R', raceKey: 'elf', subraceKey: 'drow', resourcesUsed: { 'faerie-fire': 1 } };
+		const back = await decodeRestoreCode(await encodeRestoreCode(c));
+		expect([back.raceKey, back.subraceKey, back.resourcesUsed]).toEqual(['elf', 'drow', { 'faerie-fire': 1 }]);
 	});
 });

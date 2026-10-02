@@ -1,4 +1,5 @@
 import type { Character } from '$lib/types';
+import { resetResources } from './features';
 import { pactSlots, slotMax, slotsLeft } from './spellcasting';
 
 export const METAMAGIC: { key: string; name: string; cost: number | 'level' }[] = [
@@ -76,6 +77,7 @@ export function pointsToSlot(c: Character, level: number): boolean {
 
 export function shortRest(c: Character): void {
 	c.pactSlotsUsed = 0;
+	resetResources(c, 'short');
 }
 
 export function longRest(c: Character): void {
@@ -89,4 +91,5 @@ export function longRest(c: Character): void {
 	c.arcanumUsed = [];
 	c.sorceryPointsUsed = 0;
 	c.concentration = undefined;
+	resetResources(c, 'long');
 }

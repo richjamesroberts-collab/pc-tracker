@@ -11,6 +11,7 @@
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
+	import { raceLabel } from '$lib/data/races';
 	import { isDead, isDown } from '$lib/rules/hp';
 	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, spellSaveDC } from '$lib/rules/spellcasting';
@@ -56,7 +57,7 @@
 
 	function rest(kind: 'short' | 'long') {
 		menuOpen = false;
-		if (kind === 'long') session.mutate('Long rest: HP, slots and points restored', longRest);
+		if (kind === 'long') session.mutate('Long rest: HP, slots, points and features restored', longRest);
 		else session.mutate('Short rest taken', shortRest);
 	}
 </script>
@@ -65,7 +66,7 @@
 	<Portrait name={c.name} image={c.image} size={60} muted={isDead(c)} />
 	<div class="who">
 		<h1>{c.name}</h1>
-		<p>{subclass ? `${subclass} · ` : ''}{cls?.name ?? c.classKey} {c.level}</p>
+		<p>{[raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}</p>
 	</div>
 	<AcShield ac={c.ac} />
 	<button
@@ -167,8 +168,8 @@
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
-		<button type="button" onclick={() => rest('short')}>Short rest <span>Pact slots back</span></button>
-		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points</span></button>
+		<button type="button" onclick={() => rest('short')}>Short rest <span>Short-rest features and pact slots back</span></button>
+		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points and features</span></button>
 		<button type="button" onclick={() => ((menuOpen = false), (backupOpen = true))}>Back up character</button>
 		<a href={resolve('/c/[id]/edit', { id: c.id })}>Edit character</a>
 		<a href={resolve('/')}>All characters</a>
