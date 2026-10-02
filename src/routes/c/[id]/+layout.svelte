@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import TabBar from '$lib/components/TabBar.svelte';
@@ -11,11 +11,15 @@
 	let loaded = $state(false);
 	const id = $derived(page.params.id ?? '');
 
+	// Re-run only when the id changes. `session.load` reads `session.character`, and tracking it
+	// would remount the page on every change (closing sheets, collapsing open feature text).
 	$effect(() => {
 		const target = id;
-		loaded = false;
-		session.load(target).then(() => {
-			if (id === target) loaded = true;
+		untrack(() => {
+			loaded = false;
+			session.load(target).then(() => {
+				if (id === target) loaded = true;
+			});
 		});
 	});
 

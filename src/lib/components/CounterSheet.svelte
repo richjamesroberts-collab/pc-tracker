@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
 	import type { CustomResource } from '$lib/types';
 
@@ -20,11 +21,15 @@
 	let max = $state(1);
 	let reset = $state<'short' | 'long'>('long');
 
+	// Seed the form only when the sheet opens. Reading `counter` untracked keeps typed values
+	// when the character changes underneath (e.g. Undo from the toast while editing).
 	$effect(() => {
 		if (!open) return;
-		name = counter?.name ?? '';
-		max = counter?.max ?? 1;
-		reset = counter?.reset ?? 'long';
+		untrack(() => {
+			name = counter?.name ?? '';
+			max = counter?.max ?? 1;
+			reset = counter?.reset ?? 'long';
+		});
 	});
 
 	const valid = $derived(!!name.trim() && Number.isInteger(max) && max >= 1 && max <= 99);
