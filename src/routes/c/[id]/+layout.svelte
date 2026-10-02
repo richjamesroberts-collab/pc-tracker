@@ -19,7 +19,7 @@
 		});
 	});
 
-	const showTabs = $derived(!!session.character && isCaster(session.character) && page.route.id !== '/c/[id]/edit');
+	const showTabs = $derived(!!session.character && page.route.id !== '/c/[id]/edit');
 
 	// Keep the screen awake at the table. Needs HTTPS (or localhost); silently skipped otherwise.
 	onMount(() => {
@@ -54,7 +54,7 @@
 		{@render children()}
 	</div>
 	{#if showTabs}
-		<TabBar {id} />
+		<TabBar {id} caster={isCaster(session.character)} />
 	{/if}
 {/if}
 

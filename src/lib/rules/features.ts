@@ -130,13 +130,15 @@ export function resourceLeft(c: Character, def: ResourceDef): number {
 
 export function spendResource(c: Character, key: string, n = 1): boolean {
 	const def = resourcesFor(c).find((r) => r.key === key);
-	if (!def || n <= 0 || n > resourceLeft(c, def)) return false;
+	if (!def || !Number.isInteger(n) || n <= 0 || n > resourceLeft(c, def)) return false;
 	c.resourcesUsed[key] = (c.resourcesUsed[key] ?? 0) + n;
 	return true;
 }
 
 export function restoreResource(c: Character, key: string, n = 1): void {
-	const used = c.resourcesUsed[key] ?? 0;
+	const def = resourcesFor(c).find((r) => r.key === key);
+	// Clamp first so a level drop (used above the new max) doesn't swallow restores.
+	const used = Math.min(c.resourcesUsed[key] ?? 0, def ? def.max(c) : Infinity);
 	if (used <= 0 || n <= 0) return;
 	const left = used - n;
 	if (left > 0) c.resourcesUsed[key] = left;

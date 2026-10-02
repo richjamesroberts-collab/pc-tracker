@@ -182,6 +182,19 @@ describe('limited-use features', () => {
 		const c = pc({ classKey: 'monk', level: 3, resourcesUsed: { ki: 9 } });
 		expect(resourceLeft(c, RESOURCES.find((r) => r.key === 'ki')!)).toBe(0);
 	});
+	it('restore clamps used to the current max first', () => {
+		const c = pc({ classKey: 'monk', level: 3, resourcesUsed: { ki: 9 } });
+		const ki = RESOURCES.find((r) => r.key === 'ki')!;
+		restoreResource(c, 'ki');
+		expect(c.resourcesUsed.ki).toBe(2);
+		expect(resourceLeft(c, ki)).toBe(1);
+	});
+	it('spend rejects non-integer and NaN amounts', () => {
+		const p = pc({ classKey: 'paladin', level: 4 });
+		expect(spendResource(p, 'lay-on-hands', 1.5)).toBe(false);
+		expect(spendResource(p, 'lay-on-hands', NaN)).toBe(false);
+		expect(p.resourcesUsed['lay-on-hands']).toBeUndefined();
+	});
 	it('spend and pool spend', () => {
 		const p = pc({ classKey: 'paladin', level: 4 });
 		expect(spendResource(p, 'lay-on-hands', 15)).toBe(true);
