@@ -273,6 +273,11 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
+	/* Race alone (no subraces yet) takes the full row. */
+	.two.even > :only-child {
+		grid-column: 1 / -1;
+	}
+
 	.three {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
