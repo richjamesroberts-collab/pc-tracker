@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Portrait from '$lib/components/Portrait.svelte';
 	import AcShield from '$lib/components/AcShield.svelte';
+	import AcSheet from '$lib/components/AcSheet.svelte';
 	import HpSheet, { type HpMode } from '$lib/components/HpSheet.svelte';
 	import DeathSaves from '$lib/components/DeathSaves.svelte';
 	import Pips from '$lib/components/Pips.svelte';
@@ -14,7 +15,7 @@
 	import { raceLabel } from '$lib/data/races';
 	import { isDead, isDown } from '$lib/rules/hp';
 	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
-	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, spellSaveDC } from '$lib/rules/spellcasting';
+	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { backupIsStale } from '$lib/backup/staleness';
 	import type { Character } from '$lib/types';
 
@@ -33,12 +34,19 @@
 		[
 			c.speed != null && { k: 'Speed', v: `${c.speed}` },
 			c.initiativeModifier != null && { k: 'Init', v: `${c.initiativeModifier >= 0 ? '+' : ''}${c.initiativeModifier}` },
-			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
-			caster && { k: 'Save DC', v: `${spellSaveDC(c)}` }
+			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` }
 		].filter((s): s is { k: string; v: string } => !!s)
 	);
 
+	const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+	const spellcasting = $derived([
+		{ k: 'Spellcasting ability', v: `${SPELL_ABILITY[c.classKey] ?? ''} ${signed(c.spellMod)}`.trim() },
+		{ k: 'Spell save DC', v: `${spellSaveDC(c)}` },
+		{ k: 'Spell attack bonus', v: signed(spellAttack(c)) }
+	]);
+
 	let hpOpen = $state(false);
+	let acOpen = $state(false);
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
@@ -68,7 +76,7 @@
 		<h1>{c.name}</h1>
 		<p>{[raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}</p>
 	</div>
-	<AcShield ac={c.ac} />
+	<AcShield ac={c.ac} onclick={() => (acOpen = true)} />
 	<button
 		type="button"
 		class="icon-btn"
@@ -140,6 +148,15 @@
 {/if}
 
 {#if caster}
+	<section class="spellcasting" aria-labelledby="spellcasting-title">
+		<h2 id="spellcasting-title" class="label">Spellcasting</h2>
+		<div class="stats" style:--cols={spellcasting.length}>
+			{#each spellcasting as s (s.k)}
+				<div class="stat spell"><strong>{s.v}</strong><span>{s.k}</span></div>
+			{/each}
+		</div>
+	</section>
+
 	<a class="card slots" href={resolve('/c/[id]/spells', { id: c.id })}>
 		<div class="slots-head">
 			<span class="label">Spell slots</span>
@@ -164,6 +181,7 @@
 {/if}
 
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
+<AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
@@ -420,7 +438,29 @@
 	.stat span {
 		font-size: 11px;
 		font-weight: 700;
+		line-height: 1.3;
+		text-align: center;
 		color: var(--color-text-muted);
+	}
+
+	.spellcasting {
+		margin-top: 14px;
+	}
+
+	.spellcasting .label {
+		margin: 0 4px;
+	}
+
+	.spellcasting .stats {
+		margin-top: 6px;
+	}
+
+	.stat.spell {
+		background: var(--color-spell-bg);
+	}
+
+	.stat.spell strong {
+		color: var(--color-spell-ink);
 	}
 
 	.slots {

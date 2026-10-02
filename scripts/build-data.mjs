@@ -3,6 +3,7 @@
 //   src/lib/data/classes.json   Class and subclass features (PHB/XGE/TCE + three older subclasses)
 //   src/lib/data/races.json     PHB races and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
+//   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -670,6 +671,7 @@ function convertItem(i, type) {
 		// Adamantine weapons and ammunition aren't magic, so 5etools gives them no rarity.
 		rarity: i.rarity === 'unknown' ? '' : i.rarity,
 		...(attune !== undefined ? { attunement: attune } : {}),
+		...(i.weight ? { weight: i.weight } : {}),
 		...(charges ? { charges } : {}),
 		...(charges && regain(i) ? { regain: regain(i) } : {}),
 		text: flatten(itemEntriesOf(i)).join('\n')
@@ -715,3 +717,132 @@ if (itemsOut.length < MIN_ITEMS) fail(`Expected at least ${MIN_ITEMS} magic item
 const itemsPath = join(root, 'src/lib/data/items.json');
 writeFileSync(itemsPath, JSON.stringify(itemsOut));
 console.log(`Wrote ${itemsOut.length} magic items to ${itemsPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Mundane gear
+
+const DAMAGE_TYPES = { S: 'slashing', P: 'piercing', B: 'bludgeoning' };
+const PROPERTIES = { F: 'Finesse', H: 'Heavy', L: 'Light', LD: 'Loading', R: 'Reach', S: 'Special', '2H': 'Two-handed' };
+const FOCUS_TYPES = { arcane: 'Arcane focus', druid: 'Druidic focus', holy: 'Holy symbol' };
+const GEAR_TYPES = {
+	A: ['Ammunition', 'weapon'],
+	LA: ['Light armor', 'armor'],
+	MA: ['Medium armor', 'armor'],
+	HA: ['Heavy armor', 'armor'],
+	S: ['Shield', 'armor'],
+	AT: ["Artisan's tools", 'tool'],
+	T: ['Tool', 'tool'],
+	GS: ['Gaming set', 'tool'],
+	INS: ['Musical instrument', 'tool'],
+	G: ['Adventuring gear', 'gear'],
+	FD: ['Food and drink', 'gear'],
+	TAH: ['Tack and harness', 'gear'],
+	SCF: ['Spellcasting focus', 'gear'],
+	$G: ['Gemstone', 'treasure'],
+	$A: ['Art object', 'treasure']
+};
+
+function gearType(i) {
+	const code = i.type.split('|')[0];
+	if (code === 'M' || code === 'R') {
+		const cat = i.weaponCategory[0].toUpperCase() + i.weaponCategory.slice(1);
+		return [`${cat} ${code === 'M' ? 'melee' : 'ranged'} weapon`, 'weapon'];
+	}
+	if (code === 'SCF') return [FOCUS_TYPES[i.scfType] ?? 'Spellcasting focus', 'gear'];
+	// DMG poisons are adventuring gear in 5etools.
+	if (code === 'G' && i.poison) return ['Poison', 'gear'];
+	return GEAR_TYPES[code] ?? fail(`No gear type for ${i.name} (${i.type})`);
+}
+
+/** "1d8 slashing · Versatile (1d10)" for weapons, "AC 16 · Str 13 · Stealth disadvantage" for armor. */
+function gearStats(i) {
+	const parts = [];
+	if (i.dmg1) parts.push(`${i.dmg1} ${DAMAGE_TYPES[i.dmgType] ?? i.dmgType}`);
+	for (const code of i.property ?? []) {
+		const p = code.split('|')[0];
+		if (p === 'V') parts.push(`Versatile (${i.dmg2})`);
+		else if (p === 'T') parts.push(`Thrown (${i.range} ft)`);
+		else if (p === 'A') parts.push(`Ammunition (${i.range} ft)`);
+		else if (PROPERTIES[p]) parts.push(PROPERTIES[p]);
+	}
+	if (i.ac !== undefined) {
+		const code = i.type.split('|')[0];
+		const dex = code === 'LA' ? ' + Dex' : code === 'MA' ? ' + Dex (max 2)' : '';
+		parts.push(code === 'S' ? `AC +${i.ac}` : `AC ${i.ac}${dex}`);
+	}
+	if (i.strength) parts.push(`Str ${i.strength}`);
+	if (i.stealth) parts.push('Stealth disadvantage');
+	return parts.join(' · ');
+}
+
+const phbBase = readJson('items-base.json').baseitem.filter((i) => i.source === 'PHB');
+const GEAR_CODES = new Set(['G', 'FD', 'TAH', 'SCF', 'T', 'GS', 'AT', 'INS', 'A']);
+const gearSource = [
+	...phbBase,
+	...itemFile.item.filter((i) => i.source === 'PHB' && GEAR_CODES.has(i.type)),
+	// Poisons, gemstones and art objects; the DMG's explosives and futuristic gear are left out.
+	...itemFile.item.filter(
+		(i) => i.source === 'DMG' && i.rarity === 'none' && i.value !== undefined && ['G', '$G|DMG', '$A|DMG'].includes(i.type)
+	)
+];
+
+// Bundles of one thing ("Arrows (20)") become a default quantity on the single item.
+const bundles = new Map();
+for (const i of gearSource) {
+	const c = i.packContents;
+	if (c?.length === 1 && c[0].item) bundles.set(`${i.name}|${i.source}`.toLowerCase(), { ref: c[0].item.toLowerCase(), quantity: c[0].quantity });
+}
+
+const gearOut = gearSource
+	.filter((i) => !bundles.has(`${i.name}|${i.source}`.toLowerCase()))
+	.map((i) => {
+		const id = `${i.name}|${i.source}`.toLowerCase();
+		const [type, category] = gearType(i);
+		const bundle = [...bundles.values()].find((b) => b.ref === id)?.quantity;
+		const stats = gearStats(i);
+		const isPack = (i.packContents?.length ?? 0) > 1;
+		return {
+			id,
+			name: i.name,
+			source: i.source,
+			type: isPack ? 'Equipment pack' : type,
+			category: isPack ? 'pack' : category,
+			...(i.weight ? { weight: i.weight } : {}),
+			...(i.value ? { value: i.value } : {}),
+			...(stats ? { stats } : {}),
+			...(bundle ? { bundle } : {}),
+			...(isPack
+				? {
+						contents: i.packContents.map((c) => {
+							if (typeof c === 'string') return { ref: c.toLowerCase(), quantity: 1 };
+							if (c.special) return { name: c.special[0].toUpperCase() + c.special.slice(1), quantity: c.quantity ?? 1 };
+							return { ref: c.item.toLowerCase(), quantity: c.quantity ?? 1 };
+						})
+					}
+				: {}),
+			text: flatten(i.entries).join('\n')
+		};
+	});
+
+const gearIds = new Set();
+for (const g of gearOut) {
+	if (gearIds.has(g.id)) fail(`Duplicate gear id: ${g.id}`);
+	gearIds.add(g.id);
+}
+// Pack contents point at single items, so bundles in a pack ("bag of 1,000 ball bearings") unfold.
+for (const g of gearOut) {
+	for (const c of g.contents ?? []) {
+		if (!c.ref) continue;
+		const b = bundles.get(c.ref);
+		if (b) Object.assign(c, { ref: b.ref, quantity: c.quantity * b.quantity });
+		if (!gearIds.has(c.ref)) fail(`${g.name} contains unknown item ${c.ref}`);
+	}
+	if (/\{[@=#]/.test(g.text)) fail(`Unresolved 5etools tag in ${g.name}`);
+}
+gearOut.sort((a, b) => a.name.localeCompare(b.name));
+
+const MIN_GEAR = 250;
+if (gearOut.length < MIN_GEAR) fail(`Expected at least ${MIN_GEAR} gear items, found ${gearOut.length}.`);
+const gearPath = join(root, 'src/lib/data/gear.json');
+writeFileSync(gearPath, JSON.stringify(gearOut));
+console.log(`Wrote ${gearOut.length} gear items to ${gearPath}`);

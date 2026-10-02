@@ -56,11 +56,13 @@ export interface ItemCharges {
 	regain?: string;
 }
 
-/** Something the character carries. Bundled magic items copy their name, type, rarity and charges when added. */
+/** Something the character carries. Bundled items copy their name, type, rarity, weight and charges when added. */
 export interface InventoryItem {
 	/** Unique per entry, so two +1 Weapons can be a longsword and a dagger. */
 	id: string;
-	/** Bundled magic item id (`name|source`, see items.json); absent for custom items. */
+	/** Magic items and mundane gear are listed separately. */
+	kind: 'magic' | 'gear';
+	/** Bundled item id (`name|source`, see items.json or gear.json by kind); absent for custom items. */
 	ref?: string;
 	/** Starts as the bundled name; the player can make it specific ("+1 Longsword"). */
 	name: string;
@@ -72,10 +74,15 @@ export interface InventoryItem {
 	attunement: boolean;
 	attuned: boolean;
 	quantity: number;
+	/** Pounds each; absent when unknown or weightless. */
+	weight?: number;
 	charges?: ItemCharges;
 	/** The description for custom items; the player's own notes for bundled ones. */
 	notes: string;
 }
+
+export type Coin = 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
+export type Coins = Record<Coin, number>;
 
 export interface Character {
 	id: string;
@@ -127,6 +134,7 @@ export interface Character {
 	concentration?: string;
 
 	items: InventoryItem[];
+	coins: Coins;
 
 	notes: string;
 	createdAt: string;

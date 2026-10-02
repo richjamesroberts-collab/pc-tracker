@@ -110,6 +110,7 @@ export interface MagicItem {
 	rarity: string;
 	/** Present when the item needs attunement: '' for anyone, else who can ("by a wizard"). */
 	attunement?: string;
+	weight?: number;
 	charges?: number;
 	/** What comes back at dawn: 'all', '3' or '1d6 + 1'. */
 	regain?: string;
@@ -139,6 +140,7 @@ export function loadItems(): Promise<MagicItem[]> {
 export function inventoryItem(m: MagicItem): InventoryItem {
 	return {
 		id: crypto.randomUUID(),
+		kind: 'magic',
 		ref: m.id,
 		name: m.name,
 		type: m.type,
@@ -146,7 +148,98 @@ export function inventoryItem(m: MagicItem): InventoryItem {
 		attunement: m.attunement !== undefined,
 		attuned: false,
 		quantity: 1,
+		...(m.weight ? { weight: m.weight } : {}),
 		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
 		notes: ''
 	};
+}
+
+export type GearCategory = 'weapon' | 'armor' | 'gear' | 'pack' | 'tool' | 'treasure';
+
+export const GEAR_CATEGORIES: { key: GearCategory; label: string }[] = [
+	{ key: 'weapon', label: 'Weapons' },
+	{ key: 'armor', label: 'Armor' },
+	{ key: 'gear', label: 'Gear' },
+	{ key: 'pack', label: 'Packs' },
+	{ key: 'tool', label: 'Tools' },
+	{ key: 'treasure', label: 'Treasure' }
+];
+
+export interface GearItem {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	/** "Martial melee weapon", "Light armor", "Adventuring gear", "Gemstone". */
+	type: string;
+	category: GearCategory;
+	/** Pounds each. */
+	weight?: number;
+	/** Price in copper. */
+	value?: number;
+	/** "1d8 slashing · Versatile (1d10)", "AC 12 + Dex". */
+	stats?: string;
+	/** Usually bought this many at a time (20 arrows). */
+	bundle?: number;
+	/** What an equipment pack holds: bundled gear by `ref`, or a plain name for things not on the list. */
+	contents?: { ref?: string; name?: string; quantity: number }[];
+	/** Plain paragraphs joined by `\n`; often empty for weapons. */
+	text: string;
+}
+
+let gearCache: Promise<GearItem[]> | undefined;
+
+/** Loads the bundled mundane gear as a separate chunk, once. */
+export function loadGear(): Promise<GearItem[]> {
+	gearCache ??= import('./gear.json').then(
+		(m) => m.default as GearItem[],
+		(err) => {
+			gearCache = undefined;
+			throw err;
+		}
+	);
+	return gearCache;
+}
+
+/** A new inventory entry for bundled gear, `quantity` defaulting to how many are usually bought at once. */
+export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): InventoryItem {
+	return {
+		id: crypto.randomUUID(),
+		kind: 'gear',
+		ref: g.id,
+		name: g.name,
+		type: g.type,
+		rarity: '',
+		attunement: false,
+		attuned: false,
+		quantity,
+		...(g.weight ? { weight: g.weight } : {}),
+		notes: ''
+	};
+}
+
+/** The items an equipment pack unpacks into. Contents missing from `byId` become plain named entries. */
+export function unpack(pack: GearItem, byId: Map<string, GearItem>): InventoryItem[] {
+	return (pack.contents ?? []).map((c) => {
+		const g = c.ref ? byId.get(c.ref) : undefined;
+		if (g) return gearInventoryItem(g, c.quantity);
+		return {
+			id: crypto.randomUUID(),
+			kind: 'gear',
+			name: c.name ?? c.ref ?? 'Item',
+			type: '',
+			rarity: '',
+			attunement: false,
+			attuned: false,
+			quantity: c.quantity,
+			notes: ''
+		};
+	});
+}
+
+/** "15 gp", "5 cp" from copper. */
+export function priceLabel(cp: number): string {
+	if (cp % 100 === 0) return `${(cp / 100).toLocaleString('en')} gp`;
+	if (cp % 10 === 0) return `${cp / 10} sp`;
+	return `${cp} cp`;
 }

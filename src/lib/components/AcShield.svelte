@@ -1,23 +1,42 @@
 <script lang="ts">
-	let { ac }: { ac: number } = $props();
+	/** With `onclick`, the shield is a button (tap to change AC). */
+	let { ac, onclick }: { ac: number; onclick?: () => void } = $props();
 </script>
 
-<div class="shield" role="img" aria-label="Armour class {ac}">
+{#snippet face()}
 	<svg viewBox="0 0 24 26" aria-hidden="true">
 		<path d="M12 1.5l9 3.3v7c0 5.6-3.9 10.2-9 12.4-5.1-2.2-9-6.8-9-12.4v-7z" />
 	</svg>
-	<div class="text" aria-hidden="true">
+	<span class="text" aria-hidden="true">
 		<span class="k">AC</span>
 		<span class="v">{ac}</span>
-	</div>
-</div>
+	</span>
+{/snippet}
+
+{#if onclick}
+	<button type="button" class="shield" aria-label="Armour class {ac}. Tap to change." {onclick}>{@render face()}</button>
+{:else}
+	<div class="shield" role="img" aria-label="Armour class {ac}">{@render face()}</div>
+{/if}
 
 <style>
 	.shield {
 		position: relative;
+		display: block;
 		width: 54px;
 		height: 60px;
 		flex-shrink: 0;
+	}
+
+	button.shield {
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+	}
+
+	button.shield:active {
+		transform: scale(0.94);
 	}
 
 	svg {

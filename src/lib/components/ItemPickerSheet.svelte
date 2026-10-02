@@ -1,11 +1,28 @@
+<script lang="ts" module>
+	export interface PickerEntry {
+		id: string;
+		name: string;
+		/** Second line: type, rarity, price… */
+		meta: string;
+		/** Key of the filter chip it belongs to. */
+		group: string;
+		/** Present when it needs attunement ('' for anyone). */
+		attunement?: string;
+		stats?: string;
+		text: string;
+	}
+</script>
+
 <script lang="ts">
 	import Sheet from './Sheet.svelte';
 	import ItemText from './ItemText.svelte';
-	import { RARITIES, rarityLabel, type MagicItem } from '$lib/data/content';
 
 	let {
 		open,
-		items,
+		title,
+		noun,
+		entries,
+		filters,
 		failed = false,
 		onretry,
 		onpick,
@@ -13,63 +30,66 @@
 		onclose
 	}: {
 		open: boolean;
-		/** Bundled magic items; null while loading. */
-		items: MagicItem[] | null;
+		title: string;
+		/** "magic items", "gear": used in the search box and messages. */
+		noun: string;
+		/** Null while loading. */
+		entries: PickerEntry[] | null;
+		filters: { key: string; label: string }[];
 		failed?: boolean;
 		onretry: () => void;
-		onpick: (item: MagicItem) => void;
+		onpick: (id: string) => void;
 		oncustom: () => void;
 		onclose: () => void;
 	} = $props();
 
 	let query = $state('');
-	let rarity = $state<string | null>(null);
+	let filter = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
 
+	// Start fresh each time it opens.
 	$effect(() => {
-		if (open) expanded = null;
+		if (!open) return;
+		query = '';
+		filter = null;
+		expanded = null;
 	});
 
 	const results = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		return (items ?? []).filter((i) => (rarity === null || i.rarity === rarity) && (!q || i.name.toLowerCase().includes(q)));
+		return (entries ?? []).filter((i) => (filter === null || i.group === filter) && (!q || i.name.toLowerCase().includes(q)));
 	});
-
-	const meta = (i: MagicItem) =>
-		[i.type, rarityLabel(i.rarity), i.attunement !== undefined ? 'Attunement' : '', i.source !== 'DMG' ? i.source : '']
-			.filter(Boolean)
-			.join(' · ');
 </script>
 
-<Sheet {open} {onclose} label="Add a magic item">
+<Sheet {open} {onclose} label={title}>
 	<!-- Fixed height so the sheet doesn't jump as the results shrink while typing. -->
 	<div class="body">
 		<div class="head">
-			<h2>Add magic item</h2>
+			<h2>{title}</h2>
 			<button type="button" class="custom" onclick={oncustom}>+ Custom</button>
 		</div>
 
 		<label class="search">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-			<input type="search" placeholder="Search magic items" aria-label="Search magic items" bind:value={query} autocomplete="off" />
+			<input type="search" placeholder="Search {noun}" aria-label="Search {noun}" bind:value={query} autocomplete="off" />
 		</label>
 
-		<div class="rarities" role="radiogroup" aria-label="Rarity">
-			<button type="button" role="radio" aria-checked={rarity === null} onclick={() => (rarity = null)}>All</button>
-			{#each RARITIES as r (r)}
-				<button type="button" role="radio" aria-checked={rarity === r} onclick={() => (rarity = r)}>{rarityLabel(r)}</button>
+		<div class="filters" role="radiogroup" aria-label="Filter">
+			<button type="button" role="radio" aria-checked={filter === null} onclick={() => (filter = null)}>All</button>
+			{#each filters as f (f.key)}
+				<button type="button" role="radio" aria-checked={filter === f.key} onclick={() => (filter = f.key)}>{f.label}</button>
 			{/each}
 		</div>
 
 		{#if failed}
 			<div class="status" role="alert">
-				<p>Couldn't load magic items</p>
+				<p>Couldn't load {noun}</p>
 				<button type="button" onclick={onretry}>Retry</button>
 			</div>
-		{:else if !items}
-			<p class="status">Loading magic items…</p>
+		{:else if !entries}
+			<p class="status">Loading {noun}…</p>
 		{:else if results.length === 0}
-			<p class="status">No magic items match. Add it as a custom item instead.</p>
+			<p class="status">Nothing matches. Add it as a custom item instead.</p>
 		{:else}
 			<ul class="list">
 				{#each results as i (i.id)}
@@ -77,9 +97,9 @@
 						<div class="row">
 							<button type="button" class="info" aria-expanded={expanded === i.id} onclick={() => (expanded = expanded === i.id ? null : i.id)}>
 								<span class="name">{i.name}</span>
-								<span class="meta">{meta(i)}</span>
+								<span class="meta">{i.meta}</span>
 							</button>
-							<button type="button" class="add" aria-label="Add {i.name}" onclick={() => onpick(i)}>+ Add</button>
+							<button type="button" class="add" aria-label="Add {i.name}" onclick={() => onpick(i.id)}>+ Add</button>
 						</div>
 						{#if expanded === i.id}
 							<div class="details">
@@ -150,7 +170,7 @@
 		box-shadow: none;
 	}
 
-	.rarities {
+	.filters {
 		display: flex;
 		gap: 6px;
 		margin: 10px -16px 0;
@@ -159,7 +179,7 @@
 		scrollbar-width: none;
 	}
 
-	.rarities button {
+	.filters button {
 		flex-shrink: 0;
 		min-height: 36px;
 		border-radius: 10px;
@@ -170,7 +190,7 @@
 		font-weight: 700;
 	}
 
-	.rarities button[aria-checked='true'] {
+	.filters button[aria-checked='true'] {
 		background: var(--color-effect-ink);
 		border-color: var(--color-effect-ink);
 		color: var(--color-bg);

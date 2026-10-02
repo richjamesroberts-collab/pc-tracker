@@ -3,15 +3,29 @@ import spells from './spells.json';
 import classesJson from './classes.json';
 import racesJson from './races.json';
 import itemsJson from './items.json';
+import gearJson from './gear.json';
 import { CLASSES } from './classes';
 import { RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
-import { featureGroups, inventoryItem, RARITIES, type ClassContent, type Content, type MagicItem, type RaceContent } from './content';
+import {
+	featureGroups,
+	gearInventoryItem,
+	inventoryItem,
+	RARITIES,
+	unpack,
+	type ClassContent,
+	type Content,
+	type GearItem,
+	type MagicItem,
+	type RaceContent
+} from './content';
 import { parseRegain } from '../rules/items';
 
 const classes = classesJson as Record<string, ClassContent>;
 const races = racesJson as RaceContent[];
 const items = itemsJson as MagicItem[];
+const gear = gearJson as GearItem[];
+const gearById = new Map(gear.map((g) => [g.id, g]));
 
 describe('bundled spells', () => {
 	it('has every PHB/XGE/TCE spell', () => {
@@ -126,5 +140,34 @@ describe('bundled magic items', () => {
 	it('records who can attune', () => {
 		expect(items.find((i) => i.id === 'staff of healing|dmg')?.attunement).toBe('by a bard, cleric, or druid');
 		expect(items.find((i) => i.id === 'bag of holding|dmg')?.attunement).toBeUndefined();
+	});
+});
+
+describe('bundled gear', () => {
+	const find = (id: string) => gearById.get(id)!;
+
+	it('has PHB equipment and DMG treasure with unique ids', () => {
+		expect(gear.length).toBeGreaterThanOrEqual(250);
+		expect(gearById.size).toBe(gear.length);
+		expect(new Set(gear.map((g) => g.category))).toEqual(new Set(['weapon', 'armor', 'gear', 'pack', 'tool', 'treasure']));
+	});
+	it('describes weapons and armor', () => {
+		expect(find('longsword|phb')).toMatchObject({ type: 'Martial melee weapon', weight: 3, value: 1500, stats: '1d8 slashing · Versatile (1d10)' });
+		expect(find('studded leather armor|phb').stats).toBe('AC 12 + Dex');
+		expect(find('chain mail|phb').stats).toBe('AC 16 · Str 13 · Stealth disadvantage');
+	});
+	it('folds bundles into a default quantity', () => {
+		expect(gearById.has('arrows (20)|phb')).toBe(false);
+		expect(find('arrow|phb').bundle).toBe(20);
+		expect(gearInventoryItem(find('arrow|phb'))).toMatchObject({ kind: 'gear', quantity: 20, name: 'Arrow' });
+	});
+	it('unpacks equipment packs into their contents', () => {
+		const items = unpack(find("explorer's pack|phb"), gearById);
+		expect(items.map((i) => [i.name, i.quantity])).toContainEqual(['Torch', 10]);
+		expect(items.every((i) => i.kind === 'gear' && i.ref)).toBe(true);
+		const burglar = unpack(find("burglar's pack|phb"), gearById);
+		expect(burglar.map((i) => [i.name, i.quantity])).toContainEqual(['Ball Bearing', 1000]);
+		expect(burglar.find((i) => i.name === '10 feet of string')?.ref).toBeUndefined();
+		for (const g of gear) for (const c of g.contents ?? []) if (c.ref) expect(gearById.has(c.ref), `${g.name}: ${c.ref}`).toBe(true);
 	});
 });

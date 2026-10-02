@@ -23,9 +23,11 @@ import {
 	spendCustom,
 	spendResource
 } from './features';
+import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
 	attunementLimit,
+	carriedWeight,
 	changeQuantity,
 	chargesLeft,
 	dawn,
@@ -275,6 +277,7 @@ describe('limited-use features', () => {
 function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
 	return {
 		id: crypto.randomUUID(),
+		kind: 'magic',
 		name: 'Cloak of Protection',
 		type: 'Wondrous item',
 		rarity: 'uncommon',
@@ -354,5 +357,84 @@ describe('magic items', () => {
 		expect(c.items[0].quantity).toBe(1);
 		changeQuantity(c, id, -1);
 		expect(c.items.map((i) => i.name)).toEqual(['+1 Weapon', '+1 Weapon']);
+	});
+});
+
+describe('coins', () => {
+	const purse = (coins: Partial<Character['coins']>) => pc({ coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0, ...coins } });
+
+	it('pays with the coin asked for when there are enough', () => {
+		const c = purse({ gp: 20, sp: 5 });
+		expect(spendCoins(c, 'gp', 15)).toBe(true);
+		expect(c.coins).toMatchObject({ gp: 5, sp: 5 });
+	});
+
+	it('uses smaller coins before breaking bigger ones', () => {
+		const c = purse({ gp: 1, sp: 15, pp: 1 });
+		expect(spendCoins(c, 'gp', 2)).toBe(true);
+		expect(c.coins).toMatchObject({ pp: 1, gp: 0, sp: 5 });
+	});
+
+	it('breaks a bigger coin and takes change in coins no bigger than asked for', () => {
+		const c = purse({ pp: 1 });
+		expect(spendCoins(c, 'gp', 3)).toBe(true);
+		expect(c.coins).toMatchObject({ pp: 0, gp: 7, ep: 0 });
+		const d = purse({ gp: 1 });
+		expect(spendCoins(d, 'cp', 5)).toBe(true);
+		expect(d.coins).toMatchObject({ gp: 0, sp: 0, cp: 95 });
+	});
+
+	it('refuses, changing nothing, when the character cannot afford it', () => {
+		const c = purse({ gp: 2, sp: 9 });
+		expect(spendCoins(c, 'gp', 3)).toBe(false);
+		expect(c.coins).toMatchObject({ gp: 2, sp: 9 });
+		expect(spendCoins(c, 'gp', 0)).toBe(false);
+		expect(spendCoins(c, 'gp', 1.5)).toBe(false);
+	});
+
+	it('never loses value when paying', () => {
+		const start = { cp: 7, sp: 3, ep: 2, gp: 4, pp: 1 };
+		for (const coin of ['cp', 'sp', 'ep', 'gp', 'pp'] as const) {
+			for (const n of [1, 2, 3, 7, 11]) {
+				const c = purse(start);
+				const before = coinWorth(c.coins);
+				const cost = n * { cp: 1, sp: 10, ep: 50, gp: 100, pp: 1000 }[coin];
+				if (spendCoins(c, coin, n)) expect(coinWorth(c.coins), `${n} ${coin}`).toBe(before - cost);
+				else expect(before, `${n} ${coin}`).toBeLessThan(cost);
+				expect(Object.values(c.coins).every((x) => x >= 0)).toBe(true);
+			}
+		}
+	});
+
+	it('gains coins and formats worth', () => {
+		const c = purse({});
+		expect(gainCoins(c, 'sp', 25)).toBe(true);
+		expect(gainCoins(c, 'sp', -1)).toBe(false);
+		expect(formatGp(coinWorth(c.coins))).toBe('2.5 gp');
+		expect(formatGp(1234)).toBe('12.34 gp');
+		expect(formatGp(300)).toBe('3 gp');
+	});
+});
+
+describe('gear', () => {
+	const gear = (overrides: Partial<InventoryItem> = {}) =>
+		item({ kind: 'gear', ref: 'torch|phb', name: 'Torch', type: 'Adventuring gear', rarity: '', attunement: false, weight: 1, ...overrides });
+
+	it('stacks gear with the same ref and name, including unlisted pack contents', () => {
+		const c = pc();
+		addItem(c, gear({ quantity: 10 }));
+		addItem(c, gear({ quantity: 5 }));
+		addItem(c, gear({ ref: undefined, name: 'Censer' }));
+		addItem(c, gear({ ref: undefined, name: 'Censer' }));
+		expect(c.items.map((i) => [i.name, i.quantity])).toEqual([
+			['Torch', 15],
+			['Censer', 2]
+		]);
+	});
+
+	it('weighs everything carried, coins at 50 to the pound', () => {
+		const c = pc({ items: [gear({ quantity: 10 }), item({ weight: 3 })], coins: { cp: 0, sp: 0, ep: 0, gp: 100, pp: 0 } });
+		expect(carriedWeight(c)).toBe(15);
+		expect(carriedWeight(c, (i) => (i.kind === 'gear' ? 2 : 0))).toBe(22);
 	});
 });

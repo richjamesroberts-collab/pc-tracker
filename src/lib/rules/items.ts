@@ -1,4 +1,5 @@
 import type { Character, InventoryItem } from '$lib/types';
+import { coinCount } from './coins';
 
 /** Three items, or more for artificers (Magic Item Adept, Savant and Master). */
 export function attunementLimit(c: Pick<Character, 'classKey' | 'level'>): number {
@@ -82,16 +83,18 @@ export function dawn(c: Character, random: () => number = Math.random): Regained
 	return out;
 }
 
-/** Potions, scrolls and ammunition pile up; everything else is its own entry. */
-export function stacks(item: Pick<InventoryItem, 'type'>): boolean {
-	return /^(Potion|Scroll|Ammunition)/.test(item.type);
+/** Gear, potions, scrolls and ammunition pile up; other magic items are each their own entry. */
+export function stacks(item: Pick<InventoryItem, 'kind' | 'type'>): boolean {
+	return item.kind === 'gear' || /^(Potion|Scroll|Ammunition)/.test(item.type);
 }
 
-/** Add an item, or one more of a matching unrenamed stack. Returns the entry's id. */
+/** Add an item, or more of a matching unrenamed stack. Returns the entry's id. */
 export function addItem(c: Character, item: InventoryItem): string {
-	const same = item.ref && stacks(item) ? c.items.find((i) => i.ref === item.ref && i.name === item.name) : undefined;
+	const same = stacks(item)
+		? c.items.find((i) => i.kind === item.kind && i.ref === item.ref && i.name === item.name)
+		: undefined;
 	if (same) {
-		same.quantity += item.quantity;
+		same.quantity = Math.min(9999, same.quantity + item.quantity);
 		return same.id;
 	}
 	c.items.push(item);
@@ -106,4 +109,10 @@ export function changeQuantity(c: Character, id: string, delta: number): void {
 	const next = item.quantity + delta;
 	if (next < 1) c.items.splice(index, 1);
 	else item.quantity = Math.min(9999, next);
+}
+
+/** Pounds carried, coins included (50 to the pound). `weightOf` can fill in weights missing from older entries. */
+export function carriedWeight(c: Character, weightOf: (i: InventoryItem) => number = (i) => i.weight ?? 0): number {
+	const items = c.items.reduce((n, i) => n + i.quantity * weightOf(i), 0);
+	return Math.round((items + coinCount(c.coins) / 50) * 100) / 100;
 }

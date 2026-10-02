@@ -1,13 +1,14 @@
 <script lang="ts">
-	import type { MagicItem } from '$lib/data/content';
-
-	let { item }: { item: Pick<MagicItem, 'attunement' | 'text'> } = $props();
+	let { item }: { item: { attunement?: string; stats?: string; text: string } } = $props();
 
 	const paragraphs = $derived(item.text.split('\n').filter((p) => p.trim()));
 </script>
 
 {#if item.attunement !== undefined}
 	<p class="attune">Requires attunement{item.attunement ? ` ${item.attunement}` : ''}</p>
+{/if}
+{#if item.stats}
+	<p class="stats">{item.stats}</p>
 {/if}
 {#each paragraphs as para, i (i)}
 	<p>{para}</p>
@@ -22,6 +23,11 @@
 
 	p + p {
 		margin-top: 8px;
+	}
+
+	.stats {
+		font-size: 14px;
+		font-weight: 800;
 	}
 
 	.attune {
