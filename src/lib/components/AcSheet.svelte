@@ -40,11 +40,6 @@
 			<input type="number" inputmode="numeric" min="0" max="40" step="1" aria-label="Armor class" bind:value={ac} />
 			<button type="button" aria-label="Raise AC by 1" onclick={() => step(1)}>+</button>
 		</div>
-		<div class="quick">
-			<button type="button" onclick={() => step(2)}>+2 shield</button>
-			<button type="button" onclick={() => step(5)}>+5 Shield spell</button>
-			<button type="button" onclick={() => step(-5)}>−5</button>
-		</div>
 		<button type="submit" class="save" disabled={!valid || ac === c.ac}>Set AC{valid && ac !== c.ac ? ` ${c.ac} → ${ac}` : ''}</button>
 	</form>
 </Sheet>
@@ -90,21 +85,6 @@
 		font-family: var(--font-display);
 		font-size: 36px;
 		font-weight: 900;
-	}
-
-	.quick {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.quick button {
-		min-height: 40px;
-		background: var(--color-surface-raised);
-		border: 1px solid var(--color-border);
-		color: var(--color-text);
-		font-size: 13px;
-		font-weight: 700;
 	}
 
 	.save {
