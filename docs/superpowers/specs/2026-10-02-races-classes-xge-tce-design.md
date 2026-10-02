@@ -132,6 +132,8 @@ Features that spend another resource (Twilight Sanctuary → Channel Divinity, W
 
 ## Licensing changes (user decision)
 
+The user accepted the risk knowingly: publishing non-SRD WotC text could draw a DMCA takedown of the repo or Pages site. The alternatives (private pack, or public names and numbers with pack-only prose) were considered and declined.
+
 - Remove `/src/lib/data/spells.json` and the pack lines from `.gitignore`. Keep `/packs` ignored only for locally generated extras, or drop it.
 - Remove the deploy guard "Fail if a spell pack slipped into the build".
 - Update `CLAUDE.md` (Spell data section) and the Spell packs page text: built-in content is now PHB/XGE/TCE. Keep the SRD CC-BY attribution.
