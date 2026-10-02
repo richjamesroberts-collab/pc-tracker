@@ -93,7 +93,11 @@ function flatten(entries, out = []) {
 			if (inner.length) inner[0] = `${stripTags(rec.name)}. ${inner[0]}`;
 			out.push(...inner);
 		} else if (e.type === 'refOptionalfeature') {
-			out.push(`• ${e.optionalfeature.split('|')[0]}`);
+			const [name, src = 'PHB'] = e.optionalfeature.split('|');
+			if (!SOURCES.includes(src.toUpperCase())) continue;
+			const rec = optionalFeatureIndex.get(`${name}|${src}`.toLowerCase());
+			if (!rec) fail(`Optional feature not found: ${e.optionalfeature}`);
+			out.push(`• ${stripTags(rec.name)}. ${flatten(rec.entries).join(' ')}`);
 		} else if (e.type === 'abilityDc') {
 			out.push(`${e.name} save DC = 8 + your proficiency bonus + your ${abilityNames(e.attributes)} modifier`);
 		} else if (e.type === 'abilityAttackMod') {
@@ -116,6 +120,15 @@ const abilityNames = (attrs) => attrs.map((a) => ABILITIES[a] ?? a).join(' or ')
 const classFeatureIndex = new Map();
 const subclassFeatureIndex = new Map();
 const classFiles = {};
+// Maneuvers, fighting styles, invocations, metamagic, infusions…, keyed by name|source.
+const optionalFeatureIndex = new Map();
+for (const f of readJson('optionalfeatures.json').optionalfeature)
+	if (SOURCES.includes(f.source)) addToIndex(optionalFeatureIndex, `${f.name}|${f.source}`.toLowerCase(), f);
+
+function addToIndex(index, key, rec) {
+	if (index.has(key)) fail(`Duplicate 5etools record: ${key}`);
+	index.set(key, rec);
+}
 // Sources a ref may pull text from; widened per subclass so SCAG/DMG/VRGR subclasses keep their own features.
 let refSources = new Set(SOURCES);
 
@@ -394,9 +407,10 @@ for (const key of Object.keys(CLASS_SOURCES)) {
 	const file = readJson(`class/class-${key}.json`);
 	classFiles[key] = file;
 	for (const f of file.classFeature ?? [])
-		classFeatureIndex.set(classFeatureKey(f.name, f.className, f.classSource, f.level, f.source), f);
+		addToIndex(classFeatureIndex, classFeatureKey(f.name, f.className, f.classSource, f.level, f.source), f);
 	for (const f of file.subclassFeature ?? [])
-		subclassFeatureIndex.set(
+		addToIndex(
+			subclassFeatureIndex,
 			subclassFeatureKey(f.name, f.className, f.classSource, f.subclassShortName, f.subclassSource, f.level, f.source),
 			f
 		);
@@ -411,7 +425,10 @@ for (const [key, source] of Object.entries(CLASS_SOURCES)) {
 	if (!cls) fail(`No ${source} class entry in class-${key}.json`);
 
 	refSources = new Set(SOURCES);
-	const features = cls.classFeatures.map((ref) => {
+	// Only the first gainSubclassFeature row (the subclass choice) is kept; later ones are "Path feature" placeholders.
+	const firstSubclassRow = cls.classFeatures.findIndex((ref) => ref.gainSubclassFeature);
+	const classFeatureRefs = cls.classFeatures.filter((ref, i) => !ref.gainSubclassFeature || i === firstSubclassRow);
+	const features = classFeatureRefs.map((ref) => {
 		const rec = findClassFeature(typeof ref === 'string' ? ref : ref.classFeature);
 		return {
 			name: stripTags(rec.name),
@@ -436,7 +453,7 @@ for (const [key, source] of Object.entries(CLASS_SOURCES)) {
 		seen.add(id);
 		refSources = new Set([...SOURCES, sc.source]);
 		const list = sc.subclassFeatures.map((ref) => {
-			const rec = findSubclassFeature(ref);
+			const rec = findSubclassFeature(typeof ref === 'string' ? ref : ref.subclassFeature);
 			return { name: stripTags(rec.name), level: rec.level, text: featureText(rec) };
 		});
 		for (const k of [keys].flat()) subclasses[k] = list;
@@ -465,6 +482,43 @@ const traitsOf = (entries) =>
 		.filter((e) => typeof e === 'object' && e.name)
 		.map((e) => ({ name: stripTags(e.name), text: flatten(e.entries).join('\n') }));
 
+const NUMBERS = ['', 'One', 'Two', 'Three'];
+
+/** "Your Constitution score increases by 2, and your Wisdom score increases by 1." from 5etools `ability`. */
+function abilityText(ability) {
+	const parts = [];
+	for (const set of ability ?? []) {
+		const fixed = Object.entries(set).filter(([k]) => k !== 'choose');
+		if (fixed.length === 6 && fixed.every(([, n]) => n === fixed[0][1])) parts.push(`Your ability scores each increase by ${fixed[0][1]}`);
+		else for (const [k, n] of fixed) parts.push(`Your ${ABILITIES[k]} score increases by ${n}`);
+		if (set.choose) {
+			const { from, count = 1, amount = 1 } = set.choose;
+			const names = from.map((a) => ABILITIES[a]);
+			const any = from.length === 6 ? '' : ` (from ${names.slice(0, -1).join(', ')} or ${names.at(-1)})`;
+			const which = count === 1 ? 'One ability score' : `${NUMBERS[count] ?? count} different ability scores`;
+			parts.push(`${which} of your choice${any} ${count === 1 ? 'increases' : 'increase'} by ${amount}`);
+		}
+	}
+	const lower = (t) => t[0].toLowerCase() + t.slice(1);
+	return parts.length ? `${[parts[0], ...parts.slice(1).map(lower)].join(', and ')}.` : '';
+}
+
+const walkSpeed = (speed) => (typeof speed === 'number' ? speed : speed?.walk);
+
+/** Named entries, plus Ability Score Increase and Speed from structured fields when no entry covers them. */
+function traitsWithStats(entries, { ability, speed, speedText, abilityPrefix = '' }) {
+	const traits = traitsOf(entries);
+	const extra = [];
+	const asi = abilityText(ability);
+	if (asi && !traits.some((t) => t.name === 'Ability Score Increase'))
+		extra.push({ name: 'Ability Score Increase', text: abilityPrefix ? abilityPrefix + asi[0].toLowerCase() + asi.slice(1) : asi });
+	const named = traits.find((t) => t.name === 'Speed');
+	// Dwarf's named Speed entry only says heavy armor doesn't slow you, so it still gets the number.
+	if (named && speed && !named.text.includes('feet')) named.text = `${speedText}\n${named.text}`;
+	else if (!named && speed && speedText) extra.push({ name: 'Speed', text: speedText });
+	return [...extra, ...traits];
+}
+
 const SAVES = { Dex: 'Dexterity', Con: 'Constitution' };
 function dragonAncestries(race) {
 	const ancestry = race.entries.find((e) => e.name === 'Draconic Ancestry');
@@ -491,18 +545,40 @@ const racesOut = raceFile.race
 	.filter((r) => r.source === 'PHB' && !r._copy)
 	.sort((a, b) => a.name.localeCompare(b.name))
 	.concat(raceFile.race.filter((r) => r.name === 'Custom Lineage' && r.source === 'TCE'))
-	.map((r) => ({
-		key: slug(r.name),
-		name: r.name,
-		source: r.source,
-		traits: traitsOf(r.entries),
-		subraces:
-			r.name === 'Dragonborn'
-				? dragonAncestries(r)
-				: raceFile.subrace
-						.filter((s) => s.source === 'PHB' && s.name && s.raceName === r.name && s.raceSource === r.source)
-						.map((s) => ({ key: s.name.split(/[ ;]/)[0].toLowerCase(), name: s.name, traits: traitsOf(s.entries) }))
-	}));
+	.map((r) => {
+		const subraces = raceFile.subrace.filter((s) => s.source === 'PHB' && s.raceName === r.name && s.raceSource === r.source);
+		// The unnamed PHB subrace holds the standard version's stats (e.g. Human's +1 to every score).
+		const standard = subraces.find((s) => !s.name);
+		const ability = r.ability ?? standard?.ability;
+		const speed = walkSpeed(r.speed);
+		const words = (text) => text.split('\n').join(' ').toLowerCase();
+		return {
+			key: slug(r.name),
+			name: r.name,
+			source: r.source,
+			traits: traitsWithStats(r.entries, { ability, speed, speedText: `Your base walking speed is ${speed} feet.` }),
+			subraces:
+				r.name === 'Dragonborn'
+					? dragonAncestries(r)
+					: subraces
+							.filter((s) => s.name)
+							.map((s) => {
+								const subSpeed = walkSpeed(s.speed);
+								// Wood Elf's Fleet of Foot already says it; only add a Speed trait when nothing mentions it.
+								const mentionsSpeed = traitsOf(s.entries).some((t) => words(t.text).includes('walking speed'));
+								return {
+									key: s.name.split(/[ ;]/)[0].toLowerCase(),
+									name: s.name,
+									traits: traitsWithStats(s.entries, {
+										ability: s.ability,
+										abilityPrefix: !r.ability && standard?.ability ? 'Instead of the standard increase, ' : '',
+										speed: subSpeed !== speed && !mentionsSpeed ? subSpeed : undefined,
+										speedText: `Your base walking speed is ${subSpeed} feet.`
+									})
+								};
+							})
+		};
+	});
 
 const MIN_RACES = 10;
 if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, found ${racesOut.length}.`);

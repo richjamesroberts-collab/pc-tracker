@@ -32,6 +32,27 @@ describe('class and race content', () => {
 		expect(classes.barbarian.features.find((f) => f.name === 'Primal Knowledge')?.optional).toBe(true);
 		expect(classes.barbarian.features.find((f) => f.name === 'Rage')?.optional).toBeUndefined();
 	});
+	it('inlines optional feature rules text', () => {
+		const text = classes.fighter.subclasses['battle-master'].map((f) => f.text).join('\n');
+		expect(text).toMatch(/• Riposte\. .*reaction/);
+	});
+	it('drops subclass placeholder rows but keeps the subclass choice', () => {
+		const names = classes.barbarian.features.map((f) => f.name.toLowerCase());
+		expect(names).toContain('primal path');
+		expect(names).not.toContain('path feature');
+	});
+	it('generates ability score increase and speed traits', () => {
+		const trait = (key: string, name: string, sub?: string) => {
+			const race = races.find((r) => r.key === key)!;
+			const list = sub ? race.subraces.find((s) => s.key === sub)!.traits : race.traits;
+			return list.filter((t) => t.name === name);
+		};
+		expect(trait('dwarf', 'Ability Score Increase')[0].text).toContain('Constitution');
+		expect(trait('dwarf', 'Speed')).toHaveLength(1);
+		expect(trait('dwarf', 'Speed')[0].text).toContain('25 feet');
+		expect(trait('human', 'Speed')[0].text).toContain('30 feet');
+		expect(trait('human', 'Ability Score Increase', 'variant')).toHaveLength(1);
+	});
 	it('every race and subrace key exists in races.json', () => {
 		for (const r of RACES) {
 			const data = races.find((x) => x.key === r.key);
