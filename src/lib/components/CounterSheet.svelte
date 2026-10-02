@@ -20,12 +20,15 @@
 	let name = $state('');
 	let max = $state(1);
 	let reset = $state<'short' | 'long'>('long');
+	// Fixed when the sheet opens, so the title doesn't flip to "New counter" while it closes after a delete.
+	let editing = $state(false);
 
 	// Seed the form only when the sheet opens. Reading `counter` untracked keeps typed values
 	// when the character changes underneath (e.g. Undo from the toast while editing).
 	$effect(() => {
 		if (!open) return;
 		untrack(() => {
+			editing = !!counter;
 			name = counter?.name ?? '';
 			max = counter?.max ?? 1;
 			reset = counter?.reset ?? 'long';
@@ -48,8 +51,8 @@
 	}
 </script>
 
-<Sheet {open} {onclose} label={counter ? 'Edit counter' : 'Add a counter'}>
-	<h2>{counter ? 'Edit counter' : 'New counter'}</h2>
+<Sheet {open} {onclose} label={editing ? 'Edit counter' : 'Add a counter'}>
+	<h2>{editing ? 'Edit counter' : 'New counter'}</h2>
 	<p class="muted">For anything else with limited uses: magic items, feats, homebrew.</p>
 	<form onsubmit={save}>
 		<label class="field">
@@ -67,8 +70,8 @@
 				<button type="button" role="radio" aria-checked={reset === 'long'} onclick={() => (reset = 'long')}>Long rest</button>
 			</div>
 		</div>
-		<button type="submit" class="save" disabled={!valid}>{counter ? 'Save' : 'Add counter'}</button>
-		{#if counter && ondelete}
+		<button type="submit" class="save" disabled={!valid}>{editing ? 'Save' : 'Add counter'}</button>
+		{#if editing && ondelete}
 			<button
 				type="button"
 				class="delete"
