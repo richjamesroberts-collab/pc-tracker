@@ -174,6 +174,19 @@ describe('limited-use features', () => {
 	});
 	it('bolstering magic starts at 6th level (text says so)', () =>
 		expect([5, 6, 13].map((level) => max(pc({ classKey: 'barbarian', subclassKey: 'wild-magic', level }), 'bolstering-magic'))).toEqual([0, 3, 5]));
+	it('favored foe: proficiency bonus uses, d4 → d6 at 6 → d8 at 14', () => {
+		const def = RESOURCES.find((r) => r.key === 'favored-foe')!;
+		const rangers = [1, 6, 14].map((level) => pc({ classKey: 'ranger', level }));
+		expect(rangers.map((c) => max(c, 'favored-foe'))).toEqual([2, 3, 5]);
+		expect(rangers.map((c) => def.die!(c))).toEqual(['d4', 'd6', 'd8']);
+		expect(def.reset(rangers[0])).toBe('long');
+	});
+	it("hexblade's curse: once per short rest", () => {
+		const c = pc({ classKey: 'warlock', subclassKey: 'hexblade', level: 1 });
+		expect(max(c, 'hexblades-curse')).toBe(1);
+		expect(RESOURCES.find((r) => r.key === 'hexblades-curse')!.reset(c)).toBe('short');
+		expect(max(pc({ classKey: 'warlock', subclassKey: 'fiend', level: 1 }), 'hexblades-curse')).toBe(0);
+	});
 	it('race and subrace resources', () => {
 		expect(resourcesFor(pc({ raceKey: 'elf', subraceKey: 'drow', level: 5 })).map((r) => r.key)).toEqual(expect.arrayContaining(['faerie-fire', 'drow-darkness']));
 		expect(max(pc({ raceKey: 'tiefling', level: 2 }), 'hellish-rebuke')).toBe(0);

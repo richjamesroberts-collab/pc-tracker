@@ -61,6 +61,14 @@ export const RESOURCES: ResourceDef[] = [
 	cls('paladin', { key: 'divine-sense', name: 'Divine Sense', max: (c) => Math.max(1, 1 + c.spellMod), reset: long }),
 	cls('paladin', { key: 'lay-on-hands', name: 'Lay on Hands', max: (c) => 5 * c.level, reset: long, pool: true }),
 	cls('paladin', { key: 'paladin-channel-divinity', name: 'Channel Divinity', max: (c) => byLevel(c.level, [[3, 1]]), reset: short }),
+	// TCE optional feature replacing Favored Enemy; shown for every ranger since most tables allow it.
+	cls('ranger', {
+		key: 'favored-foe',
+		name: 'Favored Foe',
+		max: prof,
+		reset: long,
+		die: (c) => dieByLevel(c.level, [[1, 'd4'], [6, 'd6'], [14, 'd8']])
+	}),
 	cls('wizard', { key: 'arcane-recovery', name: 'Arcane Recovery', max: () => 1, reset: long }),
 	cls('artificer', { key: 'flash-of-genius', name: 'Flash of Genius', max: (c) => (c.level >= 7 ? mod1(c) : 0), reset: long }),
 
@@ -88,6 +96,7 @@ export const RESOURCES: ResourceDef[] = [
 	sub('ranger/fey-wanderer', { key: 'misty-wanderer', name: 'Misty Wanderer', max: (c) => (c.level >= 15 ? mod1(c) : 0), reset: long }),
 	sub('ranger/swarmkeeper', { key: 'writhing-tide', name: 'Writhing Tide', max: (c) => (c.level >= 7 ? prof(c) : 0), reset: long }),
 	sub('sorcerer/clockwork-soul', { key: 'restore-balance', name: 'Restore Balance', max: prof, reset: long }),
+	sub('warlock/hexblade', { key: 'hexblades-curse', name: "Hexblade's Curse", max: () => 1, reset: short }),
 	sub('warlock/genie', { key: 'bottled-respite', name: 'Bottled Respite', max: () => 1, reset: long }),
 
 	race('dragonborn', {
