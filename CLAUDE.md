@@ -16,13 +16,11 @@ Tracks: name, portrait, AC, HP (current/max), temp HP, death saves, spell slots 
 - Service worker (`src/service-worker.ts`) caches the app for offline use; web manifest + icons in `static/`
 - Theme tokens in `src/app.css` are shared with the combat tracker; all colours come from tokens
 
-## Spell data (licensing)
+## Game data
 
-The public app ships **only SRD 5.1 spells** (`src/lib/data/srd-spells.json`, CC-BY-4.0, committed; attribution on the Spell packs page). Everything else comes from **spell packs**: `.spellpack.json` files players import on their own phone (stored in the `spellPacks` table).
+`npm run data` (alias `npm run spells`) regenerates the bundled JSON in `src/lib/data/` from a local 5etools checkout (`../5etools-2014-src`, override with `FIVETOOLS_DIR`): `spells.json` (all PHB/XGE/TCE spells), with classes and races JSON to come from the same script. The output is committed and shipped publicly, by the owner's choice.
 
-`npm run spells` regenerates both from a local 5etools checkout (`../5etools-2014-src`, override with `FIVETOOLS_DIR`): the SRD file, plus `packs/phb-xge-tce.spellpack.json` (PHB/XGE/TCE). The pack is copyrighted: it's gitignored, never committed or deployed, and the DM shares it privately. CI fails the deploy if pack-only spell text shows up in the build.
-
-Characters keep a `spellCache` copy of pack spells they use, so backups restore on phones without the pack. Lookup order: installed library (SRD, overridden by packs with the same id) → custom spells → cache.
+Spell packs (`.spellpack.json`, stored in the `spellPacks` table) are for extra spells players import on their own phone. Characters keep a `spellCache` copy of pack spells they use, so backups restore on phones without the pack. Lookup order: installed library (bundled spells, overridden by packs with the same id) → custom spells → cache.
 
 ## Architecture
 
@@ -41,7 +39,7 @@ When the `Character` shape changes, give new fields defaults in `readBackup` (an
 ## Commands
 
 ```bash
-npm run spells       # Regenerate SRD spells + the private spell pack from 5etools
+npm run data         # Regenerate bundled game data from 5etools (alias: npm run spells)
 npm run dev          # Dev server on localhost
 npm run dev:phone    # Dev server on the LAN, open http://<laptop-ip>:5173 on a phone
 npm run build        # Static site in build/

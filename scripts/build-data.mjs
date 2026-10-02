@@ -1,10 +1,10 @@
-// Builds spell data from a local 5etools (2014) checkout:
-//   src/lib/data/srd-spells.json       SRD 5.1 spells only (CC-BY-4.0). Committed and bundled in the app.
-//   packs/phb-xge-tce.spellpack.json   Every PHB/XGE/TCE spell. Copyrighted: gitignored, shared privately
-//                                      with players, who import it into the app on their own phones.
-// Usage: npm run spells            (expects ../5etools-2014-src)
-//        FIVETOOLS_DIR=/path npm run spells
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Builds game data from a local 5etools (2014) checkout. All outputs are committed and bundled in the app:
+//   src/lib/data/spells.json    Every PHB/XGE/TCE spell
+//   src/lib/data/classes.json   Class features (added later)
+//   src/lib/data/races.json     Races (added later)
+// Usage: npm run data            (expects ../5etools-2014-src)
+//        FIVETOOLS_DIR=/path npm run data
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +22,11 @@ const SCHOOLS = {
 	N: 'Necromancy',
 	T: 'Transmutation'
 };
+
+function fail(msg) {
+	console.error(msg);
+	process.exit(1);
+}
 
 const readJson = (p) => JSON.parse(readFileSync(join(toolsDir, 'data', p), 'utf8'));
 
@@ -170,45 +175,15 @@ function convert(s, name = s.name) {
 }
 
 const bySort = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
+const MIN_SPELLS = 477;
 const all = [];
-const srd = [];
 for (const source of SOURCES) {
 	const file = readJson(`spells/spells-${source.toLowerCase()}.json`);
-	for (const s of file.spell) {
-		all.push(convert(s));
-		if (!s.srd) continue;
-		// Some SRD spells drop the PHB's character names ("Bigby's Hand" is "Arcane Hand" in the SRD).
-		// The id stays the PHB one so an installed pack's version replaces it rather than duplicating it.
-		const srdName = typeof s.srd === 'string' ? s.srd : s.name;
-		const spell = convert(s, srdName);
-		if (srdName !== s.name) {
-			spell.text = spell.text.replaceAll(s.name, srdName).replaceAll(s.name.toLowerCase(), srdName.toLowerCase());
-		}
-		spell.source = 'SRD';
-		srd.push(spell);
-	}
+	for (const s of file.spell) all.push(convert(s));
 }
-
-srd.sort(bySort);
 all.sort(bySort);
+if (all.length < MIN_SPELLS) fail(`Expected at least ${MIN_SPELLS} spells, found ${all.length}. Is the 5etools checkout up to date?`);
 
-const srdOut = join(root, 'src/lib/data/srd-spells.json');
-writeFileSync(srdOut, JSON.stringify(srd));
-console.log(`Wrote ${srd.length} SRD spells to ${srdOut}`);
-
-const pack = {
-	app: '5e-pc-tracker',
-	kind: 'spell-pack',
-	schemaVersion: 1,
-	pack: {
-		id: 'phb-xge-tce',
-		name: "PHB + Xanathar's + Tasha's",
-		version: new Date().toISOString().slice(0, 10),
-		description: `All ${all.length} spells from the Player's Handbook, Xanathar's Guide to Everything and Tasha's Cauldron of Everything.`
-	},
-	spells: all
-};
-mkdirSync(join(root, 'packs'), { recursive: true });
-const packOut = join(root, 'packs/phb-xge-tce.spellpack.json');
-writeFileSync(packOut, JSON.stringify(pack));
-console.log(`Wrote ${all.length} spells from ${SOURCES.join(', ')} to ${packOut} (private: share with your players directly)`);
+const out = join(root, 'src/lib/data/spells.json');
+writeFileSync(out, JSON.stringify(all));
+console.log(`Wrote ${all.length} spells to ${out}`);

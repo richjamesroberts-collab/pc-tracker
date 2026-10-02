@@ -9,8 +9,6 @@ node_modules
 .claude/settings.local.json
 vite.config.ts.timestamp-*
 
-# Spell packs hold copyrighted text: share privately, never commit or publish.
+# Locally made spell packs (extras players import on their own phone).
 /packs
 *.spellpack.json
-# Old generated location (before spell packs).
-/src/lib/data/spells.json

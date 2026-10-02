@@ -24,8 +24,8 @@
 
 	const mine = $derived(new Set(c.spells.map((s) => s.id)));
 	const pool = $derived(spellPool(c));
-	/** Source chips, only worth showing once there's more than the bundled SRD. */
-	const sources = $derived([...new Set(pool.map((s) => s.pack ?? 'srd'))]);
+	/** Source chips, only worth showing once there's more than the bundled spells. */
+	const sources = $derived([...new Set(pool.map((s) => s.pack ?? 'builtin'))]);
 	const myCantrips = $derived(pool.filter((s) => s.level === 0 && mine.has(s.id)).length);
 	const myLevelled = $derived(pool.filter((s) => s.level > 0 && mine.has(s.id)).length);
 	const cantripLimit = $derived(cantripsKnown(c));
@@ -118,7 +118,7 @@
 
 {#if library.loaded && library.packs.length === 0 && !query}
 	<p class="srd-note">
-		Showing the free SRD spells. Have a spell pack from your DM? <a href={resolve('/packs')}>Import it</a> to add more.
+		Showing the built-in spells. Have a spell pack from your DM? <a href={resolve('/packs')}>Import it</a> to add more.
 	</p>
 {/if}
 

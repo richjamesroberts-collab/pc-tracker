@@ -15,7 +15,7 @@ export interface Spell {
 	classes: string[];
 	text: string;
 	higher?: string;
-	/** Where the spell was loaded from at runtime: 'srd', a pack id, or 'custom'. Not saved. */
+	/** Where the spell was loaded from at runtime: 'builtin', a pack id, or 'custom'. Not saved. */
 	pack?: string;
 }
 
@@ -75,7 +75,7 @@ export interface Character {
 	spells: CharacterSpell[];
 	customSpells: Spell[];
 	/**
-	 * Copies of the non-SRD pack spells this character uses, so a backup restored on a phone
+	 * Copies of the pack spells this character uses, so a backup restored on a phone
 	 * without the pack still shows them. An installed pack's version takes priority.
 	 */
 	spellCache: Spell[];

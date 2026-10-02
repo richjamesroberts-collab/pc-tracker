@@ -1,15 +1,15 @@
-import srdData from '$lib/data/srd-spells.json';
+import spellData from '$lib/data/spells.json';
 import { db } from '$lib/db';
 import type { Character, Spell, SpellPack } from '$lib/types';
 
 const bySort = (a: Spell, b: Spell) => a.level - b.level || a.name.localeCompare(b.name);
 
-/** SRD 5.1 spells bundled with the app (CC-BY-4.0). */
-export const SRD_SPELLS: Spell[] = (srdData as Spell[]).map((s) => ({ ...s, pack: 'srd' }));
+/** PHB, XGE and TCE spells bundled with the app. */
+export const BUILTIN_SPELLS: Spell[] = (spellData as Spell[]).map((s) => ({ ...s, pack: 'builtin' }));
 
 /**
- * Every spell available on this device: the bundled SRD plus imported spell packs.
- * A pack spell with the same id as an SRD spell replaces it (e.g. the PHB "Bigby's Hand" over SRD "Arcane Hand").
+ * Every spell available on this device: the bundled spells plus imported spell packs.
+ * A pack spell with the same id as a bundled spell replaces it.
  */
 class Library {
 	packs = $state.raw<SpellPack[]>([]);
@@ -17,7 +17,7 @@ class Library {
 
 	spells = $derived.by(() => {
 		const map = new Map<string, Spell>();
-		for (const s of SRD_SPELLS) map.set(s.id, s);
+		for (const s of BUILTIN_SPELLS) map.set(s.id, s);
 		for (const p of this.packs) for (const s of p.spells) map.set(s.id, { ...s, pack: p.id });
 		return [...map.values()].sort(bySort);
 	});
@@ -40,7 +40,7 @@ class Library {
 	}
 
 	packName(id: string | undefined): string {
-		if (id === 'srd') return 'SRD';
+		if (id === 'builtin' || id === 'srd') return 'Built in';
 		if (id === 'custom') return 'Custom';
 		return this.packs.find((p) => p.id === id)?.name ?? 'Saved copy';
 	}
@@ -88,9 +88,9 @@ export function spellPool(c: Character): Spell[] {
 	return [...map.values()].sort(bySort);
 }
 
-/** Keep a stored copy of a pack spell on the character so their backups are self-contained. SRD and custom spells don't need one. */
+/** Keep a stored copy of a pack spell on the character so their backups are self-contained. Bundled and custom spells don't need one. */
 export function cacheSpell(c: Character, spell: Spell): void {
-	if (spell.pack === 'srd' || spell.pack === 'custom' || spell.pack === 'cache') return;
+	if (spell.pack === 'builtin' || spell.pack === 'custom' || spell.pack === 'cache') return;
 	const { pack: _pack, ...copy } = spell;
 	c.spellCache = [...c.spellCache.filter((s) => s.id !== spell.id), copy];
 }

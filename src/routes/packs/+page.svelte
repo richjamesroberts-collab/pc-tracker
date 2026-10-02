@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import Sheet from '$lib/components/Sheet.svelte';
 	import { db } from '$lib/db';
-	import { library, SRD_SPELLS } from '$lib/library.svelte';
+	import { library, BUILTIN_SPELLS } from '$lib/library.svelte';
 	import { customSpellsPack, packFileName } from '$lib/backup/packs';
 	import { saveJsonFile } from '$lib/backup/share';
 	import type { Character, SpellPack } from '$lib/types';
@@ -31,15 +31,15 @@
 	<a class="back" href={resolve('/')}>‹ All characters</a>
 	<h1>Spell packs</h1>
 	<p class="intro">
-		The app comes with the free SRD spells. To add more, import a <code>.spellpack.json</code> file from your DM. Packs are
+		The app comes with the Player's Handbook, Xanathar's and Tasha's spells. To add more, import a <code>.spellpack.json</code> file from your DM. Packs are
 		saved on this phone and work for every character on it.
 	</p>
 
 	<ul class="card list">
 		<li>
 			<div class="info">
-				<span class="name">SRD 5.1</span>
-				<span class="meta">{SRD_SPELLS.length} spells · built in</span>
+				<span class="name">Built in</span>
+				<span class="meta">{BUILTIN_SPELLS.length} spells · built in</span>
 			</div>
 		</li>
 		{#each library.packs as p (p.id)}
@@ -73,6 +73,7 @@
 		available at <a href="https://dnd.wizards.com/resources/systems-reference-document">dnd.wizards.com</a>. The SRD 5.1
 		is licensed under the
 		<a href="https://creativecommons.org/licenses/by/4.0/legalcode">Creative Commons Attribution 4.0 International License</a>.
+		Also includes PHB, XGE and TCE content.
 		Spell packs you import are your own and stay on your device.
 	</p>
 </main>
