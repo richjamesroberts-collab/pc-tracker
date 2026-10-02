@@ -16,7 +16,7 @@
 	import { isDead, isDown } from '$lib/rules/hp';
 	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
-	import { backupIsStale } from '$lib/backup/staleness';
+	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -107,6 +107,13 @@
 	</div>
 {/if}
 
+{#if backupReminder.due(c)}
+	<button type="button" class="nudge" onclick={() => (backupOpen = true)}>
+		{c.lastBackupAt ? `${c.name} has changed since your last backup.` : "You haven't backed up this character yet."}
+		<strong>Back up now</strong>
+	</button>
+{/if}
+
 {#if down}
 	<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
 {:else}
@@ -171,13 +178,6 @@
 			{/if}
 		</div>
 	</a>
-{/if}
-
-{#if backupIsStale(c)}
-	<button type="button" class="nudge" onclick={() => (backupOpen = true)}>
-		{c.lastBackupAt ? 'Your last backup is over a week old.' : "You haven't backed up this character yet."}
-		<strong>Back up now</strong>
-	</button>
 {/if}
 
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
@@ -499,7 +499,7 @@
 	.nudge {
 		display: block;
 		width: 100%;
-		margin-top: 12px;
+		margin-bottom: 12px;
 		padding: 12px 14px;
 		text-align: left;
 		border-radius: var(--radius-lg);

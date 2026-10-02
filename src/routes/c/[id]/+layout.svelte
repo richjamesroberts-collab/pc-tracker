@@ -5,6 +5,7 @@
 	import TabBar from '$lib/components/TabBar.svelte';
 	import { session } from '$lib/session.svelte';
 	import { isCaster } from '$lib/rules/spellcasting';
+	import { backupReminder } from '$lib/backup/reminder.svelte';
 
 	let { children } = $props();
 
@@ -23,10 +24,24 @@
 		});
 	});
 
+	// Each time the app is opened (or returned to after a while), note whether this character was left
+	// with changes not backed up. Vitals shows the reminder; other screens get a toast pointing there.
+	$effect(() => {
+		void backupReminder.visit;
+		if (!loaded) return;
+		untrack(() => {
+			const c = session.character;
+			if (c && backupReminder.check(c) && page.route.id !== '/c/[id]') {
+				session.notify(`${c.name} has changes since the last backup. Back up from Vitals.`, { tone: 'warn' });
+			}
+		});
+	});
+
 	const showTabs = $derived(!!session.character && page.route.id !== '/c/[id]/edit');
 
 	// Keep the screen awake at the table. Needs HTTPS (or localhost); silently skipped otherwise.
 	onMount(() => {
+		backupReminder.listen();
 		let lock: WakeLockSentinel | null = null;
 		const acquire = async () => {
 			try {
