@@ -1,4 +1,4 @@
-import type { Character } from '$lib/types';
+import type { Character, InventoryItem } from '$lib/types';
 import { CLASS_MAP } from './classes';
 import { RACE_MAP, raceLabel } from './races';
 
@@ -99,4 +99,54 @@ export function featureGroups(
 	}
 
 	return groups.filter((g) => g.features.length > 0);
+}
+
+export interface MagicItem {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	type: string;
+	rarity: string;
+	/** Present when the item needs attunement: '' for anyone, else who can ("by a wizard"). */
+	attunement?: string;
+	charges?: number;
+	/** What comes back at dawn: 'all', '3' or '1d6 + 1'. */
+	regain?: string;
+	/** Plain paragraphs joined by `\n`. */
+	text: string;
+}
+
+export const RARITIES = ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact'] as const;
+
+export const rarityLabel = (r: string) => (r ? r[0].toUpperCase() + r.slice(1) : '');
+
+let itemCache: Promise<MagicItem[]> | undefined;
+
+/** Loads the bundled magic items as a separate chunk, once. */
+export function loadItems(): Promise<MagicItem[]> {
+	itemCache ??= import('./items.json').then(
+		(m) => m.default as MagicItem[],
+		(err) => {
+			itemCache = undefined;
+			throw err;
+		}
+	);
+	return itemCache;
+}
+
+/** A new inventory entry for a bundled magic item, with full charges. */
+export function inventoryItem(m: MagicItem): InventoryItem {
+	return {
+		id: crypto.randomUUID(),
+		ref: m.id,
+		name: m.name,
+		type: m.type,
+		rarity: m.rarity,
+		attunement: m.attunement !== undefined,
+		attuned: false,
+		quantity: 1,
+		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
+		notes: ''
+	};
 }

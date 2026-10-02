@@ -25,6 +25,7 @@ export function newCharacter(): Character {
 		spells: [],
 		customSpells: [],
 		spellCache: [],
+		items: [],
 		notes: '',
 		createdAt: now,
 		updatedAt: now

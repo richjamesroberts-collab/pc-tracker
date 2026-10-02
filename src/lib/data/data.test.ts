@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import spells from './spells.json';
 import classesJson from './classes.json';
 import racesJson from './races.json';
+import itemsJson from './items.json';
 import { CLASSES } from './classes';
 import { RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
-import { featureGroups, type ClassContent, type Content, type RaceContent } from './content';
+import { featureGroups, inventoryItem, RARITIES, type ClassContent, type Content, type MagicItem, type RaceContent } from './content';
+import { parseRegain } from '../rules/items';
 
 const classes = classesJson as Record<string, ClassContent>;
 const races = racesJson as RaceContent[];
+const items = itemsJson as MagicItem[];
 
 describe('bundled spells', () => {
 	it('has every PHB/XGE/TCE spell', () => {
@@ -97,5 +100,31 @@ describe('resource owners', () => {
 			else if (kind === 'race') expect(RACES.some((r) => r.key === key), label).toBe(true);
 			else expect(RACES.find((r) => r.key === a)?.subraces.some((x) => x.key === b), label).toBe(true);
 		}
+	});
+});
+
+describe('bundled magic items', () => {
+	it('has DMG, XGE and TCE magic items with unique ids', () => {
+		expect(items.length).toBeGreaterThanOrEqual(500);
+		expect([...new Set(items.map((i) => i.source))].sort()).toEqual(['DMG', 'TCE', 'XGE']);
+		expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+		for (const i of items) expect(['', ...RARITIES], i.name).toContain(i.rarity);
+	});
+	it('includes generic variants with their text filled in', () => {
+		const weapon = items.find((i) => i.id === '+1 weapon|dmg');
+		expect(weapon?.type).toBe('Weapon (any)');
+		expect(weapon?.text).toContain('+1 bonus to attack and damage');
+		expect(items.find((i) => i.id === 'armor of fire resistance|dmg')?.text).toContain('resistance to fire damage');
+		expect(items.find((i) => i.id === 'flame tongue|dmg')?.attunement).toBe('');
+	});
+	it('has charges and readable dawn regains', () => {
+		const wand = items.find((i) => i.id === 'wand of magic missiles|dmg')!;
+		expect(wand).toMatchObject({ charges: 7, regain: '1d6 + 1' });
+		for (const i of items.filter((x) => x.regain)) expect(parseRegain(i.regain!), i.name).not.toBeNull();
+		expect(inventoryItem(wand)).toMatchObject({ ref: wand.id, name: wand.name, charges: { max: 7, used: 0, regain: '1d6 + 1' } });
+	});
+	it('records who can attune', () => {
+		expect(items.find((i) => i.id === 'staff of healing|dmg')?.attunement).toBe('by a bard, cleric, or druid');
+		expect(items.find((i) => i.id === 'bag of holding|dmg')?.attunement).toBeUndefined();
 	});
 });

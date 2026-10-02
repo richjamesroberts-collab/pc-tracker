@@ -53,7 +53,7 @@
 
 <Sheet {open} {onclose} label={editing ? 'Edit counter' : 'Add a counter'}>
 	<h2>{editing ? 'Edit counter' : 'New counter'}</h2>
-	<p class="muted">For anything else with limited uses: magic items, feats, homebrew.</p>
+	<p class="muted">For anything else with limited uses: feats, boons, homebrew. Item charges live in Inventory.</p>
 	<form onsubmit={save}>
 		<label class="field">
 			<span>Name</span>

@@ -29,6 +29,14 @@ class PcTrackerDB extends Dexie {
 					c.customResources ??= [];
 				})
 		);
+		this.version(4).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => {
+					c.items ??= [];
+				})
+		);
 	}
 }
 
