@@ -12,3 +12,6 @@ vite.config.ts.timestamp-*
 # Locally made spell packs (extras players import on their own phone).
 /packs
 *.spellpack.json
+
+# Browser test output from Playwright MCP
+/.playwright-mcp
