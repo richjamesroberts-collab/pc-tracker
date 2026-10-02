@@ -11,6 +11,7 @@
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
+	import { raceLabel } from '$lib/data/races';
 	import { isDead, isDown } from '$lib/rules/hp';
 	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, spellSaveDC } from '$lib/rules/spellcasting';
@@ -65,7 +66,7 @@
 	<Portrait name={c.name} image={c.image} size={60} muted={isDead(c)} />
 	<div class="who">
 		<h1>{c.name}</h1>
-		<p>{subclass ? `${subclass} · ` : ''}{cls?.name ?? c.classKey} {c.level}</p>
+		<p>{[raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}</p>
 	</div>
 	<AcShield ac={c.ac} />
 	<button

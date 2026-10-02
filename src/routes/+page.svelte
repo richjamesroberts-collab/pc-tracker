@@ -5,6 +5,7 @@
 	import Portrait from '$lib/components/Portrait.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { CLASSES } from '$lib/data/classes';
+	import { raceLabel } from '$lib/data/races';
 	import { backupIsStale } from '$lib/backup/staleness';
 	import { library } from '$lib/library.svelte';
 	import type { Character } from '$lib/types';
@@ -39,7 +40,7 @@
 						<Portrait name={c.name} image={c.image} size={52} />
 						<span class="who">
 							<span class="name">{c.name}</span>
-							<span class="meta">{className(c.classKey)} {c.level} · {Math.max(0, c.hpCurrent)}/{c.hpMax} HP</span>
+							<span class="meta">{raceLabel(c) ? `${raceLabel(c)} ` : ''}{className(c.classKey)} {c.level} · {Math.max(0, c.hpCurrent)}/{c.hpMax} HP</span>
 							{#if backupIsStale(c)}
 								<span class="nudge">{c.lastBackupAt ? 'Backup is over a week old' : 'Never backed up'}</span>
 							{/if}
