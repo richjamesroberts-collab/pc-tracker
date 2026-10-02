@@ -48,6 +48,35 @@ export interface CustomResource {
 	used: number;
 }
 
+/** Charges on a wand or staff, or uses of anything else the player wants to count. */
+export interface ItemCharges {
+	max: number;
+	used: number;
+	/** What comes back at dawn: 'all', a number ('3') or dice ('1d6 + 1'). Nothing when absent. */
+	regain?: string;
+}
+
+/** Something the character carries. Bundled magic items copy their name, type, rarity and charges when added. */
+export interface InventoryItem {
+	/** Unique per entry, so two +1 Weapons can be a longsword and a dagger. */
+	id: string;
+	/** Bundled magic item id (`name|source`, see items.json); absent for custom items. */
+	ref?: string;
+	/** Starts as the bundled name; the player can make it specific ("+1 Longsword"). */
+	name: string;
+	/** "Wand", "Wondrous item", "Weapon (any sword)"; empty when unknown. */
+	type: string;
+	/** common, uncommon, rare, very rare, legendary, artifact; empty when unknown. */
+	rarity: string;
+	/** Requires attunement. */
+	attunement: boolean;
+	attuned: boolean;
+	quantity: number;
+	charges?: ItemCharges;
+	/** The description for custom items; the player's own notes for bundled ones. */
+	notes: string;
+}
+
 export interface Character {
 	id: string;
 	name: string;
@@ -96,6 +125,8 @@ export interface Character {
 	 */
 	spellCache: Spell[];
 	concentration?: string;
+
+	items: InventoryItem[];
 
 	notes: string;
 	createdAt: string;

@@ -43,6 +43,29 @@ describe('backup files', () => {
 		expect(back.spellCache[0].name).toBe('Toll the Dead');
 	});
 
+	it('keeps inventory items and cleans bad ones', () => {
+		const wand = {
+			id: 'w1',
+			ref: 'wand of magic missiles|dmg',
+			name: 'Wand of Magic Missiles',
+			type: 'Wand',
+			rarity: 'uncommon',
+			attunement: false,
+			attuned: false,
+			quantity: 1,
+			charges: { max: 7, used: 3, regain: '1d6 + 1' },
+			notes: ''
+		};
+		const c = { ...lyra(), items: [wand] };
+		expect(parseBackupText(JSON.stringify(toBackup(c))).items).toEqual([wand]);
+
+		const raw = { ...toBackup(lyra()) };
+		const bad = [{ id: 'x', name: '' }, { id: 'y', name: 'Ring', attuned: true, quantity: -2, charges: { max: 3, used: 9 } }];
+		const back = readBackup({ ...raw, character: { ...raw.character, items: bad } });
+		expect(back.items).toHaveLength(1);
+		expect(back.items[0]).toMatchObject({ attuned: false, quantity: 1, charges: { max: 3, used: 3 }, type: '', notes: '' });
+	});
+
 	it('rejects files from other apps and newer versions', () => {
 		expect(() => parseBackupText('{"foo":1}')).toThrow(BackupError);
 		expect(() => parseBackupText('not json')).toThrow(BackupError);
@@ -56,6 +79,7 @@ describe('backup files', () => {
 		expect(c.hpCurrent).toBe(20);
 		expect(c.level).toBe(20);
 		expect(c.spells).toEqual([]);
+		expect(c.items).toEqual([]);
 		expect(c.deathSaves).toEqual({ successes: 0, failures: 0 });
 	});
 });

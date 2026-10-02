@@ -1,5 +1,5 @@
 import { newCharacter } from '$lib/character';
-import type { Character, CharacterSpell, CustomResource, Spell } from '$lib/types';
+import type { Character, CharacterSpell, CustomResource, InventoryItem, Spell } from '$lib/types';
 
 export const APP_ID = '5e-pc-tracker';
 export const SCHEMA_VERSION = 1;
@@ -48,6 +48,37 @@ function customResources(v: unknown): CustomResource[] {
 		if (r.reset !== 'short' && r.reset !== 'long') continue;
 		const max = Math.max(1, num(r.max, 1));
 		out.push({ id: r.id, name: r.name, max, reset: r.reset, used: Math.min(max, Math.max(0, num(r.used, 0))) });
+	}
+	return out;
+}
+
+function items(v: unknown): InventoryItem[] {
+	if (!Array.isArray(v)) return [];
+	const out: InventoryItem[] = [];
+	for (const i of v) {
+		if (!isObj(i) || typeof i.id !== 'string' || typeof i.name !== 'string' || !i.name) continue;
+		const ch = isObj(i.charges) ? i.charges : undefined;
+		const max = ch ? Math.min(99, Math.max(0, Math.floor(num(ch.max, 0)))) : 0;
+		out.push({
+			id: i.id,
+			...(typeof i.ref === 'string' ? { ref: i.ref } : {}),
+			name: i.name,
+			type: str(i.type),
+			rarity: str(i.rarity),
+			attunement: !!i.attunement,
+			attuned: !!i.attunement && !!i.attuned,
+			quantity: Math.max(1, Math.floor(num(i.quantity, 1))),
+			...(ch && max > 0
+				? {
+						charges: {
+							max,
+							used: Math.min(max, Math.max(0, num(ch.used, 0))),
+							...(typeof ch.regain === 'string' && ch.regain ? { regain: ch.regain } : {})
+						}
+					}
+				: {}),
+			notes: str(i.notes)
+		});
 	}
 	return out;
 }
@@ -125,6 +156,7 @@ export function readBackup(data: unknown): Character {
 		customSpells: readSpells(raw.customSpells, 'Custom'),
 		spellCache: readSpells(raw.spellCache),
 		concentration: typeof raw.concentration === 'string' ? raw.concentration : undefined,
+		items: items(raw.items),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

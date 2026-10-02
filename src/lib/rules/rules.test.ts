@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
-import type { Character } from '$lib/types';
+import type { Character, InventoryItem } from '$lib/types';
 import { applyDamage, applyHealing, applyTempHp, rollDeathSave, isDead } from './hp';
 import {
 	arcanumLevels,
@@ -23,6 +23,18 @@ import {
 	spendCustom,
 	spendResource
 } from './features';
+import {
+	addItem,
+	attunementLimit,
+	changeQuantity,
+	chargesLeft,
+	dawn,
+	parseRegain,
+	restoreCharges,
+	rollRegain,
+	setAttuned,
+	spendCharges
+} from './items';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', classKey: 'sorcerer', level: 7, hpMax: 52, hpCurrent: 38, spellMod: 4, ...overrides };
@@ -257,5 +269,90 @@ describe('limited-use features', () => {
 		const odd = pc({ customResources: [{ id: 'y', name: 'Y', max: 1.5, reset: 'long', used: 1 }] });
 		expect(spendCustom(odd, 'y')).toBe(false);
 		expect(odd.customResources[0].used).toBe(1);
+	});
+});
+
+function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
+	return {
+		id: crypto.randomUUID(),
+		name: 'Cloak of Protection',
+		type: 'Wondrous item',
+		rarity: 'uncommon',
+		attunement: true,
+		attuned: false,
+		quantity: 1,
+		notes: '',
+		...overrides
+	};
+}
+
+/** A `random` that always rolls the highest face. */
+const maxRoll = () => 0.999;
+
+describe('magic items', () => {
+	it('limits attunement to three, more for high-level artificers', () => {
+		expect(attunementLimit(pc())).toBe(3);
+		expect(attunementLimit(pc({ classKey: 'artificer', level: 10 }))).toBe(4);
+		expect(attunementLimit(pc({ classKey: 'artificer', level: 14 }))).toBe(5);
+		expect(attunementLimit(pc({ classKey: 'artificer', level: 18 }))).toBe(6);
+
+		const c = pc({ items: [item(), item(), item(), item(), item({ attunement: false })] });
+		for (const i of c.items.slice(0, 3)) expect(setAttuned(c, i.id, true)).toBe(true);
+		expect(setAttuned(c, c.items[3].id, true)).toBe(false);
+		expect(setAttuned(c, c.items[0].id, true)).toBe(true);
+		expect(setAttuned(c, c.items[4].id, true)).toBe(false);
+		expect(setAttuned(c, c.items[0].id, false)).toBe(true);
+		expect(setAttuned(c, c.items[3].id, true)).toBe(true);
+	});
+
+	it('spends and restores charges within the max', () => {
+		const wand = item({ charges: { max: 7, used: 0, regain: '1d6 + 1' } });
+		const c = pc({ items: [wand] });
+		expect(spendCharges(c, wand.id, 3)).toBe(true);
+		expect(chargesLeft(c.items[0])).toBe(4);
+		expect(spendCharges(c, wand.id, 5)).toBe(false);
+		restoreCharges(c, wand.id, 10);
+		expect(chargesLeft(c.items[0])).toBe(7);
+		expect(c.items[0].charges!.used).toBe(0);
+	});
+
+	it('reads and rolls regain amounts', () => {
+		expect(parseRegain('all')).toEqual({ all: true });
+		expect(parseRegain('3')).toEqual({ count: 0, die: 0, bonus: 3 });
+		expect(parseRegain('1d6 + 1')).toEqual({ count: 1, die: 6, bonus: 1 });
+		expect(parseRegain('d3')).toEqual({ count: 1, die: 3, bonus: 0 });
+		expect(parseRegain('2d8+4')).toEqual({ count: 2, die: 8, bonus: 4 });
+		expect(parseRegain('some')).toBeNull();
+		expect(rollRegain('2d8 + 4', maxRoll)).toBe(20);
+		expect(rollRegain('1d6 + 1', () => 0)).toBe(2);
+		expect(rollRegain('all')).toBe(Infinity);
+	});
+
+	it('recharges at dawn without going over the max', () => {
+		const wand = item({ name: 'Wand of Magic Missiles', charges: { max: 7, used: 2, regain: '1d6 + 1' } });
+		const staff = item({ name: 'Staff of Healing', charges: { max: 10, used: 10, regain: '1d6 + 4' } });
+		const robe = item({ name: 'Robe of Stars', charges: { max: 6, used: 3 } });
+		const full = item({ name: 'Ring', charges: { max: 3, used: 0, regain: 'all' } });
+		const c = pc({ items: [wand, staff, robe, full] });
+		expect(dawn(c, maxRoll)).toEqual([
+			{ name: 'Wand of Magic Missiles', amount: 2 },
+			{ name: 'Staff of Healing', amount: 10 }
+		]);
+		expect(c.items.map((i) => i.charges!.used)).toEqual([0, 0, 3, 0]);
+	});
+
+	it('stacks potions but not other items, and removes at zero', () => {
+		const c = pc();
+		const potion = () => item({ ref: 'potion of healing|dmg', name: 'Potion of Healing', type: 'Potion', attunement: false });
+		const sword = () => item({ ref: '+1 weapon|dmg', name: '+1 Weapon', type: 'Weapon (any)', attunement: false });
+		const id = addItem(c, potion());
+		addItem(c, potion());
+		addItem(c, sword());
+		addItem(c, sword());
+		expect(c.items.map((i) => i.quantity)).toEqual([2, 1, 1]);
+		changeQuantity(c, id, -1);
+		expect(c.items[0].quantity).toBe(1);
+		changeQuantity(c, id, -1);
+		expect(c.items.map((i) => i.name)).toEqual(['+1 Weapon', '+1 Weapon']);
 	});
 });

@@ -8,7 +8,8 @@
 		{ href: resolve('/c/[id]', { id }), route: '/c/[id]', label: 'Vitals', icon: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z' },
 		{ href: resolve('/c/[id]/spells', { id }), route: '/c/[id]/spells', label: 'Spells', icon: 'M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z' },
 		{ href: resolve('/c/[id]/book', { id }), route: '/c/[id]/book', label: 'Spellbook', icon: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19' },
-		{ href: resolve('/c/[id]/features', { id }), route: '/c/[id]/features', label: 'Features', icon: 'M4 6h16M4 12h16M4 18h10' }
+		{ href: resolve('/c/[id]/features', { id }), route: '/c/[id]/features', label: 'Features', icon: 'M4 6h16M4 12h16M4 18h10' },
+		{ href: resolve('/c/[id]/inventory', { id }), route: '/c/[id]/inventory', label: 'Inventory', icon: 'M5 8h14l-1.2 12H6.2zM9 8V6.5a3 3 0 0 1 6 0V8' }
 	]);
 	// Spell tabs only make sense for casters.
 	const tabs = $derived(caster ? all : all.filter((t) => !t.route.startsWith('/c/[id]/spells') && t.route !== '/c/[id]/book'));

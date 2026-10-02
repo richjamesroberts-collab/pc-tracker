@@ -2,6 +2,7 @@
 //   src/lib/data/spells.json    Every PHB/XGE/TCE spell
 //   src/lib/data/classes.json   Class and subclass features (PHB/XGE/TCE + three older subclasses)
 //   src/lib/data/races.json     PHB races and Custom Lineage
+//   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -585,3 +586,132 @@ if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, fou
 const racesPath = join(root, 'src/lib/data/races.json');
 writeFileSync(racesPath, JSON.stringify(racesOut));
 console.log(`Wrote ${racesOut.length} races to ${racesPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Magic items
+
+const ITEM_SOURCES = ['DMG', 'XGE', 'TCE'];
+const ITEM_TYPES = {
+	RG: 'Ring',
+	WD: 'Wand',
+	RD: 'Rod',
+	SC: 'Scroll',
+	P: 'Potion',
+	A: 'Ammunition',
+	S: 'Armor (shield)'
+};
+const baseName = (ref) => ref?.split('|')[0].toLowerCase();
+
+function itemType(i) {
+	const code = i.type?.split('|')[0];
+	if (i.staff) return 'Staff';
+	if (ITEM_TYPES[code]) return ITEM_TYPES[code];
+	if (code === 'M' || code === 'R') return i.baseItem ? `Weapon (${baseName(i.baseItem)})` : 'Weapon';
+	if (['LA', 'MA', 'HA'].includes(code)) return i.baseItem ? `Armor (${baseName(i.baseItem)})` : 'Armor';
+	if (i.wondrous) return i.tattoo ? 'Wondrous item (tattoo)' : 'Wondrous item';
+	if (code === 'SCF') return 'Spellcasting focus';
+	if (code === 'INS') return 'Instrument';
+	fail(`No type label for item ${i.name} (${i.type})`);
+}
+
+// Generic variants say what they apply to in `requires`, e.g. [{ sword: true }] → "Weapon (any sword)".
+function variantType(v) {
+	const req = v.requires ?? [];
+	const has = (k) => req.some((r) => r[k]);
+	const types = req.map((r) => r.type?.split('|')[0]);
+	if (has('weapon')) return 'Weapon (any)';
+	if (has('axe') && has('sword')) return 'Weapon (any axe or sword)';
+	if (has('sword')) return req.some((r) => r.dmgType === 'S') ? 'Weapon (any sword that deals slashing damage)' : 'Weapon (any sword)';
+	if (has('axe')) return 'Weapon (any axe)';
+	if (has('armor')) return 'Armor (any)';
+	if (types.includes('HA') && types.includes('MA')) return 'Armor (medium or heavy)';
+	if (types.includes('S')) return 'Armor (shield)';
+	if (has('arrow') && has('bolt')) return 'Ammunition (arrow or bolt)';
+	if (types.includes('A')) return 'Ammunition (any)';
+	fail(`No type label for variant ${v.name}: ${JSON.stringify(req)}`);
+}
+
+function attunement(req) {
+	if (!req) return undefined;
+	return req === true ? '' : stripTags(req);
+}
+
+/** "all" when every charge comes back, else the amount ("3", "1d6 + 1"). */
+function regain(i) {
+	if (!i.recharge) return undefined;
+	if (i.rechargeAmount === undefined) return 'all';
+	return String(typeof i.rechargeAmount === 'number' ? i.rechargeAmount : stripTags(i.rechargeAmount));
+}
+
+// Shared text some items pull in with `{#itemEntry Name|Source}`, with `{{item.resist}}` placeholders for their own fields.
+const itemEntries = new Map(readJson('items-base.json').itemEntry.map((e) => [e.name, e.entriesTemplate]));
+const itemField = (i, k) => {
+	if (i[k] === undefined) fail(`Item ${i.name} has no ${k}`);
+	return [i[k]].flat().join(', ');
+};
+
+function itemEntriesOf(i) {
+	return (i.entries ?? []).flatMap((e) => {
+		const ref = typeof e === 'string' && /^\{#itemEntry ([^|}]+)(?:\|[^}]*)?\}$/.exec(e);
+		if (!ref) return [e];
+		const template = itemEntries.get(ref[1]) ?? fail(`Item ${i.name}: no itemEntry ${ref[1]}`);
+		return template.map((t) => (typeof t === 'string' ? t.replace(/\{\{item\.(\w+)\}\}/g, (_, k) => itemField(i, k)) : t));
+	});
+}
+
+function convertItem(i, type) {
+	const attune = attunement(i.reqAttune);
+	const charges = typeof i.charges === 'number' ? i.charges : undefined;
+	return {
+		id: `${i.name}|${i.source}`.toLowerCase(),
+		name: i.name,
+		source: i.source,
+		type,
+		// Adamantine weapons and ammunition aren't magic, so 5etools gives them no rarity.
+		rarity: i.rarity === 'unknown' ? '' : i.rarity,
+		...(attune !== undefined ? { attunement: attune } : {}),
+		...(charges ? { charges } : {}),
+		...(charges && regain(i) ? { regain: regain(i) } : {}),
+		text: flatten(itemEntriesOf(i)).join('\n')
+	};
+}
+
+const itemFile = readJson('items.json');
+const itemsOut = itemFile.item
+	.filter((i) => ITEM_SOURCES.includes(i.source) && i.rarity && i.rarity !== 'none')
+	.map((i) => convertItem(i, itemType(i)));
+
+const variants = readJson('magicvariants.json').magicvariant.filter(
+	// "(no damage)" variants are the same item for nets; skip them.
+	(v) => ITEM_SOURCES.includes(v.inherits?.source) && !v.name.includes('(no damage)')
+);
+for (const v of variants) {
+	const { inherits } = v;
+	const name = v.name.replace(/ \(\*\)$/, '');
+	// Generic text stands in for the base item the DM picks: "an arrow of slaying", "damage of the weapon's type".
+	const base = name.split(' ')[0].toLowerCase();
+	const article = /^[aeiou]/.test(base) ? 'an' : 'a';
+	const fill = (e) =>
+		e
+			.replace(/(\S+) \{=dmgType\} damage/g, "$1 damage of the weapon's type")
+			.replace(/\{=baseName\/at\}/g, article[0].toUpperCase() + article.slice(1))
+			.replace(/\{=baseName\/a\}/g, article)
+			.replace(/\{=baseName\/l\}/g, base)
+			.replace(/\{=(\w+)\}/g, (_, k) => itemField(inherits, k));
+	const entries = inherits.entries.map((e) => (typeof e === 'string' ? fill(e) : e));
+	itemsOut.push(convertItem({ ...inherits, name, entries }, variantType(v)));
+}
+
+itemsOut.sort((a, b) => a.name.localeCompare(b.name));
+const itemIds = new Set();
+for (const i of itemsOut) {
+	if (itemIds.has(i.id)) fail(`Duplicate item id: ${i.id}`);
+	itemIds.add(i.id);
+	if (/\{[@=#]/.test(i.text)) fail(`Unresolved 5etools tag in ${i.name}: ${i.text.match(/\{[@=#][^}]*\}/)[0]}`);
+}
+
+const MIN_ITEMS = 500;
+if (itemsOut.length < MIN_ITEMS) fail(`Expected at least ${MIN_ITEMS} magic items, found ${itemsOut.length}.`);
+const itemsPath = join(root, 'src/lib/data/items.json');
+writeFileSync(itemsPath, JSON.stringify(itemsOut));
+console.log(`Wrote ${itemsOut.length} magic items to ${itemsPath}`);
