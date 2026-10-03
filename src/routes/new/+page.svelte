@@ -3,13 +3,14 @@
 	import { resolve } from '$app/paths';
 	import CharacterForm from '$lib/components/CharacterForm.svelte';
 	import { newCharacter } from '$lib/character';
+	import { recompute } from '$lib/rules/stats';
 	import { db, requestPersistentStorage } from '$lib/db';
 	import type { Character } from '$lib/types';
 
 	const initial = newCharacter();
 
 	async function save(c: Character) {
-		await db.characters.put(c);
+		await db.characters.put(recompute(c));
 		void requestPersistentStorage();
 		goto(resolve('/c/[id]', { id: c.id }), { replaceState: true });
 	}

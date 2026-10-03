@@ -1,5 +1,7 @@
 import { db } from '$lib/db';
 import type { Character } from '$lib/types';
+import { recompute } from '$lib/rules/stats';
+import { migrateToBaseStats } from '$lib/character';
 
 export interface Toast {
 	message: string;
@@ -29,7 +31,9 @@ class Session {
 		this.undoStack = [];
 		this.toast = null;
 		this.concentrationCheck = null;
-		this.character = (await db.characters.get(id)) ?? null;
+		const c = await db.characters.get(id);
+		// Worked-out numbers follow the current rules, even if they changed since the last save.
+		this.character = c ? recompute(migrateToBaseStats(c)) : null;
 		return this.character;
 	}
 
@@ -42,6 +46,7 @@ class Session {
 		const prev = $state.snapshot(this.character) as Character;
 		const next = structuredClone(prev);
 		const result = fn(next);
+		recompute(next);
 		next.updatedAt = new Date().toISOString();
 		this.character = next;
 		this.undoStack.push(prev);
@@ -56,6 +61,7 @@ class Session {
 		if (!this.character) return;
 		const next = structuredClone($state.snapshot(this.character) as Character);
 		fn(next);
+		recompute(next);
 		this.character = next;
 		void this.save(next);
 	}

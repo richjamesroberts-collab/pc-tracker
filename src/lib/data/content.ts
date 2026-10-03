@@ -1,5 +1,6 @@
-import type { Character, InventoryItem } from '$lib/types';
+import type { Character, InventoryItem, ItemArmor, ItemEffects } from '$lib/types';
 import { CLASS_MAP } from './classes';
+import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
 
 export interface Feature {
@@ -114,6 +115,8 @@ export interface MagicItem {
 	charges?: number;
 	/** What comes back at dawn: 'all', '3' or '1d6 + 1'. */
 	regain?: string;
+	effects?: ItemEffects;
+	armor?: ItemArmor;
 	/** Plain paragraphs joined by `\n`. */
 	text: string;
 }
@@ -136,6 +139,12 @@ export function loadItems(): Promise<MagicItem[]> {
 	return itemCache;
 }
 
+/** A plain copy of an item's effects (the library may be a reactive proxy, which can't be structured-cloned). */
+function copyEffects(e: ItemEffects | undefined): ItemEffects {
+	if (!e) return {};
+	return { ...e, ...(e.set ? { set: { ...e.set } } : {}), ...(e.add ? { add: { ...e.add } } : {}) };
+}
+
 /** A new inventory entry for a bundled magic item, with full charges. */
 export function inventoryItem(m: MagicItem): InventoryItem {
 	return {
@@ -149,6 +158,8 @@ export function inventoryItem(m: MagicItem): InventoryItem {
 		attuned: false,
 		quantity: 1,
 		...(m.weight ? { weight: m.weight } : {}),
+		...(m.armor ? { armor: { ...m.armor }, equipped: false } : {}),
+		effects: copyEffects(m.effects),
 		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
 		notes: ''
 	};
@@ -179,6 +190,7 @@ export interface GearItem {
 	value?: number;
 	/** "1d8 slashing · Versatile (1d10)", "AC 12 + Dex". */
 	stats?: string;
+	armor?: ItemArmor;
 	/** Usually bought this many at a time (20 arrows). */
 	bundle?: number;
 	/** What an equipment pack holds: bundled gear by `ref`, or a plain name for things not on the list. */
@@ -214,6 +226,8 @@ export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): Invent
 		attuned: false,
 		quantity,
 		...(g.weight ? { weight: g.weight } : {}),
+		...(g.armor ? { armor: { ...g.armor }, equipped: false } : {}),
+		effects: {},
 		notes: ''
 	};
 }
@@ -232,9 +246,36 @@ export function unpack(pack: GearItem, byId: Map<string, GearItem>): InventoryIt
 			attunement: false,
 			attuned: false,
 			quantity: c.quantity,
+			effects: {},
 			notes: ''
 		};
 	});
+}
+
+/**
+ * Fill in armor and effects on bundled items added before they were tracked. Returns true if anything
+ * changed. Custom items get empty effects so they aren't checked again.
+ *
+ * The player's AC and max HP already allowed for those items, so the base values shift to keep the
+ * numbers shown the same; from then on, attuning or removing items changes them.
+ */
+export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gear: Map<string, GearItem>): boolean {
+	if (!c.items.some((i) => i.effects === undefined)) return false;
+	const before = { ac: armorClass(c).total, hp: maxHp(c).total };
+	let changed = false;
+	for (const i of c.items) {
+		if (i.effects !== undefined) continue;
+		const data = i.ref ? (i.kind === 'gear' ? gear : magic).get(i.ref) : undefined;
+		i.effects = copyEffects(data && 'effects' in data ? data.effects : undefined);
+		if (!i.armor && data?.armor) {
+			i.armor = { ...data.armor };
+			i.equipped = false;
+		}
+		changed = true;
+	}
+	if (!c.acAuto) c.acBase += before.ac - armorClass(c).total;
+	c.hpBase = Math.max(1, c.hpBase + before.hp - maxHp(c).total);
+	return changed;
 }
 
 /** "15 gp", "5 cp" from copper. */

@@ -23,6 +23,8 @@ import {
 	spendCustom,
 	spendResource
 } from './features';
+import { abilityMod, signedMod } from './abilities';
+import { abilityBreakdown, armorClass, initiative, maxHp, recompute, setAcTotal } from './stats';
 import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
@@ -31,6 +33,7 @@ import {
 	changeQuantity,
 	chargesLeft,
 	dawn,
+	setEquipped,
 	parseRegain,
 	restoreCharges,
 	rollRegain,
@@ -436,5 +439,146 @@ describe('gear', () => {
 		const c = pc({ items: [gear({ quantity: 10 }), item({ weight: 3 })], coins: { cp: 0, sp: 0, ep: 0, gp: 100, pp: 0 } });
 		expect(carriedWeight(c)).toBe(15);
 		expect(carriedWeight(c, (i) => (i.kind === 'gear' ? 2 : 0))).toBe(22);
+	});
+});
+
+describe('ability scores', () => {
+	it('works out modifiers', () => {
+		expect([1, 8, 9, 10, 11, 12, 15, 20, 30].map(abilityMod)).toEqual([-5, -1, -1, 0, 0, 1, 2, 5, 10]);
+		expect(signedMod(3)).toBe('+3');
+		expect(signedMod(0)).toBe('+0');
+		expect(signedMod(-1)).toBe('-1');
+	});
+});
+
+const scores = (o: Partial<Character['abilities']> = {}) => ({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...o });
+const magic = (name: string, effects: InventoryItem['effects'], o: Partial<InventoryItem> = {}) =>
+	item({ name, effects, attunement: true, attuned: true, ...o });
+
+describe('worked-out stats', () => {
+	it('adds racial increases, with subraces replacing where they should', () => {
+		const dwarf = abilityBreakdown(pc({ raceKey: 'dwarf', subraceKey: 'hill', abilities: scores({ con: 14, wis: 12 }) }));
+		expect(dwarf.scores).toMatchObject({ con: 16, wis: 13 });
+		expect(dwarf.sources.con).toEqual([{ label: 'Race', value: '+2' }]);
+		const human = abilityBreakdown(pc({ raceKey: 'human', abilities: scores() }));
+		expect(Object.values(human.scores)).toEqual([11, 11, 11, 11, 11, 11]);
+		const variant = abilityBreakdown(pc({ raceKey: 'human', subraceKey: 'variant', raceAbilityChoices: ['str', 'con'], abilities: scores() }));
+		expect(variant.scores).toMatchObject({ str: 11, dex: 10, con: 11 });
+	});
+
+	it('only counts valid race picks, up to the number allowed', () => {
+		const halfElf = abilityBreakdown(pc({ raceKey: 'half-elf', raceAbilityChoices: ['cha', 'dex', 'con', 'wis'], abilities: scores() }));
+		expect(halfElf.scores).toMatchObject({ cha: 12, dex: 11, con: 11, wis: 10 });
+	});
+
+	it('applies attuned items: increases to their maximum, and "becomes" scores only when higher', () => {
+		const items = [
+			magic('Headband of Intellect', { set: { int: 19 } }),
+			magic('Ioun Stone, Agility', { add: { dex: 2 }, addMax: 20 }),
+			magic('Amulet of Health', { set: { con: 19 } }, { attuned: false })
+		];
+		const b = abilityBreakdown(pc({ abilities: scores({ int: 12, dex: 19, con: 12 }), items }));
+		expect(b.scores).toMatchObject({ int: 19, dex: 20, con: 12 });
+		expect(b.withoutItems).toMatchObject({ int: 12, dex: 19 });
+		expect(b.sources.int).toEqual([{ label: 'Headband of Intellect', value: 'becomes 19' }]);
+		expect(abilityBreakdown(pc({ abilities: scores({ int: 20 }), items })).scores.int).toBe(20);
+	});
+
+	it('gives level 20 barbarians Primal Champion', () => {
+		expect(abilityBreakdown(pc({ classKey: 'barbarian', level: 20, abilities: scores({ str: 22, con: 18 }) })).scores).toMatchObject({ str: 24, con: 22 });
+	});
+
+	it('raises max HP when items raise Constitution, and lowers current HP if the max drops', () => {
+		const amulet = magic('Amulet of Health', { set: { con: 19 } });
+		const c = pc({ level: 5, hpBase: 40, hpCurrent: 40, abilities: scores({ con: 12 }), items: [amulet] });
+		expect(maxHp(c).total).toBe(55);
+		recompute(c);
+		expect(c.hpMax).toBe(55);
+		c.hpCurrent = 55;
+		c.items[0].attuned = false;
+		recompute(c);
+		expect(c.hpMax).toBe(40);
+		expect(c.hpCurrent).toBe(40);
+	});
+});
+
+describe('armor class', () => {
+	const armor = (name: string, type: 'light' | 'medium' | 'heavy' | 'shield', ac: number, o: Partial<InventoryItem> = {}) =>
+		item({ name, armor: { type, ac }, equipped: true, attunement: false, ...o });
+
+	it('works out unarmored AC, with Unarmored Defense and Draconic Resilience', () => {
+		expect(armorClass(pc({ classKey: 'wizard', abilities: scores({ dex: 14 }) })).total).toBe(12);
+		expect(armorClass(pc({ classKey: 'barbarian', abilities: scores({ dex: 14, con: 16 }) })).total).toBe(15);
+		expect(armorClass(pc({ classKey: 'monk', abilities: scores({ dex: 16, wis: 16 }) })).total).toBe(16);
+		expect(armorClass(pc({ classKey: 'sorcerer', subclassKey: 'draconic', abilities: scores({ dex: 14 }) })).total).toBe(15);
+	});
+
+	it('loses monk Unarmored Defense with a shield, but barbarians keep theirs', () => {
+		const shield = armor('Shield', 'shield', 2);
+		expect(armorClass(pc({ classKey: 'monk', abilities: scores({ dex: 16, wis: 16 }), items: [shield] })).total).toBe(15);
+		expect(armorClass(pc({ classKey: 'barbarian', abilities: scores({ dex: 14, con: 16 }), items: [shield] })).total).toBe(17);
+	});
+
+	it('uses worn armor with the right DEX limit, plus a shield', () => {
+		const dex = scores({ dex: 18 });
+		expect(armorClass(pc({ abilities: dex, items: [armor('Leather Armor', 'light', 11)] })).total).toBe(15);
+		expect(armorClass(pc({ abilities: dex, items: [armor('Breastplate', 'medium', 14)] })).total).toBe(16);
+		expect(armorClass(pc({ abilities: dex, items: [armor('Chain Mail', 'heavy', 16), armor('Shield', 'shield', 2)] })).total).toBe(18);
+		expect(armorClass(pc({ abilities: dex, items: [armor('Chain Mail', 'heavy', 16, { equipped: false })] })).total).toBe(14);
+	});
+
+	it('adds magic bonuses only when attuned or worn', () => {
+		const plus1 = armor('+1 Chain Mail', 'heavy', 16, { effects: { ac: 1 } });
+		const ring = magic('Ring of Protection', { ac: 1 });
+		const ringOff = magic('Ring of Protection', { ac: 1 }, { attuned: false });
+		expect(armorClass(pc({ items: [plus1, ring, ringOff] })).total).toBe(18);
+		const scaleUnattuned = armor('Red Dragon Scale Mail', 'medium', 14, { effects: { ac: 1 }, attunement: true, attuned: false });
+		expect(armorClass(pc({ items: [scaleUnattuned] })).total).toBe(14);
+	});
+
+	it('only counts Bracers of Defense without armor or a shield', () => {
+		const bracers = magic('Bracers of Defense', { ac: 2, unarmoredOnly: true });
+		expect(armorClass(pc({ items: [bracers] })).total).toBe(12);
+		expect(armorClass(pc({ items: [bracers, armor('Shield', 'shield', 2)] })).total).toBe(12);
+	});
+
+	it('uses the entered AC in manual mode, with item bonuses on top but not armor', () => {
+		const c = pc({ acAuto: false, acBase: 17, items: [magic('Cloak of Protection', { ac: 1 }), armor('+1 Shield', 'shield', 2, { effects: { ac: 1 } })] });
+		expect(armorClass(c).total).toBe(18);
+	});
+
+	it('sets AC through the adjustment in auto mode and the base in manual mode', () => {
+		const auto = pc({ abilities: scores({ dex: 14 }) });
+		setAcTotal(auto, 17);
+		expect(auto.acAdjust).toBe(5);
+		expect(armorClass(auto).total).toBe(17);
+		const manual = pc({ acAuto: false, acBase: 15, items: [magic('Ring of Protection', { ac: 1 })] });
+		setAcTotal(manual, 21);
+		expect(manual.acBase).toBe(20);
+		expect(armorClass(manual).total).toBe(21);
+	});
+
+	it('wears one suit of armor and one shield at a time', () => {
+		const c = pc({ items: [armor('Leather', 'light', 11), armor('Chain Mail', 'heavy', 16, { equipped: false }), armor('Shield', 'shield', 2)] });
+		setEquipped(c, c.items[1].id, true);
+		expect(c.items.map((i) => !!i.equipped)).toEqual([false, true, true]);
+	});
+});
+
+describe('initiative and spellcasting', () => {
+	it('adds Jack of All Trades or Remarkable Athlete to DEX', () => {
+		expect(initiative(pc({ classKey: 'bard', level: 5, abilities: scores({ dex: 14 }) })).total).toBe(3);
+		expect(initiative(pc({ classKey: 'bard', level: 1, abilities: scores({ dex: 14 }) })).total).toBe(2);
+		expect(initiative(pc({ classKey: 'fighter', subclassKey: 'champion', level: 7, abilities: scores({ dex: 14 }) })).total).toBe(4);
+		expect(initiative(pc({ classKey: 'bard', level: 5, initiativeOverride: 7 })).total).toBe(7);
+	});
+
+	it('works out the spellcasting modifier and item bonuses to DC and attack', () => {
+		const rod = magic('+1 Rod of the Pact Keeper', { spellAttack: 1, spellDc: 1 });
+		const c = recompute(pc({ classKey: 'warlock', level: 5, spellModOverride: undefined, abilities: scores({ cha: 18 }), items: [rod] }));
+		expect(c.spellMod).toBe(4);
+		expect(spellSaveDC(c)).toBe(16);
+		expect(spellAttack(c)).toBe(8);
+		expect(recompute({ ...c, spellModOverride: 6 }).spellMod).toBe(6);
 	});
 });

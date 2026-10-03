@@ -1,4 +1,5 @@
-import type { Character } from '$lib/types';
+import type { Ability, Character } from '$lib/types';
+import { itemSpellBonus } from './items';
 
 export type Progression = 'full' | 'half' | 'artificer' | 'third' | 'pact' | 'none';
 export type SpellPrep = 'known' | 'prepared' | 'spellbook' | 'none';
@@ -63,6 +64,11 @@ export const SPELL_ABILITY: Record<string, string> = {
 	rogue: 'INT'
 };
 
+/** The ability a class (or Eldritch Knight / Arcane Trickster) casts with, if any. */
+export function spellAbility(classKey: string): Ability | undefined {
+	return SPELL_ABILITY[classKey]?.toLowerCase() as Ability | undefined;
+}
+
 export function progression(c: Pick<Character, 'classKey' | 'subclassKey'>): Progression {
 	switch (c.classKey) {
 		case 'bard':
@@ -101,12 +107,13 @@ export function proficiencyBonus(level: number): number {
 	return 2 + Math.floor((Math.max(1, level) - 1) / 4);
 }
 
-export function spellSaveDC(c: Pick<Character, 'level' | 'spellMod'>): number {
-	return 8 + proficiencyBonus(c.level) + c.spellMod;
+/** Includes bonuses from items in use, like a Rod of the Pact Keeper. */
+export function spellSaveDC(c: Pick<Character, 'level' | 'spellMod'> & Partial<Pick<Character, 'items'>>): number {
+	return 8 + proficiencyBonus(c.level) + c.spellMod + itemSpellBonus({ items: c.items ?? [] }).dc;
 }
 
-export function spellAttack(c: Pick<Character, 'level' | 'spellMod'>): number {
-	return proficiencyBonus(c.level) + c.spellMod;
+export function spellAttack(c: Pick<Character, 'level' | 'spellMod'> & Partial<Pick<Character, 'items'>>): number {
+	return proficiencyBonus(c.level) + c.spellMod + itemSpellBonus({ items: c.items ?? [] }).attack;
 }
 
 /** Maximum slots per spell level (index 0 = 1st level). Warlock pact slots are separate. */

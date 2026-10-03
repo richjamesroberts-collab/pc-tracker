@@ -3,7 +3,7 @@
 	import Sheet from './Sheet.svelte';
 	import { RARITIES, rarityLabel } from '$lib/data/content';
 	import { parseRegain } from '$lib/rules/items';
-	import type { InventoryItem } from '$lib/types';
+	import type { ArmorType, InventoryItem, ItemEffects } from '$lib/types';
 
 	let {
 		open,
@@ -29,6 +29,10 @@
 	let attunement = $state(false);
 	let quantity = $state(1);
 	let weight = $state<number | null>(null);
+	let armorType = $state<ArmorType | ''>('');
+	let armorAc = $state<number | null>(null);
+	/** Custom items only: a flat AC bonus while attuned (or worn, for armor). */
+	let acBonus = $state<number | null>(null);
 	let charges = $state(0);
 	let regain = $state('');
 	let notes = $state('');
@@ -50,6 +54,9 @@
 			attunement = item?.attunement ?? false;
 			quantity = item?.quantity ?? 1;
 			weight = item?.weight ?? null;
+			armorType = item?.armor?.type ?? '';
+			armorAc = item?.armor?.ac ?? null;
+			acBonus = item?.effects?.ac ?? null;
 			charges = item?.charges?.max ?? 0;
 			regain = item?.charges?.regain ?? '';
 			notes = item?.notes ?? '';
@@ -63,6 +70,8 @@
 			quantity >= 1 &&
 			quantity <= 9999 &&
 			(weight === null || (Number.isFinite(weight) && weight >= 0)) &&
+			(!armorType || (Number.isInteger(armorAc) && armorAc! >= 0 && armorAc! <= 30)) &&
+			(acBonus === null || Number.isInteger(acBonus)) &&
 			Number.isInteger(charges) &&
 			charges >= 0 &&
 			charges <= 99 &&
@@ -73,6 +82,11 @@
 		e.preventDefault();
 		if (!valid) return;
 		const max = charges;
+		const effects: ItemEffects = { ...(item?.effects ?? {}) };
+		if (custom) {
+			if (acBonus) effects.ac = acBonus;
+			else delete effects.ac;
+		}
 		onsave({
 			id: item?.id ?? crypto.randomUUID(),
 			kind: gear ? 'gear' : 'magic',
@@ -84,6 +98,10 @@
 			attuned: !gear && attunement && !!item?.attuned,
 			quantity,
 			...(weight ? { weight } : {}),
+			...(armorType && armorAc !== null
+				? { armor: { type: armorType, ac: armorAc }, equipped: !!item?.equipped }
+				: {}),
+			effects,
 			...(max > 0
 				? { charges: { max, used: Math.min(item?.charges?.used ?? 0, max), ...(regain.trim() ? { regain: regain.trim() } : {}) } }
 				: {}),
@@ -126,6 +144,40 @@
 			</div>
 			<label class="check">
 				<input type="checkbox" bind:checked={attunement} /> Requires attunement
+			</label>
+		{/if}
+		{#if custom || item?.armor || type.startsWith('Armor')}
+			<div class="two">
+				<label class="field">
+					<span>Armor</span>
+					<select
+						bind:value={armorType}
+						onchange={() => {
+							if (armorType === 'shield' && armorAc === null) armorAc = 2;
+						}}
+					>
+						<option value="">Not armor</option>
+						<option value="light">Light armor</option>
+						<option value="medium">Medium armor</option>
+						<option value="heavy">Heavy armor</option>
+						<option value="shield">Shield</option>
+					</select>
+				</label>
+				{#if armorType}
+					<label class="field">
+						<span>{armorType === 'shield' ? 'Shield AC bonus' : 'Base AC'}</span>
+						<input type="number" inputmode="numeric" min="0" max="30" step="1" bind:value={armorAc} placeholder={armorType === 'shield' ? '2' : '14'} />
+					</label>
+				{/if}
+			</div>
+			{#if type.startsWith('Armor (any') || type.startsWith('Armor (medium')}
+				<small>Pick the armor it is (chain mail is heavy, AC 16). Its magic bonus is added on top.</small>
+			{/if}
+		{/if}
+		{#if custom}
+			<label class="field">
+				<span>AC bonus while {attunement ? 'attuned' : armorType ? 'worn' : 'carried'}</span>
+				<input type="number" inputmode="numeric" step="1" bind:value={acBonus} placeholder="0" />
 			</label>
 		{/if}
 		<div class="three">

@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Character, SpellPack } from '$lib/types';
+import { migrateToBaseStats } from '$lib/character';
 
 class PcTrackerDB extends Dexie {
 	characters!: EntityTable<Character, 'id'>;
@@ -45,6 +46,12 @@ class PcTrackerDB extends Dexie {
 					for (const i of c.items) i.kind ??= 'magic';
 					c.coins ??= { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
 				})
+		);
+		this.version(6).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
 		);
 	}
 }

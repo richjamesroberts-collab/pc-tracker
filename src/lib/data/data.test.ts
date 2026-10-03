@@ -9,6 +9,7 @@ import { RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
 import {
 	featureGroups,
+	fillItemDetails,
 	gearInventoryItem,
 	inventoryItem,
 	RARITIES,
@@ -20,6 +21,9 @@ import {
 	type RaceContent
 } from './content';
 import { parseRegain } from '../rules/items';
+import raceAbilities from './race-abilities.json';
+import { newCharacter } from '$lib/character';
+import { armorClass, maxHp } from '../rules/stats';
 
 const classes = classesJson as Record<string, ClassContent>;
 const races = racesJson as RaceContent[];
@@ -169,5 +173,38 @@ describe('bundled gear', () => {
 		expect(burglar.map((i) => [i.name, i.quantity])).toContainEqual(['Ball Bearing', 1000]);
 		expect(burglar.find((i) => i.name === '10 feet of string')?.ref).toBeUndefined();
 		for (const g of gear) for (const c of g.contents ?? []) if (c.ref) expect(gearById.has(c.ref), `${g.name}: ${c.ref}`).toBe(true);
+	});
+});
+
+describe('item effects and armor', () => {
+	const magicById = new Map(items.map((i) => [i.id, i]));
+	it('copies effects and armor onto new inventory entries', () => {
+		expect(inventoryItem(magicById.get('headband of intellect|dmg')!).effects).toEqual({ set: { int: 19 } });
+		expect(inventoryItem(magicById.get('dwarven plate|dmg')!)).toMatchObject({ armor: { type: 'heavy', ac: 18 }, equipped: false, effects: { ac: 2 } });
+		expect(gearInventoryItem(gearById.get('chain mail|phb')!)).toMatchObject({ armor: { type: 'heavy', ac: 16 }, effects: {} });
+		expect(magicById.get('manual of gainful exercise|dmg')!.effects).toBeUndefined();
+	});
+	it('fills in entries added before effects were tracked', () => {
+		const old = { ...inventoryItem(magicById.get('ring of protection|dmg')!), effects: undefined };
+		const shield = { ...gearInventoryItem(gearById.get('shield|phb')!), effects: undefined, armor: undefined, equipped: undefined };
+		const c = { ...newCharacter(), items: [old, shield] };
+		expect(fillItemDetails(c, magicById, gearById)).toBe(true);
+		expect(c.items[0].effects).toEqual({ ac: 1 });
+		expect(c.items[1]).toMatchObject({ armor: { type: 'shield', ac: 2 }, equipped: false, effects: {} });
+		expect(fillItemDetails(c, magicById, gearById)).toBe(false);
+	});
+	it("doesn't change the AC or max HP shown when filling in attuned items", () => {
+		const ring = { ...inventoryItem(magicById.get('ring of protection|dmg')!), attuned: true, effects: undefined };
+		const amulet = { ...inventoryItem(magicById.get('amulet of health|dmg')!), attuned: true, effects: undefined };
+		const c = { ...newCharacter(), level: 4, acAuto: false, acBase: 17, hpBase: 40, items: [ring, amulet] };
+		fillItemDetails(c, magicById, gearById);
+		expect(armorClass(c).total).toBe(17);
+		expect(maxHp(c).total).toBe(40);
+		expect(c.acBase).toBe(16);
+		c.items[0].attuned = false;
+		expect(armorClass(c).total).toBe(16);
+	});
+	it('has racial increases for every race', () => {
+		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();
 	});
 });
