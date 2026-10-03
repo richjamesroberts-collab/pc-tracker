@@ -6,6 +6,7 @@
 	import { session } from '$lib/session.svelte';
 	import { isCaster } from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
+	import { fillItemDetails, loadGear, loadItems } from '$lib/data/content';
 
 	let { children } = $props();
 
@@ -35,6 +36,23 @@
 				session.notify(`${c.name} has changes since the last backup. Back up from Vitals.`, { tone: 'warn' });
 			}
 		});
+	});
+
+	// Items added before effects and armor were tracked get them from the bundled data, once.
+	$effect(() => {
+		if (!loaded) return;
+		const c = untrack(() => session.character);
+		if (!c?.items.some((i) => i.effects === undefined)) return;
+		Promise.all([loadItems(), loadGear()]).then(
+			([magic, gear]) => {
+				const magicById = new Map(magic.map((m) => [m.id, m]));
+				const gearById = new Map(gear.map((g) => [g.id, g]));
+				const current = session.character;
+				if (current?.id === c.id && current.items.some((i) => i.effects === undefined))
+					session.record((d) => fillItemDetails(d, magicById, gearById));
+			},
+			() => {}
+		);
 	});
 
 	const showTabs = $derived(!!session.character && page.route.id !== '/c/[id]/edit');

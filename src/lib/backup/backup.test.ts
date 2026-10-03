@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
+import { recompute } from '$lib/rules/stats';
 import { APP_ID, BackupError, decodeRestoreCode, encodeRestoreCode, parseBackupText, readBackup, toBackup } from './backup';
 
 const spell = (id: string, name: string) => ({
@@ -18,17 +19,18 @@ const spell = (id: string, name: string) => ({
 	text: 'A bell tolls.'
 });
 
-const lyra = () => ({
-	...newCharacter(),
-	name: 'Lyra Ashwood',
-	classKey: 'sorcerer',
-	level: 7,
-	hpMax: 52,
-	hpCurrent: 38,
-	image: 'data:image/webp;base64,AAAA',
-	slotsUsed: { 1: 2 },
-	spells: [{ id: 'fireball|phb', prepared: true }]
-});
+const lyra = () =>
+	recompute({
+		...newCharacter(),
+		name: 'Lyra Ashwood',
+		classKey: 'sorcerer',
+		level: 7,
+		hpBase: 52,
+		hpCurrent: 38,
+		image: 'data:image/webp;base64,AAAA',
+		slotsUsed: { 1: 2 },
+		spells: [{ id: 'fireball|phb', prepared: true }]
+	});
 
 describe('backup files', () => {
 	it('round-trips a character', () => {
@@ -67,6 +69,29 @@ describe('backup files', () => {
 		expect(back.items[0]).toMatchObject({ kind: 'magic', attuned: false, quantity: 1, charges: { max: 3, used: 3 }, type: '', notes: '' });
 	});
 
+	it('keeps what older backups showed: typed AC, max HP, spellcasting modifier and initiative', () => {
+		const legacy = { id: 'old', name: 'Old', classKey: 'cleric', level: 5, ac: 18, hpMax: 38, hpCurrent: 30, spellMod: 4, initiativeModifier: 1 };
+		const c = readBackup({ app: '5e-pc-tracker', schemaVersion: 1, character: legacy });
+		expect(c).toMatchObject({ acAuto: false, acBase: 18, ac: 18, hpBase: 38, hpMax: 38, hpCurrent: 30, spellModOverride: 4, spellMod: 4 });
+		expect(c).toMatchObject({ initiativeOverride: 1, initiativeModifier: 1 });
+	});
+
+	it('works numbers out again on import rather than trusting the file', () => {
+		const c = { ...lyra(), abilities: { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 18 }, ac: 99, spellMod: 0 };
+		const back = parseBackupText(JSON.stringify(toBackup(c)));
+		expect(back.ac).toBe(12);
+		expect(back.spellMod).toBe(4);
+		expect(back.initiativeModifier).toBe(2);
+	});
+
+	it('keeps ability scores and clamps bad ones', () => {
+		const c = { ...lyra(), abilities: { str: 8, dex: 14, con: 13, int: 12, wis: 10, cha: 18 } };
+		expect(parseBackupText(JSON.stringify(toBackup(c))).abilities).toEqual(c.abilities);
+		const raw = toBackup(lyra());
+		const odd = readBackup({ ...raw, character: { ...raw.character, abilities: { str: 0, dex: 40, con: 'x', cha: 15.4 } } });
+		expect(odd.abilities).toEqual({ str: 1, dex: 30, con: 10, int: 10, wis: 10, cha: 15 });
+	});
+
 	it('keeps coins and gear, and cleans bad coin counts', () => {
 		const torch = { id: 't', kind: 'gear' as const, ref: 'torch|phb', name: 'Torch', type: 'Adventuring gear', rarity: '', attunement: false, attuned: false, quantity: 10, weight: 1, notes: '' };
 		const c = { ...lyra(), items: [torch], coins: { cp: 3, sp: 0, ep: 0, gp: 42, pp: 1 } };
@@ -94,6 +119,7 @@ describe('backup files', () => {
 		expect(c.spells).toEqual([]);
 		expect(c.items).toEqual([]);
 		expect(c.coins).toEqual({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 });
+		expect(c.abilities).toEqual({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
 		expect(c.deathSaves).toEqual({ successes: 0, failures: 0 });
 	});
 });

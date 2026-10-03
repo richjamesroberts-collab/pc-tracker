@@ -116,3 +116,34 @@ export function carriedWeight(c: Character, weightOf: (i: InventoryItem) => numb
 	const items = c.items.reduce((n, i) => n + i.quantity * weightOf(i), 0);
 	return Math.round((items + coinCount(c.coins) / 50) * 100) / 100;
 }
+
+/** An item's effects count while it's attuned (if it needs attunement) and worn (if it's armor or a shield). */
+export function isActive(item: InventoryItem): boolean {
+	if (item.attunement && !item.attuned) return false;
+	if (item.armor && !item.equipped) return false;
+	return true;
+}
+
+/** Bonuses to spell attacks and save DC from items in use (Rod of the Pact Keeper, Arcane Grimoire). */
+export function itemSpellBonus(c: Pick<Character, 'items'>): { attack: number; dc: number } {
+	let attack = 0;
+	let dc = 0;
+	for (const i of c.items ?? []) {
+		if (!i.effects || !isActive(i)) continue;
+		attack += i.effects.spellAttack ?? 0;
+		dc += i.effects.spellDc ?? 0;
+	}
+	return { attack, dc };
+}
+
+/** Put armor or a shield on or take it off. Wearing one suit of armor (or shield) takes off any other. */
+export function setEquipped(c: Character, id: string, on: boolean): boolean {
+	const item = c.items.find((i) => i.id === id);
+	if (!item?.armor) return false;
+	if (on) {
+		const shield = item.armor.type === 'shield';
+		for (const other of c.items) if (other.armor && other.equipped && (other.armor.type === 'shield') === shield) other.equipped = false;
+	}
+	item.equipped = on;
+	return true;
+}

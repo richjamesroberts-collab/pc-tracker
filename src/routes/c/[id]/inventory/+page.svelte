@@ -28,10 +28,13 @@
 		chargesLeft,
 		dawn,
 		restoreCharges,
+		isActive,
 		setAttuned,
+		setEquipped,
 		spendCharges,
 		stacks
 	} from '$lib/rules/items';
+	import { describeEffects } from '$lib/rules/stats';
 	import type { Character, InventoryItem } from '$lib/types';
 
 	type Kind = InventoryItem['kind'];
@@ -189,6 +192,19 @@
 		session.mutate(i.attuned ? `Ended attunement to ${i.name}` : `Attuned to ${i.name}`, (d) => setAttuned(d, i.id, !i.attuned));
 	}
 
+	function toggleWorn(i: InventoryItem) {
+		session.mutate(i.equipped ? `Took off ${i.name}` : `${i.armor?.type === 'shield' ? 'Equipped' : 'Wearing'} ${i.name}`, (d) =>
+			setEquipped(d, i.id, !i.equipped)
+		);
+	}
+
+	/** Why an item's effects aren't counting, if they aren't. */
+	function inactiveReason(i: InventoryItem): string {
+		if (i.attunement && !i.attuned) return 'Attune to use';
+		if (i.armor && !i.equipped) return i.armor.type === 'shield' ? 'Equip to use' : 'Wear to use';
+		return '';
+	}
+
 	function quantity(i: InventoryItem, delta: number) {
 		const label = i.quantity + delta < 1 ? `${i.name} removed` : `${i.name}: ${i.quantity + delta}`;
 		session.mutate(label, (d) => changeQuantity(d, i.id, delta));
@@ -231,6 +247,7 @@
 					<span class="meta">{meta(i)}</span>
 				</button>
 				<div class="badges">
+					{#if i.equipped}<span class="tag worn">{i.armor?.type === 'shield' ? 'Equipped' : 'Worn'}</span>{/if}
 					{#if i.attuned}<span class="tag attuned">Attuned</span>{/if}
 					{#if i.charges}<span class="charges" aria-label="{left} of {i.charges.max} {usesWord(i)} left">{left}/{i.charges.max}</span>{/if}
 				</div>
@@ -257,7 +274,24 @@
 						</div>
 					{/if}
 
+					{#if describeEffects(i)}
+						<p class="effects" class:off={!isActive(i)}>
+							<b>{describeEffects(i)}</b>
+							{#if !isActive(i)}<span>{inactiveReason(i)}</span>{/if}
+						</p>
+					{/if}
+					{#if i.armor}
+						<p class="effects">
+							<b>{i.armor.type === 'shield' ? `Shield +${i.armor.ac} AC` : `${i.armor.type[0].toUpperCase()}${i.armor.type.slice(1)} armor, AC ${i.armor.ac}`}</b>
+						</p>
+					{/if}
+
 					<div class="actions">
+						{#if i.armor}
+							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
+								{i.equipped ? (i.armor.type === 'shield' ? 'Equipped' : 'Wearing') : i.armor.type === 'shield' ? 'Equip' : 'Wear'}
+							</button>
+						{/if}
 						{#if i.attunement}
 							<button type="button" class="attune" class:on={i.attuned} aria-pressed={i.attuned} onclick={() => toggleAttuned(i)}>
 								{i.attuned ? 'Attuned' : 'Attune'}
@@ -534,6 +568,40 @@
 		font-weight: 800;
 		padding: 2px 8px;
 		border-radius: 999px;
+	}
+
+	.tag.worn {
+		background: var(--color-current-bg);
+		color: var(--color-accent);
+	}
+
+	.effects {
+		margin-top: 8px;
+		font-size: 14px;
+	}
+
+	.effects b {
+		color: var(--color-effect-ink);
+	}
+
+	.effects.off b {
+		color: var(--color-text-muted);
+	}
+
+	.effects span {
+		margin-left: 6px;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--color-warning);
+	}
+
+	.actions .wear {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+	}
+
+	.actions .wear.on {
+		background: var(--color-current-bg);
 	}
 
 	.tag.attuned {

@@ -1,5 +1,6 @@
-import { newCharacter } from '$lib/character';
-import type { Character, CharacterSpell, Coins, CustomResource, InventoryItem, Spell } from '$lib/types';
+import { legacyToBase, newCharacter } from '$lib/character';
+import { recompute } from '$lib/rules/stats';
+import type { Ability, AbilityScores, ArmorType, Character, CharacterSpell, Coins, CustomResource, InventoryItem, ItemArmor, ItemEffects, Spell } from '$lib/types';
 
 export const APP_ID = '5e-pc-tracker';
 export const SCHEMA_VERSION = 1;
@@ -71,6 +72,8 @@ function items(v: unknown): InventoryItem[] {
 			attuned: !!i.attunement && !!i.attuned,
 			quantity: Math.max(1, Math.floor(num(i.quantity, 1))),
 			...(weight > 0 ? { weight } : {}),
+			...(armor(i.armor) ? { armor: armor(i.armor), equipped: !!i.equipped } : {}),
+			...(effects(i.effects) ? { effects: effects(i.effects) } : {}),
 			...(ch && max > 0
 				? {
 						charges: {
@@ -84,6 +87,42 @@ function items(v: unknown): InventoryItem[] {
 		});
 	}
 	return out;
+}
+
+function abilities(v: unknown): AbilityScores {
+	const raw = isObj(v) ? v : {};
+	const score = (k: string) => Math.min(30, Math.max(1, Math.round(num(raw[k], 10))));
+	return { str: score('str'), dex: score('dex'), con: score('con'), int: score('int'), wis: score('wis'), cha: score('cha') };
+}
+
+const ABILITY_KEYS: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const ARMOR_TYPES: ArmorType[] = ['light', 'medium', 'heavy', 'shield'];
+
+function armor(v: unknown): ItemArmor | undefined {
+	if (!isObj(v) || !ARMOR_TYPES.includes(v.type as ArmorType)) return undefined;
+	return { type: v.type as ArmorType, ac: Math.min(30, Math.max(0, Math.round(num(v.ac, 0)))) };
+}
+
+function scorePart(v: unknown): Partial<AbilityScores> | undefined {
+	if (!isObj(v)) return undefined;
+	const out: Partial<AbilityScores> = {};
+	for (const k of ABILITY_KEYS) if (typeof v[k] === 'number' && Number.isFinite(v[k])) out[k] = v[k] as number;
+	return Object.keys(out).length ? out : undefined;
+}
+
+function effects(v: unknown): ItemEffects | undefined {
+	if (!isObj(v)) return undefined;
+	const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x !== 0 ? x : undefined);
+	const e: ItemEffects = {
+		set: scorePart(v.set),
+		add: scorePart(v.add),
+		addMax: n(v.addMax),
+		ac: n(v.ac),
+		spellAttack: n(v.spellAttack),
+		spellDc: n(v.spellDc),
+		unarmoredOnly: v.unarmoredOnly === true || undefined
+	};
+	return Object.fromEntries(Object.entries(e).filter(([, x]) => x !== undefined)) as ItemEffects;
 }
 
 function coins(v: unknown): Coins {
@@ -132,8 +171,9 @@ export function readBackup(data: unknown): Character {
 
 	const base = newCharacter();
 	const hpMax = Math.max(1, num(raw.hpMax, base.hpMax));
+	const optionalNum = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 	const saves = isObj(raw.deathSaves) ? raw.deathSaves : {};
-	return {
+	const c: Character = {
 		...base,
 		id: raw.id,
 		name: raw.name,
@@ -143,16 +183,26 @@ export function readBackup(data: unknown): Character {
 		raceKey: typeof raw.raceKey === 'string' ? raw.raceKey : undefined,
 		subraceKey: typeof raw.subraceKey === 'string' ? raw.subraceKey : undefined,
 		level: Math.min(20, Math.max(1, num(raw.level, 1))),
+		abilities: abilities(raw.abilities),
+		raceAbilityChoices: Array.isArray(raw.raceAbilityChoices)
+			? raw.raceAbilityChoices.filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability))
+			: [],
 		ac: num(raw.ac, base.ac),
+		acAuto: !!raw.acAuto,
+		acBase: num(raw.acBase, num(raw.ac, base.ac)),
+		acAdjust: num(raw.acAdjust, 0),
 		hpMax,
+		hpBase: Math.max(1, num(raw.hpBase, hpMax)),
 		hpCurrent: Math.min(hpMax, Math.max(0, num(raw.hpCurrent, hpMax))),
 		tempHp: Math.max(0, num(raw.tempHp, 0)),
 		deathSaves: { successes: num(saves.successes, 0), failures: num(saves.failures, 0) },
 		stable: !!raw.stable,
 		speed: typeof raw.speed === 'number' ? raw.speed : undefined,
-		initiativeModifier: typeof raw.initiativeModifier === 'number' ? raw.initiativeModifier : undefined,
-		passivePerception: typeof raw.passivePerception === 'number' ? raw.passivePerception : undefined,
+		initiativeModifier: optionalNum(raw.initiativeModifier),
+		initiativeOverride: optionalNum(raw.initiativeOverride),
+		passivePerception: optionalNum(raw.passivePerception),
 		spellMod: num(raw.spellMod, 0),
+		spellModOverride: optionalNum(raw.spellModOverride),
 		slotsUsed: numRecord(raw.slotsUsed),
 		bonusSlots: numRecord(raw.bonusSlots),
 		pactSlotsUsed: num(raw.pactSlotsUsed, 0),
@@ -172,6 +222,10 @@ export function readBackup(data: unknown): Character {
 		updatedAt: str(raw.updatedAt, base.updatedAt),
 		lastBackupAt: typeof raw.lastBackupAt === 'string' ? raw.lastBackupAt : undefined
 	};
+	// Backups from before base stats: keep what the player typed as the base or an override.
+	// AC and max HP already fall back to what was typed; the spellcasting modifier and initiative become overrides.
+	if (raw.hpBase === undefined) legacyToBase(c);
+	return recompute(c);
 }
 
 export function parseBackupText(text: string): Character {

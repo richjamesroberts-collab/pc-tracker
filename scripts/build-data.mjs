@@ -4,6 +4,7 @@
 //   src/lib/data/races.json     PHB races and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 //   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
+//   src/lib/data/race-abilities.json  Racial ability score increases, small enough to bundle with the app shell
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -582,6 +583,31 @@ const racesOut = raceFile.race
 		};
 	});
 
+// Racial ability score increases, by race key then subrace key. `replaces` marks subraces whose increase
+// is instead of the race's (Variant Human), not on top of it.
+function asiOf(ability) {
+	const set = ability?.[0];
+	if (!set) return undefined;
+	const fixed = Object.fromEntries(Object.entries(set).filter(([k]) => k !== 'choose'));
+	const out = { fixed };
+	if (set.choose) out.choose = { from: set.choose.from, count: set.choose.count ?? 1, amount: set.choose.amount ?? 1 };
+	return out;
+}
+
+const raceAbilities = {};
+for (const r of raceFile.race.filter((r) => (r.source === 'PHB' && !r._copy) || (r.name === 'Custom Lineage' && r.source === 'TCE'))) {
+	const subraces = raceFile.subrace.filter((s) => s.source === 'PHB' && s.raceName === r.name && s.raceSource === r.source);
+	const standard = subraces.find((s) => !s.name);
+	const entry = { asi: asiOf(r.ability ?? standard?.ability), subraces: {} };
+	for (const s of subraces.filter((s) => s.name && s.ability)) {
+		entry.subraces[s.name.split(/[ ;]/)[0].toLowerCase()] = { asi: asiOf(s.ability), ...(!r.ability && standard?.ability ? { replaces: true } : {}) };
+	}
+	raceAbilities[slug(r.name)] = entry;
+}
+const raceAbilitiesPath = join(root, 'src/lib/data/race-abilities.json');
+writeFileSync(raceAbilitiesPath, JSON.stringify(raceAbilities));
+console.log(`Wrote racial ability increases to ${raceAbilitiesPath}`);
+
 const MIN_RACES = 10;
 if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, found ${racesOut.length}.`);
 const racesPath = join(root, 'src/lib/data/races.json');
@@ -660,9 +686,46 @@ function itemEntriesOf(i) {
 	});
 }
 
+const ARMOR_KINDS = { LA: 'light', MA: 'medium', HA: 'heavy', S: 'shield' };
+
+/** `{ type: 'medium', ac: 14 }` for armor and shields with a known base AC. */
+function armorOf(i) {
+	const kind = ARMOR_KINDS[i.type?.split('|')[0]];
+	return kind && typeof i.ac === 'number' ? { type: kind, ac: i.ac } : undefined;
+}
+
+const bonus = (v) => (v ? Number(String(v).replace('+', '')) : 0);
+
+/**
+ * What an item does to the character's numbers while it's in use (attuned, or worn for armor).
+ * Ability changes only count for items you attune to; tomes, manuals and potions are one-offs the
+ * player adds to their base scores.
+ */
+function itemEffects(i, type, text) {
+	const e = {};
+	const ab = i.ability;
+	if (ab && i.reqAttune) {
+		if (ab.static) e.set = { ...ab.static };
+		const add = Object.fromEntries(Object.entries(ab).filter(([k, v]) => ABILITIES[k] && typeof v === 'number'));
+		if (Object.keys(add).length) {
+			e.add = add;
+			e.addMax = Number(/maximum of (\d+)/.exec(text)?.[1] ?? 20);
+		}
+	}
+	// A Defender's AC bonus is whatever the wielder moves over, so weapons are left to the player.
+	if (bonus(i.bonusAc) && !type.startsWith('Weapon')) e.ac = bonus(i.bonusAc);
+	if (bonus(i.bonusSpellAttack)) e.spellAttack = bonus(i.bonusSpellAttack);
+	if (bonus(i.bonusSpellSaveDc)) e.spellDc = bonus(i.bonusSpellSaveDc);
+	if (i.name === 'Bracers of Defense') e.unarmoredOnly = true;
+	return e;
+}
+
 function convertItem(i, type) {
 	const attune = attunement(i.reqAttune);
 	const charges = typeof i.charges === 'number' ? i.charges : undefined;
+	const text = flatten(itemEntriesOf(i)).join('\n');
+	const effects = itemEffects(i, type, text);
+	const armor = armorOf(i) ?? (type === 'Armor (shield)' ? { type: 'shield', ac: 2 } : undefined);
 	return {
 		id: `${i.name}|${i.source}`.toLowerCase(),
 		name: i.name,
@@ -674,7 +737,9 @@ function convertItem(i, type) {
 		...(i.weight ? { weight: i.weight } : {}),
 		...(charges ? { charges } : {}),
 		...(charges && regain(i) ? { regain: regain(i) } : {}),
-		text: flatten(itemEntriesOf(i)).join('\n')
+		...(Object.keys(effects).length ? { effects } : {}),
+		...(armor ? { armor } : {}),
+		text
 	};
 }
 
@@ -810,6 +875,7 @@ const gearOut = gearSource
 			...(i.weight ? { weight: i.weight } : {}),
 			...(i.value ? { value: i.value } : {}),
 			...(stats ? { stats } : {}),
+			...(armorOf(i) ? { armor: armorOf(i) } : {}),
 			...(bundle ? { bundle } : {}),
 			...(isPack
 				? {
