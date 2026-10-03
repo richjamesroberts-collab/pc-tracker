@@ -40,6 +40,11 @@ import {
 	setAttuned,
 	spendCharges
 } from './items';
+import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon, martialArtsDie } from './attacks';
+import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
+import { senses } from './senses';
+import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
+import type { ItemWeapon } from '$lib/types';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', classKey: 'sorcerer', level: 7, hpMax: 52, hpCurrent: 38, spellMod: 4, ...overrides };
@@ -580,5 +585,235 @@ describe('initiative and spellcasting', () => {
 		expect(spellSaveDC(c)).toBe(16);
 		expect(spellAttack(c)).toBe(8);
 		expect(recompute({ ...c, spellModOverride: 6 }).spellMod).toBe(6);
+	});
+});
+
+describe('experience', () => {
+	it('finds the level for an XP total', () => {
+		expect(levelForXp(0)).toBe(1);
+		expect(levelForXp(299)).toBe(1);
+		expect(levelForXp(300)).toBe(2);
+		expect(levelForXp(6500)).toBe(5);
+		expect(levelForXp(400000)).toBe(20);
+	});
+
+	it('shows progress to the next level', () => {
+		expect(xpProgress({ level: 4, xp: 4600 })).toEqual({ from: 2700, next: 6500, fraction: 0.5, ready: false });
+		expect(xpProgress({ level: 4, xp: 7000 })).toMatchObject({ next: 6500, fraction: 1, ready: true });
+		// Started above level 1 without the XP: the bar sits at empty.
+		expect(xpProgress({ level: 5, xp: 0 })).toMatchObject({ fraction: 0, ready: false });
+		expect(xpProgress({ level: 20, xp: 355000 })).toMatchObject({ next: null, ready: false });
+	});
+
+	it('works out hit points for a new level', () => {
+		const fighter = pc({ classKey: 'fighter', abilities: scores({ con: 14 }) });
+		expect(hpGain(fighter)).toMatchObject({ average: 6, bonus: 2 });
+		const wizard = pc({ classKey: 'wizard', abilities: scores({ con: 6 }) });
+		expect(hpGain(wizard)).toMatchObject({ average: 4, bonus: -2 });
+		expect(hpForLevel(1, -2)).toBe(1);
+		// Hill dwarf draconic sorcerer: +1 each, and CON from items doesn't count.
+		const amulet = item({ name: 'Amulet of Health', attuned: true, effects: { set: { con: 19 } } });
+		const sorc = pc({ classKey: 'sorcerer', subclassKey: 'draconic', raceKey: 'dwarf', subraceKey: 'hill', abilities: scores({ con: 13 }), items: [amulet] });
+		expect(hpGain(sorc)).toMatchObject({ average: 4, bonus: 1 + 2 + 1 });
+	});
+
+	it('levels up, raising max and current HP and XP to the new level', () => {
+		const c = pc({ level: 4, xp: 6600, hpBase: 30, hpCurrent: 20 });
+		expect(levelUp(c, 7)).toBe(true);
+		expect(c).toMatchObject({ level: 5, hpBase: 37, hpCurrent: 27, xp: 6600 });
+		const m = pc({ level: 4, xp: 0, milestone: true });
+		levelUp(m, 5);
+		expect(m.xp).toBe(0);
+		const capped = pc({ level: 20 });
+		expect(levelUp(capped, 5)).toBe(false);
+		expect(capped.level).toBe(20);
+		const fresh = pc({ level: 1, xp: 0 });
+		levelUp(fresh, 5);
+		expect(fresh.xp).toBe(300);
+	});
+});
+
+const weapon = (base: string, o: Partial<ItemWeapon> = {}): ItemWeapon => ({
+	base,
+	category: 'martial',
+	ranged: false,
+	damage: '1d8',
+	damageType: 'slashing',
+	properties: [],
+	...o
+});
+
+const LONGSWORD = weapon('longsword', { properties: ['versatile'], versatile: '1d10' });
+const RAPIER = weapon('rapier', { damageType: 'piercing', properties: ['finesse'] });
+const DAGGER = weapon('dagger', { category: 'simple', damage: '1d4', damageType: 'piercing', properties: ['finesse', 'light', 'thrown'], range: [20, 60] });
+const SHORTSWORD = weapon('shortsword', { damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'] });
+const LONGBOW = weapon('longbow', { ranged: true, damageType: 'piercing', properties: ['ammunition', 'heavy', 'two-handed'], range: [150, 600] });
+const GREATSWORD = weapon('greatsword', { damage: '2d6', properties: ['heavy', 'two-handed'] });
+const QUARTERSTAFF = weapon('quarterstaff', { category: 'simple', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'], versatile: '1d8' });
+
+const wielded = (w: ItemWeapon, o: Partial<InventoryItem> = {}) =>
+	item({ kind: 'gear', name: w.base[0].toUpperCase() + w.base.slice(1), type: 'Weapon', attunement: false, weapon: w, equipped: true, ...o });
+
+describe('weapon proficiency', () => {
+	it('comes from class, subclass and race', () => {
+		const wizard = weaponProficiencies(pc({ classKey: 'wizard' }));
+		expect(isProficient(wizard, DAGGER)).toBe(true);
+		expect(isProficient(wizard, LONGSWORD)).toBe(false);
+		const highElf = weaponProficiencies(pc({ classKey: 'wizard', raceKey: 'elf', subraceKey: 'high' }));
+		expect(isProficient(highElf, LONGSWORD)).toBe(true);
+		expect(isProficient(highElf, LONGBOW)).toBe(true);
+		const hexblade = weaponProficiencies(pc({ classKey: 'warlock', subclassKey: 'hexblade' }));
+		expect(isProficient(hexblade, GREATSWORD)).toBe(true);
+		const dwarfCleric = weaponProficiencies(pc({ classKey: 'cleric', raceKey: 'dwarf', subraceKey: 'hill' }));
+		expect([...dwarfCleric]).toEqual(expect.arrayContaining(['simple', 'battleaxe', 'warhammer']));
+	});
+
+	it("adds the player's own picks", () => {
+		const c = pc({ classKey: 'wizard', weaponProficiencies: ['whip', 'martial'] });
+		expect(isProficient(weaponProficiencies(c), GREATSWORD)).toBe(true);
+		expect(weaponProficiencySources(c).at(-1)).toEqual({ source: 'Your choice', weapons: ['whip', 'martial'] });
+	});
+
+	it('lists categories first and leaves out weapons they cover', () => {
+		expect(proficiencyList(['rapier', 'simple', 'dagger', 'hand crossbow'])).toEqual(['simple', 'hand crossbow', 'rapier']);
+	});
+});
+
+describe('senses', () => {
+	const names = (c: Character) => senses(c).map((x) => `${x.name} ${x.range}`);
+
+	it('gives racial darkvision, superior for drow', () => {
+		expect(names(pc({ raceKey: 'human' }))).toEqual([]);
+		expect(names(pc({ raceKey: 'elf', subraceKey: 'high' }))).toEqual(['Darkvision 60']);
+		expect(names(pc({ raceKey: 'elf', subraceKey: 'drow' }))).toEqual(['Darkvision 120']);
+	});
+
+	it('adds class features, taking the longest range', () => {
+		expect(names(pc({ classKey: 'cleric', subclassKey: 'twilight', raceKey: 'dwarf', level: 1 }))).toEqual(['Darkvision 300']);
+		expect(names(pc({ classKey: 'ranger', subclassKey: 'gloom-stalker', raceKey: 'dwarf', level: 3 }))).toEqual(['Darkvision 90']);
+		expect(names(pc({ classKey: 'ranger', subclassKey: 'gloom-stalker', raceKey: 'human', level: 3 }))).toEqual(['Darkvision 60']);
+		expect(names(pc({ classKey: 'ranger', subclassKey: 'gloom-stalker', raceKey: 'human', level: 2 }))).toEqual([]);
+		expect(names(pc({ classKey: 'rogue', level: 14 }))).toEqual(['Blindsense 10']);
+		expect(names(pc({ classKey: 'fighter', fightingStyles: ['blind-fighting'] }))).toEqual(['Blindsight 10']);
+	});
+
+	it("merges the player's own senses", () => {
+		const c = pc({ raceKey: 'elf', senses: [{ id: '1', name: 'darkvision', range: 120 }, { id: '2', name: 'Tremorsense', range: 30 }] });
+		expect(names(c)).toEqual(['Darkvision 120', 'Tremorsense 30']);
+		expect(senses(c)[0].sources).toEqual(['Race', 'Your choice']);
+	});
+});
+
+describe('attacks', () => {
+	const fighter = (o: Partial<Character> = {}) =>
+		pc({ classKey: 'fighter', level: 5, abilities: scores({ str: 16, dex: 14 }), ...o });
+
+	it('lists equipped weapons, then an unarmed strike', () => {
+		const list = attacks(fighter({ items: [wielded(LONGSWORD), wielded(RAPIER, { equipped: false })] }));
+		expect(list.map((a) => a.name)).toEqual(['Longsword', 'Unarmed strike']);
+		expect(list[0]).toMatchObject({ toHit: 6, damage: '1d8 + 3 slashing', versatile: '1d10 + 3 slashing', reach: 'Melee 5 ft' });
+		expect(list[1]).toMatchObject({ toHit: 6, damage: '4 bludgeoning' });
+	});
+
+	it('picks the better of STR and DEX for finesse weapons, DEX for ranged', () => {
+		const c = fighter({ abilities: scores({ str: 10, dex: 18 }), items: [wielded(RAPIER), wielded(LONGBOW)] });
+		const [rapier, bow] = attacks(c);
+		expect(rapier).toMatchObject({ ability: 'dex', toHit: 7, damage: '1d8 + 4 piercing' });
+		expect(bow).toMatchObject({ ability: 'dex', toHit: 7, reach: 'Ranged 150/600 ft' });
+	});
+
+	it('leaves out the proficiency bonus without proficiency', () => {
+		const [a] = attacks(pc({ classKey: 'wizard', level: 5, abilities: scores({ str: 14 }), items: [wielded(GREATSWORD)] }));
+		expect(a).toMatchObject({ proficient: false, toHit: 2, damage: '2d6 + 2 slashing' });
+		expect(a.notes[0]).toMatch(/Not proficient/);
+	});
+
+	it('adds magic weapon bonuses while usable', () => {
+		const plus1 = wielded(LONGSWORD, { kind: 'magic', name: '+1 Longsword', effects: { attack: 1, damage: 1 } });
+		expect(attacks(fighter({ items: [plus1] }))[0]).toMatchObject({ toHit: 7, damage: '1d8 + 4 slashing' });
+		const unattuned = wielded(LONGSWORD, { kind: 'magic', attunement: true, attuned: false, effects: { attack: 3, damage: 3 } });
+		expect(attacks(fighter({ items: [unattuned] }))[0].toHit).toBe(6);
+	});
+
+	it('applies Archery, Dueling and Two-Weapon Fighting', () => {
+		const archer = attacks(fighter({ fightingStyles: ['archery'], items: [wielded(LONGBOW), wielded(LONGSWORD)] }));
+		expect(archer[0].toHit).toBe(2 + 3 + 2);
+		expect(archer[1].toHit).toBe(6);
+		const duelist = attacks(fighter({ fightingStyles: ['dueling'], items: [wielded(LONGSWORD), wielded(GREATSWORD)] }));
+		expect(duelist[0]).toMatchObject({ damage: '1d8 + 5 slashing', versatile: '1d10 + 3 slashing' });
+		expect(duelist[1].damage).toBe('2d6 + 3 slashing');
+		const twin = [wielded(SHORTSWORD), wielded(DAGGER)];
+		expect(attacks(fighter({ items: twin }))[0].notes).toContain('Off-hand (bonus action): 1d6 piercing');
+		expect(attacks(fighter({ items: twin, fightingStyles: ['two-weapon'] }))[0].notes).toContain('Off-hand (bonus action): 1d6 + 3 piercing');
+	});
+
+	it('gives monks their Martial Arts die and DEX', () => {
+		const monk = pc({ classKey: 'monk', level: 5, abilities: scores({ str: 10, dex: 16 }), items: [wielded(QUARTERSTAFF)] });
+		const [staff, fist] = attacks(monk);
+		expect(staff).toMatchObject({ ability: 'dex', damage: '1d6 + 3 bludgeoning' });
+		expect(fist).toMatchObject({ ability: 'dex', toHit: 6, damage: '1d6 + 3 bludgeoning' });
+		expect(isMonkWeapon(GREATSWORD)).toBe(false);
+		expect(isMonkWeapon(SHORTSWORD)).toBe(true);
+		expect(martialArtsDie(17)).toBe('d10');
+	});
+
+	it('uses CHA for a Hexblade and INT for a Battle Smith with a magic weapon', () => {
+		const hex = pc({ classKey: 'warlock', subclassKey: 'hexblade', level: 3, abilities: scores({ str: 10, cha: 18 }), items: [wielded(LONGSWORD)] });
+		expect(attacks(hex)[0]).toMatchObject({ ability: 'cha', toHit: 6 });
+		const smith = pc({ classKey: 'artificer', subclassKey: 'battle-smith', level: 3, abilities: scores({ int: 16 }) });
+		expect(attacks({ ...smith, items: [wielded(LONGSWORD, { kind: 'magic' })] })[0].ability).toBe('int');
+		expect(attacks({ ...smith, items: [wielded(LONGSWORD)] })[0].ability).toBe('str');
+	});
+
+	it('notes Sneak Attack, Rage and critical ranges', () => {
+		const rogue = attacks(pc({ classKey: 'rogue', level: 5, items: [wielded(RAPIER), wielded(LONGSWORD)] }));
+		expect(rogue[0].notes).toContain('Sneak Attack: 3d6 once per turn');
+		expect(rogue[1].notes.some((n) => n.startsWith('Sneak'))).toBe(false);
+		const barb = attacks(pc({ classKey: 'barbarian', level: 9, abilities: scores({ str: 16 }), items: [wielded(GREATSWORD)] }));
+		expect(barb[0].notes).toEqual(expect.arrayContaining(['Raging: +3 damage', expect.stringMatching(/^Brutal Critical/)]));
+		const champ = attacks(fighter({ subclassKey: 'champion', level: 15 }));
+		expect(champ[0].notes).toContain('Critical hit on 18–20');
+	});
+
+	it('counts ammunition for launchers', () => {
+		const arrows = item({ kind: 'gear', ref: 'arrow|phb', name: 'Arrow', type: 'Ammunition', attunement: false, quantity: 18 });
+		const [bow] = attacks(fighter({ items: [wielded(LONGBOW), arrows] }));
+		expect(bow.ammo).toEqual({ name: 'Arrows', count: 18, itemId: arrows.id });
+	});
+
+	it('counts attacks per Attack action', () => {
+		expect(attacksPerAction(pc({ classKey: 'fighter', level: 4 }))).toBe(1);
+		expect(attacksPerAction(pc({ classKey: 'fighter', level: 11 }))).toBe(3);
+		expect(attacksPerAction(pc({ classKey: 'fighter', level: 20 }))).toBe(4);
+		expect(attacksPerAction(pc({ classKey: 'paladin', level: 5 }))).toBe(2);
+		expect(attacksPerAction(pc({ classKey: 'bard', subclassKey: 'valor', level: 6 }))).toBe(2);
+		expect(attacksPerAction(pc({ classKey: 'bard', subclassKey: 'lore', level: 6 }))).toBe(1);
+	});
+
+	it('formats damage', () => {
+		expect(damageText('1d4', -1, 'piercing')).toBe('1d4 − 1 piercing');
+		expect(damageText('1', 3, 'piercing')).toBe('4 piercing');
+		expect(damageText('', 3, '')).toBe('—');
+	});
+
+	it('counts fighting styles by class', () => {
+		expect(fightingStyleCount(pc({ classKey: 'fighter', subclassKey: 'champion', level: 10 }))).toBe(2);
+		expect(fightingStyleCount(pc({ classKey: 'paladin', level: 1 }))).toBe(0);
+		expect(fightingStyleCount(pc({ classKey: 'wizard' }))).toBe(0);
+	});
+
+	it('gives +1 AC with the Defense style only while wearing armor', () => {
+		const mail = item({ name: 'Chain Mail', armor: { type: 'heavy', ac: 16 }, equipped: true, attunement: false });
+		expect(armorClass(pc({ fightingStyles: ['defense'], items: [mail] })).total).toBe(17);
+		expect(armorClass(pc({ fightingStyles: ['defense'], abilities: scores({ dex: 14 }) })).total).toBe(12);
+	});
+
+	it('equips weapons alongside each other', () => {
+		const c = pc({ items: [wielded(LONGSWORD, { equipped: false }), wielded(DAGGER, { equipped: false })] });
+		expect(setEquipped(c, c.items[0].id, true)).toBe(true);
+		expect(setEquipped(c, c.items[1].id, true)).toBe(true);
+		expect(c.items.every((i) => i.equipped)).toBe(true);
+		const ring = item();
+		expect(setEquipped({ ...c, items: [ring] }, ring.id, true)).toBe(false);
 	});
 });

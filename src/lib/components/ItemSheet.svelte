@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
-	import { RARITIES, rarityLabel } from '$lib/data/content';
+	import { RARITIES, copyWeapon, loadGear, rarityLabel, type GearItem } from '$lib/data/content';
 	import { parseRegain } from '$lib/rules/items';
-	import type { ArmorType, InventoryItem, ItemEffects } from '$lib/types';
+	import { WEAPONS, proficiencyLabel } from '$lib/rules/proficiency';
+	import type { ArmorType, InventoryItem, ItemEffects, ItemWeapon } from '$lib/types';
 
 	let {
 		open,
@@ -33,6 +34,11 @@
 	let armorAc = $state<number | null>(null);
 	/** Custom items only: a flat AC bonus while attuned (or worn, for armor). */
 	let acBonus = $state<number | null>(null);
+	/** The PHB weapon it is (lowercase name), or '' if it isn't one. */
+	let weaponBase = $state('');
+	/** Custom items only: a magic weapon's bonus to attack and damage rolls. */
+	let weaponBonus = $state<number | null>(null);
+	let gearList = $state<GearItem[] | null>(null);
 	let charges = $state(0);
 	let regain = $state('');
 	let notes = $state('');
@@ -57,11 +63,42 @@
 			armorType = item?.armor?.type ?? '';
 			armorAc = item?.armor?.ac ?? null;
 			acBonus = item?.effects?.ac ?? null;
+			weaponBase = item?.weapon?.base ?? '';
+			weaponBonus = item?.effects?.attack ?? null;
 			charges = item?.charges?.max ?? 0;
 			regain = item?.charges?.regain ?? '';
 			notes = item?.notes ?? '';
 		});
 	});
+
+	// Custom items and magic weapons can say which PHB weapon they are; bundled gear weapons already know.
+	const pickWeapon = $derived(custom || (!gear && (!!item?.weapon || type.startsWith('Weapon'))));
+
+	$effect(() => {
+		if (!open || !pickWeapon || gearList) return;
+		loadGear().then(
+			(g) => (gearList = g),
+			() => {}
+		);
+	});
+
+	/** PHB weapons by base name, from the bundled gear (the Staff focus fights as a quarterstaff, so names win). */
+	const weaponsByBase = $derived.by(() => {
+		const out = new Map<string, ItemWeapon>();
+		for (const g of gearList ?? []) {
+			if (!g.weapon) continue;
+			if (!out.has(g.weapon.base) || g.name.toLowerCase() === g.weapon.base) out.set(g.weapon.base, g.weapon);
+		}
+		return out;
+	});
+
+	/** The weapon stats to save: the item's own if the base is unchanged, else the PHB weapon's. */
+	function weaponFor(base: string): ItemWeapon | undefined {
+		if (!base) return undefined;
+		if (item?.weapon?.base === base) return copyWeapon(item.weapon);
+		const w = weaponsByBase.get(base);
+		return w ? copyWeapon(w) : undefined;
+	}
 
 	const regainOk = $derived(!regain.trim() || parseRegain(regain) !== null);
 	const valid = $derived(
@@ -72,6 +109,7 @@
 			(weight === null || (Number.isFinite(weight) && weight >= 0)) &&
 			(!armorType || (Number.isInteger(armorAc) && armorAc! >= 0 && armorAc! <= 30)) &&
 			(acBonus === null || Number.isInteger(acBonus)) &&
+			(weaponBonus === null || Number.isInteger(weaponBonus)) &&
 			Number.isInteger(charges) &&
 			charges >= 0 &&
 			charges <= 99 &&
@@ -82,10 +120,16 @@
 		e.preventDefault();
 		if (!valid) return;
 		const max = charges;
+		const weapon = pickWeapon ? weaponFor(weaponBase) : item?.weapon;
 		const effects: ItemEffects = { ...(item?.effects ?? {}) };
 		if (custom) {
 			if (acBonus) effects.ac = acBonus;
 			else delete effects.ac;
+			if (weapon && weaponBonus) effects.attack = effects.damage = weaponBonus;
+			else {
+				delete effects.attack;
+				delete effects.damage;
+			}
 		}
 		onsave({
 			id: item?.id ?? crypto.randomUUID(),
@@ -98,9 +142,9 @@
 			attuned: !gear && attunement && !!item?.attuned,
 			quantity,
 			...(weight ? { weight } : {}),
-			...(armorType && armorAc !== null
-				? { armor: { type: armorType, ac: armorAc }, equipped: !!item?.equipped }
-				: {}),
+			...(armorType && armorAc !== null ? { armor: { type: armorType, ac: armorAc } } : {}),
+			...(weapon ? { weapon } : {}),
+			...((armorType && armorAc !== null) || weapon ? { equipped: !!item?.equipped } : {}),
 			effects,
 			...(max > 0
 				? { charges: { max, used: Math.min(item?.charges?.used ?? 0, max), ...(regain.trim() ? { regain: regain.trim() } : {}) } }
@@ -172,6 +216,33 @@
 			</div>
 			{#if type.startsWith('Armor (any') || type.startsWith('Armor (medium')}
 				<small>Pick the armor it is (chain mail is heavy, AC 16). Its magic bonus is added on top.</small>
+			{/if}
+		{/if}
+		{#if pickWeapon}
+			<label class="field">
+				<span>Weapon</span>
+				<select bind:value={weaponBase} disabled={!gearList && !item?.weapon}>
+					<option value="">{custom ? 'Not a weapon' : 'Pick which weapon…'}</option>
+					{#if item?.weapon && !gearList}
+						<option value={item.weapon.base}>{proficiencyLabel(item.weapon.base)}</option>
+					{/if}
+					{#if gearList}
+						{#each WEAPONS as group (group.category)}
+							<optgroup label={proficiencyLabel(group.category)}>
+								{#each group.names.filter((n) => weaponsByBase.has(n)) as n (n)}
+									<option value={n}>{proficiencyLabel(n)}</option>
+								{/each}
+							</optgroup>
+						{/each}
+					{/if}
+				</select>
+				<small>{custom ? 'Pick the closest PHB weapon so it can be equipped for Attacks.' : 'Which weapon this is, for its damage and Attacks.'}</small>
+			</label>
+			{#if custom && weaponBase}
+				<label class="field">
+					<span>Magic bonus to attack and damage</span>
+					<input type="number" inputmode="numeric" step="1" bind:value={weaponBonus} placeholder="0" />
+				</label>
 			{/if}
 		{/if}
 		{#if custom}

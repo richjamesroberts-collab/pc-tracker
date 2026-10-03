@@ -193,9 +193,32 @@
 	}
 
 	function toggleWorn(i: InventoryItem) {
-		session.mutate(i.equipped ? `Took off ${i.name}` : `${i.armor?.type === 'shield' ? 'Equipped' : 'Wearing'} ${i.name}`, (d) =>
-			setEquipped(d, i.id, !i.equipped)
-		);
+		const label = i.weapon
+			? i.equipped
+				? `Put away ${i.name}`
+				: `Equipped ${i.name}: it's under Attacks on Vitals`
+			: i.equipped
+				? `Took off ${i.name}`
+				: `${i.armor?.type === 'shield' ? 'Equipped' : 'Wearing'} ${i.name}`;
+		session.mutate(label, (d) => setEquipped(d, i.id, !i.equipped));
+	}
+
+	/** A generic magic weapon (+1 Weapon) whose base weapon hasn't been picked yet. */
+	const needsWeapon = (i: InventoryItem) => !i.weapon && i.type.startsWith('Weapon');
+
+	/** "1d8 slashing · Versatile (1d10) · Finesse", for the details. */
+	function weaponLine(i: InventoryItem): string {
+		const w = i.weapon!;
+		const props = w.properties.filter((p) => p !== 'versatile').map((p) => p[0].toUpperCase() + p.slice(1));
+		return [
+			w.damage ? `${w.damage} ${w.damageType}` : '',
+			w.versatile ? `Versatile (${w.versatile})` : '',
+			...props,
+			w.range ? `${w.range[0]}/${w.range[1]} ft` : '',
+			`${w.category[0].toUpperCase()}${w.category.slice(1)} ${w.ranged ? 'ranged' : 'melee'}`
+		]
+			.filter(Boolean)
+			.join(' · ');
 	}
 
 	/** Why an item's effects aren't counting, if they aren't. */
@@ -247,7 +270,7 @@
 					<span class="meta">{meta(i)}</span>
 				</button>
 				<div class="badges">
-					{#if i.equipped}<span class="tag worn">{i.armor?.type === 'shield' ? 'Equipped' : 'Worn'}</span>{/if}
+					{#if i.equipped}<span class="tag worn">{i.armor && i.armor.type !== 'shield' ? 'Worn' : 'Equipped'}</span>{/if}
 					{#if i.attuned}<span class="tag attuned">Attuned</span>{/if}
 					{#if i.charges}<span class="charges" aria-label="{left} of {i.charges.max} {usesWord(i)} left">{left}/{i.charges.max}</span>{/if}
 				</div>
@@ -285,8 +308,18 @@
 							<b>{i.armor.type === 'shield' ? `Shield +${i.armor.ac} AC` : `${i.armor.type[0].toUpperCase()}${i.armor.type.slice(1)} armor, AC ${i.armor.ac}`}</b>
 						</p>
 					{/if}
+					{#if i.weapon}
+						<p class="effects"><b>{weaponLine(i)}</b></p>
+					{:else if needsWeapon(i)}
+						<p class="effects off"><span>Tap Edit to pick which weapon it is, then equip it for Attacks.</span></p>
+					{/if}
 
 					<div class="actions">
+						{#if i.weapon}
+							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
+								{i.equipped ? 'Equipped' : 'Equip'}
+							</button>
+						{/if}
 						{#if i.armor}
 							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
 								{i.equipped ? (i.armor.type === 'shield' ? 'Equipped' : 'Wearing') : i.armor.type === 'shield' ? 'Equip' : 'Wear'}

@@ -53,6 +53,13 @@ class PcTrackerDB extends Dexie {
 				.toCollection()
 				.modify((c: Character) => migrateToBaseStats(c))
 		);
+		// XP, weapon proficiencies, fighting styles and senses (migrateToBaseStats fills them in).
+		this.version(7).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
+		);
 	}
 }
 

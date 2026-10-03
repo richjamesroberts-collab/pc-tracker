@@ -8,6 +8,8 @@
 	import Pips from '$lib/components/Pips.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
 	import BackupSheet from '$lib/components/BackupSheet.svelte';
+	import AttackSheet from '$lib/components/AttackSheet.svelte';
+	import XpSheet from '$lib/components/XpSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
@@ -19,6 +21,9 @@
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { ABILITIES, abilityMod, signedMod } from '$lib/rules/abilities';
 	import { abilityBreakdown } from '$lib/rules/stats';
+	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
+	import { senses } from '$lib/rules/senses';
+	import { xpProgress } from '$lib/rules/xp';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -35,7 +40,8 @@
 	const stats = $derived(
 		[
 			c.speed != null && { k: 'Speed', v: `${c.speed}` },
-			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` }
+			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
+			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
 		].filter((s): s is { k: string; v: string } => !!s)
 	);
 
@@ -51,6 +57,13 @@
 	let abilitiesOpen = $state(false);
 
 	const abilities = $derived(abilityBreakdown(c));
+	const attacks = $derived(attackList(c, abilities.scores));
+	const perAction = $derived(attacksPerAction(c));
+	const xp = $derived(xpProgress(c));
+	/** Id of the attack whose sheet is open. */
+	let attackId = $state<string | null>(null);
+	const openAttack = $derived(attacks.find((a) => a.id === attackId) ?? null);
+	let xpOpen = $state(false);
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
@@ -174,12 +187,34 @@
 </button>
 
 {#if stats.length}
-	<div class="stats" style:--cols={stats.length}>
+	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
 		{#each stats as s (s.k)}
 			<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
 		{/each}
 	</div>
 {/if}
+
+<section class="attacks" aria-labelledby="attacks-title">
+	<div class="attacks-head">
+		<h2 id="attacks-title" class="label">Attacks</h2>
+		{#if perAction > 1}<span class="per">{perAction} attacks per Attack action</span>{/if}
+	</div>
+	<div class="card attack-list">
+		{#each attacks as a (a.id)}
+			<button type="button" class="attack" onclick={() => (attackId = a.id)}>
+				<span class="a-name">
+					<b>{a.name}</b>
+					<span>{a.reach}{a.ammo ? ` · ${a.ammo.count} ${a.ammo.name.toLowerCase()}` : ''}</span>
+				</span>
+				<span class="a-hit" class:unskilled={!a.proficient}>{signedMod(a.toHit)}</span>
+				<span class="a-dmg">{a.damage}</span>
+			</button>
+		{/each}
+		{#if attacks.length === 1}
+			<a class="equip-hint" href={resolve('/c/[id]/inventory', { id: c.id })}>Equip weapons in Inventory to see them here</a>
+		{/if}
+	</div>
+</section>
 
 {#if caster}
 	<section class="spellcasting" aria-labelledby="spellcasting-title">
@@ -207,7 +242,26 @@
 	</a>
 {/if}
 
+{#if !c.milestone}
+	<button type="button" class="card xp" aria-label="Experience: {c.xp} XP. Tap to add XP or level up." onclick={() => (xpOpen = true)}>
+		<span class="xp-head">
+			<span class="label">Experience</span>
+			{#if xp.ready}
+				<span class="ready">Level up!</span>
+			{:else}
+				<span class="xp-num">{c.xp.toLocaleString('en')}{xp.next !== null ? ` / ${xp.next.toLocaleString('en')}` : ''} XP</span>
+			{/if}
+		</span>
+		<span class="xp-bar" aria-hidden="true"><span class="xp-fill" class:ready={xp.ready} style:width="{xp.fraction * 100}%"></span></span>
+		{#if xp.next !== null}
+			<span class="xp-next">{xp.ready ? `${c.xp.toLocaleString('en')} XP · tap to reach level ${c.level + 1}` : `${(xp.next - c.xp).toLocaleString('en')} to level ${c.level + 1}`}</span>
+		{/if}
+	</button>
+{/if}
+
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
+<AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
+<XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 
 <Sheet open={abilitiesOpen} onclose={() => (abilitiesOpen = false)} label="Ability scores">
@@ -232,6 +286,9 @@
 	<div class="menu-list">
 		<button type="button" onclick={() => rest('short')}>Short rest <span>Short-rest features and pact slots back</span></button>
 		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points and features</span></button>
+		<button type="button" onclick={() => ((menuOpen = false), (xpOpen = true))}>
+			{c.milestone ? 'Level up' : 'Experience'} <span>{c.milestone ? `Now level ${c.level}` : `${c.xp.toLocaleString('en')} XP`}</span>
+		</button>
 		<button type="button" onclick={() => ((menuOpen = false), (backupOpen = true))}>Back up character</button>
 		<a href={resolve('/c/[id]/edit', { id: c.id })}>Edit character</a>
 		<a href={resolve('/')}>All characters</a>
@@ -672,6 +729,154 @@
 		font-weight: 700;
 		line-height: 1.3;
 		text-align: center;
+		color: var(--color-text-muted);
+	}
+
+	.attacks {
+		margin-top: 14px;
+	}
+
+	.attacks-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 8px;
+		margin: 0 4px 6px;
+	}
+
+	.per {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--color-accent);
+	}
+
+	.attack-list {
+		overflow: hidden;
+	}
+
+	/* Name and reach on the left, to-hit and damage in fixed columns so rows line up. */
+	.attack {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 48px minmax(0, 0.9fr);
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 56px;
+		padding: 8px 12px;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		font-weight: 400;
+		text-align: left;
+	}
+
+	.attack + .attack {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.a-name {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.a-name b {
+		font-size: 16px;
+		overflow-wrap: anywhere;
+	}
+
+	.a-name span {
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.a-hit {
+		padding: 4px 0;
+		border-radius: 10px;
+		background: var(--color-current-bg);
+		color: var(--color-accent);
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-weight: 900;
+		text-align: center;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.a-hit.unskilled {
+		background: var(--color-chip);
+		color: var(--color-text-muted);
+	}
+
+	.a-dmg {
+		font-size: 14px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.equip-hint {
+		display: block;
+		padding: 10px 12px 12px;
+		border-top: 1px solid var(--color-border);
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--color-accent);
+	}
+
+	.xp {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		width: 100%;
+		margin-top: 12px;
+		padding: 12px 16px;
+		color: var(--color-text);
+		font-weight: 400;
+		text-align: left;
+	}
+
+	.xp-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 8px;
+	}
+
+	.xp-num {
+		font-size: 14px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.ready {
+		font-size: 13px;
+		font-weight: 900;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: var(--color-ready-bg);
+		color: var(--color-ready-ink);
+	}
+
+	.xp-bar {
+		display: block;
+		height: 8px;
+		border-radius: 999px;
+		background: var(--color-chip);
+		overflow: hidden;
+	}
+
+	.xp-fill {
+		display: block;
+		height: 100%;
+		background: var(--color-accent);
+	}
+
+	.xp-fill.ready {
+		background: var(--color-heal);
+	}
+
+	.xp-next {
+		font-size: 12px;
 		color: var(--color-text-muted);
 	}
 

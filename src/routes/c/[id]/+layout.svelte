@@ -6,7 +6,7 @@
 	import { session } from '$lib/session.svelte';
 	import { isCaster } from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
-	import { fillItemDetails, loadGear, loadItems } from '$lib/data/content';
+	import { fillItemData, fillItemDetails, loadGear, loadItems, needsItemData } from '$lib/data/content';
 
 	let { children } = $props();
 
@@ -38,18 +38,22 @@
 		});
 	});
 
-	// Items added before effects and armor were tracked get them from the bundled data, once.
+	// Items added before effects, armor and weapon stats were tracked get them from the bundled data, once.
 	$effect(() => {
 		if (!loaded) return;
 		const c = untrack(() => session.character);
-		if (!c?.items.some((i) => i.effects === undefined)) return;
+		const stale = (x: typeof c) => !!x && (x.items.some((i) => i.effects === undefined) || needsItemData(x));
+		if (!stale(c)) return;
 		Promise.all([loadItems(), loadGear()]).then(
 			([magic, gear]) => {
 				const magicById = new Map(magic.map((m) => [m.id, m]));
 				const gearById = new Map(gear.map((g) => [g.id, g]));
 				const current = session.character;
-				if (current?.id === c.id && current.items.some((i) => i.effects === undefined))
-					session.record((d) => fillItemDetails(d, magicById, gearById));
+				if (current?.id === c!.id && stale(current))
+					session.record((d) => {
+						fillItemDetails(d, magicById, gearById);
+						fillItemData(d, magicById, gearById);
+					});
 			},
 			() => {}
 		);

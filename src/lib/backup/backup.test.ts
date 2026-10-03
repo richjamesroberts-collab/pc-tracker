@@ -176,3 +176,47 @@ describe('race and resource fields', () => {
 		expect([back.raceKey, back.subraceKey, back.resourcesUsed]).toEqual(['elf', 'drow', { 'faerie-fire': 1 }]);
 	});
 });
+
+describe('experience, proficiencies, senses and weapons', () => {
+	it('fills new fields when importing an old backup', () => {
+		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
+		expect(c).toMatchObject({ xp: 0, milestone: false, weaponProficiencies: [], fightingStyles: [], senses: [] });
+	});
+
+	it('keeps them, dropping junk', () => {
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: {
+				id: 'a',
+				name: 'X',
+				classKey: 'fighter',
+				xp: 6500.7,
+				milestone: 'yes',
+				weaponProficiencies: ['whip', 3, 'whip'],
+				fightingStyles: ['defense'],
+				senses: [{ id: 's', name: 'Darkvision', range: 60 }, { name: '', range: 10 }, { name: 'Tremorsense', range: -5 }],
+				items: [
+					{
+						id: 'i',
+						kind: 'gear',
+						name: 'Longsword',
+						equipped: true,
+						weapon: { base: 'longsword', category: 'martial', damage: '1d8', damageType: 'slashing', properties: ['versatile', 'bogus'], versatile: '1d10' },
+						effects: { attack: 1, damage: 1 }
+					},
+					{ id: 'j', name: 'Stick', weapon: { base: 'stick', category: 'exotic' }, equipped: true }
+				]
+			}
+		});
+		expect(c).toMatchObject({ xp: 6500, milestone: false, weaponProficiencies: ['whip'], fightingStyles: ['defense'] });
+		expect(c.senses).toEqual([{ id: 's', name: 'Darkvision', range: 60 }]);
+		expect(c.items[0]).toMatchObject({
+			equipped: true,
+			weapon: { base: 'longsword', ranged: false, properties: ['versatile'], versatile: '1d10' },
+			effects: { attack: 1, damage: 1 }
+		});
+		expect(c.items[1].weapon).toBeUndefined();
+		expect(c.items[1].equipped).toBeUndefined();
+	});
+});

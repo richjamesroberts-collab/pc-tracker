@@ -124,6 +124,7 @@ type StatInput = Pick<
 	| 'hpBase'
 	| 'initiativeOverride'
 	| 'spellModOverride'
+	| 'fightingStyles'
 >;
 
 export interface Breakdown {
@@ -155,6 +156,10 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 		total = ac + dexPart;
 		parts.push({ label: body.name, value: `${ac}` });
 		if (dexPart) parts.push({ label: type === 'medium' ? 'DEX (max 2)' : 'DEX', value: signedMod(dexPart) });
+		if (c.fightingStyles?.includes('defense')) {
+			total += 1;
+			parts.push({ label: 'Defense', value: '+1' });
+		}
 	} else {
 		const options: { total: number; parts: StatSource[] }[] = [
 			{ total: 10 + dex, parts: [{ label: 'Unarmored', value: '10' }, { label: 'DEX', value: signedMod(dex) }] }
@@ -272,6 +277,11 @@ export function describeEffects(i: InventoryItem): string {
 	for (const [k, n] of Object.entries(e.add ?? {}) as [Ability, number][]) out.push(`${ABILITY_SHORT[k]} ${signedMod(n)} (max ${e.addMax ?? 20})`);
 	if (e.ac) out.push(`AC ${signedMod(e.ac)}${e.unarmoredOnly ? ' without armor or shield' : ''}`);
 	if (e.spellAttack) out.push(`Spell attack ${signedMod(e.spellAttack)}`);
+	if (e.attack && e.attack === e.damage) out.push(`Attack and damage ${signedMod(e.attack)}`);
+	else {
+		if (e.attack) out.push(`Attack ${signedMod(e.attack)}`);
+		if (e.damage) out.push(`Damage ${signedMod(e.damage)}`);
+	}
 	if (e.spellDc) out.push(`Spell save DC ${signedMod(e.spellDc)}`);
 	return out.join(' · ');
 }
