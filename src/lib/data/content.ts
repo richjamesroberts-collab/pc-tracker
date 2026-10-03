@@ -1,4 +1,4 @@
-import type { Character, InventoryItem, ItemArmor, ItemEffects } from '$lib/types';
+import type { Character, InventoryItem, ItemArmor, ItemEffects, ItemWeapon } from '$lib/types';
 import { CLASS_MAP } from './classes';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
@@ -117,6 +117,8 @@ export interface MagicItem {
 	regain?: string;
 	effects?: ItemEffects;
 	armor?: ItemArmor;
+	/** Magic weapons of a set kind (Dagger of Venom); generic ones (+1 Weapon) have none until the player picks. */
+	weapon?: ItemWeapon;
 	/** Plain paragraphs joined by `\n`. */
 	text: string;
 }
@@ -145,6 +147,13 @@ function copyEffects(e: ItemEffects | undefined): ItemEffects {
 	return { ...e, ...(e.set ? { set: { ...e.set } } : {}), ...(e.add ? { add: { ...e.add } } : {}) };
 }
 
+/** A plain copy of a weapon's stats. */
+export const copyWeapon = (w: ItemWeapon): ItemWeapon => ({
+	...w,
+	properties: [...w.properties],
+	...(w.range ? { range: [w.range[0], w.range[1]] as [number, number] } : {})
+});
+
 /** A new inventory entry for a bundled magic item, with full charges. */
 export function inventoryItem(m: MagicItem): InventoryItem {
 	return {
@@ -159,6 +168,7 @@ export function inventoryItem(m: MagicItem): InventoryItem {
 		quantity: 1,
 		...(m.weight ? { weight: m.weight } : {}),
 		...(m.armor ? { armor: { ...m.armor }, equipped: false } : {}),
+		...(m.weapon ? { weapon: copyWeapon(m.weapon), equipped: false } : {}),
 		effects: copyEffects(m.effects),
 		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
 		notes: ''
@@ -191,6 +201,7 @@ export interface GearItem {
 	/** "1d8 slashing · Versatile (1d10)", "AC 12 + Dex". */
 	stats?: string;
 	armor?: ItemArmor;
+	weapon?: ItemWeapon;
 	/** Usually bought this many at a time (20 arrows). */
 	bundle?: number;
 	/** What an equipment pack holds: bundled gear by `ref`, or a plain name for things not on the list. */
@@ -227,6 +238,7 @@ export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): Invent
 		quantity,
 		...(g.weight ? { weight: g.weight } : {}),
 		...(g.armor ? { armor: { ...g.armor }, equipped: false } : {}),
+		...(g.weapon ? { weapon: copyWeapon(g.weapon), equipped: false } : {}),
 		effects: {},
 		notes: ''
 	};
@@ -276,6 +288,34 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
 	if (!c.acAuto) c.acBase += before.ac - armorClass(c).total;
 	c.hpBase = Math.max(1, c.hpBase + before.hp - maxHp(c).total);
 	return changed;
+}
+
+/**
+ * Bump when bundled items gain fields that inventory entries copy, and teach `fillItemData` to fill them.
+ * 1: weapon stats, and magic weapons' attack and damage bonuses.
+ */
+export const ITEM_DATA_VERSION = 1;
+
+/** Whether the character has bundled items whose copies may be missing fields added since. */
+export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
+
+/**
+ * Fill in weapon stats and magic weapon bonuses on bundled items added before they were tracked,
+ * and mark the character as up to date. Entries the player already changed are left alone.
+ */
+export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: Map<string, GearItem>): void {
+	for (const i of c.items) {
+		const data = i.ref ? (i.kind === 'gear' ? gear : magic).get(i.ref) : undefined;
+		if (!data) continue;
+		if (data.weapon && !i.weapon) {
+			i.weapon = copyWeapon(data.weapon);
+			i.equipped ??= false;
+		}
+		const e = 'effects' in data ? data.effects : undefined;
+		if (i.effects && e?.attack && i.effects.attack === undefined) i.effects.attack = e.attack;
+		if (i.effects && e?.damage && i.effects.damage === undefined) i.effects.damage = e.damage;
+	}
+	c.itemDataVersion = ITEM_DATA_VERSION;
 }
 
 /** "15 gp", "5 cp" from copper. */

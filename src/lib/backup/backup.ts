@@ -1,6 +1,21 @@
 import { legacyToBase, newCharacter } from '$lib/character';
 import { recompute } from '$lib/rules/stats';
-import type { Ability, AbilityScores, ArmorType, Character, CharacterSpell, Coins, CustomResource, InventoryItem, ItemArmor, ItemEffects, Spell } from '$lib/types';
+import type {
+	Ability,
+	AbilityScores,
+	ArmorType,
+	Character,
+	CharacterSpell,
+	Coins,
+	CustomResource,
+	CustomSense,
+	InventoryItem,
+	ItemArmor,
+	ItemEffects,
+	ItemWeapon,
+	Spell,
+	WeaponProperty
+} from '$lib/types';
 
 export const APP_ID = '5e-pc-tracker';
 export const SCHEMA_VERSION = 1;
@@ -72,7 +87,9 @@ function items(v: unknown): InventoryItem[] {
 			attuned: !!i.attunement && !!i.attuned,
 			quantity: Math.max(1, Math.floor(num(i.quantity, 1))),
 			...(weight > 0 ? { weight } : {}),
-			...(armor(i.armor) ? { armor: armor(i.armor), equipped: !!i.equipped } : {}),
+			...(armor(i.armor) || weapon(i.weapon) ? { equipped: !!i.equipped } : {}),
+			...(armor(i.armor) ? { armor: armor(i.armor) } : {}),
+			...(weapon(i.weapon) ? { weapon: weapon(i.weapon) } : {}),
 			...(effects(i.effects) ? { effects: effects(i.effects) } : {}),
 			...(ch && max > 0
 				? {
@@ -103,6 +120,34 @@ function armor(v: unknown): ItemArmor | undefined {
 	return { type: v.type as ArmorType, ac: Math.min(30, Math.max(0, Math.round(num(v.ac, 0)))) };
 }
 
+const WEAPON_PROPERTIES: WeaponProperty[] = ['ammunition', 'finesse', 'heavy', 'light', 'loading', 'reach', 'special', 'thrown', 'two-handed', 'versatile'];
+const DICE = /^(\d+d\d+|\d+)?$/;
+
+function weapon(v: unknown): ItemWeapon | undefined {
+	if (!isObj(v) || typeof v.base !== 'string' || !v.base || (v.category !== 'simple' && v.category !== 'martial')) return undefined;
+	const damage = str(v.damage);
+	const range = Array.isArray(v.range) && v.range.length === 2 && v.range.every((n) => typeof n === 'number' && n > 0) ? v.range : undefined;
+	return {
+		base: v.base,
+		category: v.category,
+		ranged: !!v.ranged,
+		damage: DICE.test(damage) ? damage : '',
+		damageType: str(v.damageType),
+		properties: Array.isArray(v.properties) ? v.properties.filter((p): p is WeaponProperty => WEAPON_PROPERTIES.includes(p as WeaponProperty)) : [],
+		...(typeof v.versatile === 'string' && v.versatile && DICE.test(v.versatile) ? { versatile: v.versatile } : {}),
+		...(range ? { range: [range[0], range[1]] as [number, number] } : {})
+	};
+}
+
+function senses(v: unknown): CustomSense[] {
+	if (!Array.isArray(v)) return [];
+	return v
+		.filter((s) => isObj(s) && typeof s.name === 'string' && s.name.trim() && typeof s.range === 'number' && s.range > 0)
+		.map((s) => ({ id: str(s.id) || crypto.randomUUID(), name: (s.name as string).trim(), range: Math.min(9999, Math.round(s.range as number)) }));
+}
+
+const strings = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))] : []);
+
 function scorePart(v: unknown): Partial<AbilityScores> | undefined {
 	if (!isObj(v)) return undefined;
 	const out: Partial<AbilityScores> = {};
@@ -120,7 +165,9 @@ function effects(v: unknown): ItemEffects | undefined {
 		ac: n(v.ac),
 		spellAttack: n(v.spellAttack),
 		spellDc: n(v.spellDc),
-		unarmoredOnly: v.unarmoredOnly === true || undefined
+		unarmoredOnly: v.unarmoredOnly === true || undefined,
+		attack: n(v.attack),
+		damage: n(v.damage)
 	};
 	return Object.fromEntries(Object.entries(e).filter(([, x]) => x !== undefined)) as ItemEffects;
 }
@@ -183,6 +230,8 @@ export function readBackup(data: unknown): Character {
 		raceKey: typeof raw.raceKey === 'string' ? raw.raceKey : undefined,
 		subraceKey: typeof raw.subraceKey === 'string' ? raw.subraceKey : undefined,
 		level: Math.min(20, Math.max(1, num(raw.level, 1))),
+		xp: Math.max(0, Math.floor(num(raw.xp, 0))),
+		milestone: raw.milestone === true,
 		abilities: abilities(raw.abilities),
 		raceAbilityChoices: Array.isArray(raw.raceAbilityChoices)
 			? raw.raceAbilityChoices.filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability))
@@ -197,6 +246,9 @@ export function readBackup(data: unknown): Character {
 		tempHp: Math.max(0, num(raw.tempHp, 0)),
 		deathSaves: { successes: num(saves.successes, 0), failures: num(saves.failures, 0) },
 		stable: !!raw.stable,
+		weaponProficiencies: strings(raw.weaponProficiencies),
+		fightingStyles: strings(raw.fightingStyles),
+		senses: senses(raw.senses),
 		speed: typeof raw.speed === 'number' ? raw.speed : undefined,
 		initiativeModifier: optionalNum(raw.initiativeModifier),
 		initiativeOverride: optionalNum(raw.initiativeOverride),
@@ -216,6 +268,7 @@ export function readBackup(data: unknown): Character {
 		spellCache: readSpells(raw.spellCache),
 		concentration: typeof raw.concentration === 'string' ? raw.concentration : undefined,
 		items: items(raw.items),
+		itemDataVersion: optionalNum(raw.itemDataVersion),
 		coins: coins(raw.coins),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),

@@ -9,7 +9,10 @@ import { RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
 import {
 	featureGroups,
+	fillItemData,
 	fillItemDetails,
+	ITEM_DATA_VERSION,
+	needsItemData,
 	gearInventoryItem,
 	inventoryItem,
 	RARITIES,
@@ -203,6 +206,37 @@ describe('item effects and armor', () => {
 		expect(c.acBase).toBe(16);
 		c.items[0].attuned = false;
 		expect(armorClass(c).total).toBe(16);
+	});
+	it('gives weapons structured stats, and magic weapons their base weapon and bonus', () => {
+		expect(gearById.get('longbow|phb')!.weapon).toEqual({
+			base: 'longbow',
+			category: 'martial',
+			ranged: true,
+			damage: '1d8',
+			damageType: 'piercing',
+			properties: ['ammunition', 'heavy', 'two-handed'],
+			range: [150, 600]
+		});
+		expect(gearById.get('staff|phb')!.weapon?.base).toBe('quarterstaff');
+		expect(gearById.get('arrow|phb')!.weapon).toBeUndefined();
+		const weapons = gear.filter((g) => g.weapon);
+		expect(weapons.length).toBeGreaterThanOrEqual(37);
+		for (const g of weapons) expect(g.weapon!.damage === '' || /^\d+(d\d+)?$/.test(g.weapon!.damage), g.name).toBe(true);
+		expect(magicById.get('dagger of venom|dmg')).toMatchObject({ weapon: { base: 'dagger' }, effects: { attack: 1, damage: 1 } });
+		expect(magicById.get('+2 weapon|dmg')).toMatchObject({ effects: { attack: 2, damage: 2 } });
+		expect(magicById.get('+2 weapon|dmg')!.weapon).toBeUndefined();
+		expect(gearInventoryItem(gearById.get('longsword|phb')!)).toMatchObject({ weapon: { base: 'longsword' }, equipped: false });
+	});
+	it('fills in weapon stats and bonuses on entries added before weapons were tracked, once', () => {
+		const sword = { ...gearInventoryItem(gearById.get('longsword|phb')!), weapon: undefined, equipped: undefined };
+		const venom = { ...inventoryItem(magicById.get('dagger of venom|dmg')!), weapon: undefined, equipped: undefined, effects: {} };
+		const c = { ...newCharacter(), items: [sword, venom] };
+		expect(needsItemData(c)).toBe(true);
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0]).toMatchObject({ weapon: { base: 'longsword' }, equipped: false });
+		expect(c.items[1]).toMatchObject({ weapon: { base: 'dagger' }, effects: { attack: 1, damage: 1 } });
+		expect(c.itemDataVersion).toBe(ITEM_DATA_VERSION);
+		expect(needsItemData(c)).toBe(false);
 	});
 	it('has racial increases for every race', () => {
 		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();

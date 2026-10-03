@@ -696,6 +696,52 @@ function armorOf(i) {
 
 const bonus = (v) => (v ? Number(String(v).replace('+', '')) : 0);
 
+const WEAPON_DAMAGE = { S: 'slashing', P: 'piercing', B: 'bludgeoning' };
+const WEAPON_PROPERTIES = {
+	A: 'ammunition',
+	F: 'finesse',
+	H: 'heavy',
+	L: 'light',
+	LD: 'loading',
+	R: 'reach',
+	S: 'special',
+	T: 'thrown',
+	'2H': 'two-handed',
+	V: 'versatile'
+};
+// Arcane and druidic focus staffs fight as quarterstaffs.
+const WEAPON_BASE = { staff: 'quarterstaff', 'wooden staff': 'quarterstaff' };
+
+/**
+ * Structured weapon stats for attacks: `{ base, category, ranged, damage, damageType, properties, versatile?, range? }`.
+ * `base` is the PHB weapon's lowercase name, which proficiency is checked against.
+ */
+function weaponOf(i) {
+	if (!i.weaponCategory) return undefined;
+	const code = i.type?.split('|')[0];
+	if (code === 'A') return undefined;
+	const name = i.name.toLowerCase();
+	const range = /^(\d+)\/(\d+)$/.exec(i.range ?? '');
+	const properties = (i.property ?? []).map((p) => WEAPON_PROPERTIES[p.split('|')[0]] ?? fail(`Unknown weapon property ${p} on ${i.name}`));
+	return {
+		base: WEAPON_BASE[name] ?? name,
+		category: i.weaponCategory,
+		ranged: code === 'R',
+		damage: i.dmg1 ?? '',
+		damageType: i.dmg1 ? (WEAPON_DAMAGE[i.dmgType] ?? fail(`Unknown damage type ${i.dmgType} on ${i.name}`)) : '',
+		properties,
+		...(i.dmg2 ? { versatile: i.dmg2 } : {}),
+		...(range ? { range: [Number(range[1]), Number(range[2])] } : {})
+	};
+}
+
+const baseWeapons = new Map(
+	readJson('items-base.json')
+		.baseitem.filter((i) => i.source === 'PHB')
+		.map((i) => [i.name.toLowerCase(), weaponOf(i)])
+		.filter(([, w]) => w)
+);
+
 /**
  * What an item does to the character's numbers while it's in use (attuned, or worn for armor).
  * Ability changes only count for items you attune to; tomes, manuals and potions are one-offs the
@@ -714,6 +760,13 @@ function itemEffects(i, type, text) {
 	}
 	// A Defender's AC bonus is whatever the wielder moves over, so weapons are left to the player.
 	if (bonus(i.bonusAc) && !type.startsWith('Weapon')) e.ac = bonus(i.bonusAc);
+	// Attack and damage bonuses only count on weapons; ammunition's goes on the shot, which the player adds themselves.
+	if (type.startsWith('Weapon')) {
+		const attack = bonus(i.bonusWeapon) + bonus(i.bonusWeaponAttack);
+		const damage = bonus(i.bonusWeapon) + bonus(i.bonusWeaponDamage);
+		if (attack) e.attack = attack;
+		if (damage) e.damage = damage;
+	}
 	if (bonus(i.bonusSpellAttack)) e.spellAttack = bonus(i.bonusSpellAttack);
 	if (bonus(i.bonusSpellSaveDc)) e.spellDc = bonus(i.bonusSpellSaveDc);
 	if (i.name === 'Bracers of Defense') e.unarmoredOnly = true;
@@ -726,6 +779,9 @@ function convertItem(i, type) {
 	const text = flatten(itemEntriesOf(i)).join('\n');
 	const effects = itemEffects(i, type, text);
 	const armor = armorOf(i) ?? (type === 'Armor (shield)' ? { type: 'shield', ac: 2 } : undefined);
+	// Magic weapons of a set kind (Dagger of Venom) fight as that weapon; generic ones (+1 Weapon) wait for the player to pick.
+	const weapon = type.startsWith('Weapon') && i.baseItem ? baseWeapons.get(baseName(i.baseItem)) : undefined;
+	if (type.startsWith('Weapon') && i.baseItem && !weapon) fail(`${i.name}: no PHB weapon ${i.baseItem}`);
 	return {
 		id: `${i.name}|${i.source}`.toLowerCase(),
 		name: i.name,
@@ -739,6 +795,7 @@ function convertItem(i, type) {
 		...(charges && regain(i) ? { regain: regain(i) } : {}),
 		...(Object.keys(effects).length ? { effects } : {}),
 		...(armor ? { armor } : {}),
+		...(weapon ? { weapon: { ...weapon } } : {}),
 		text
 	};
 }
@@ -876,6 +933,7 @@ const gearOut = gearSource
 			...(i.value ? { value: i.value } : {}),
 			...(stats ? { stats } : {}),
 			...(armorOf(i) ? { armor: armorOf(i) } : {}),
+			...(weaponOf(i) ? { weapon: weaponOf(i) } : {}),
 			...(bundle ? { bundle } : {}),
 			...(isPack
 				? {

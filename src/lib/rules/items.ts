@@ -136,11 +136,14 @@ export function itemSpellBonus(c: Pick<Character, 'items'>): { attack: number; d
 	return { attack, dc };
 }
 
-/** Put armor or a shield on or take it off. Wearing one suit of armor (or shield) takes off any other. */
+/**
+ * Put armor or a shield on or take it off, or ready a weapon or put it away. Wearing one suit of armor
+ * (or shield) takes off any other; any number of weapons can be at hand.
+ */
 export function setEquipped(c: Character, id: string, on: boolean): boolean {
 	const item = c.items.find((i) => i.id === id);
-	if (!item?.armor) return false;
-	if (on) {
+	if (!item?.armor && !item?.weapon) return false;
+	if (on && item.armor) {
 		const shield = item.armor.type === 'shield';
 		for (const other of c.items) if (other.armor && other.equipped && (other.armor.type === 'shield') === shield) other.equipped = false;
 	}

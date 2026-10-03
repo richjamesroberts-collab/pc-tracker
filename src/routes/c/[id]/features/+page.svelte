@@ -6,6 +6,9 @@
 	import { loadContent, featureGroups, type Content } from '$lib/data/content';
 	import { resourceLeft, resourcesFor, restoreCustom, restoreResource, spendCustom, spendResource, type ResourceDef } from '$lib/rules/features';
 	import { longRest, shortRest } from '$lib/rules/resources';
+	import { FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
+	import { proficiencyLabel, proficiencyList, weaponProficiencies } from '$lib/rules/proficiency';
+	import { senses } from '$lib/rules/senses';
 	import type { Character, CustomResource } from '$lib/types';
 
 	/** Rows with more pips than this show as a number with −/+ buttons instead. */
@@ -30,6 +33,9 @@
 	});
 
 	const groups = $derived(content ? featureGroups(content, c) : []);
+	const weapons = $derived(proficiencyList(weaponProficiencies(c)).map(proficiencyLabel));
+	const styles = $derived(c.fightingStyles.map((k) => FIGHTING_STYLE_MAP.get(k)).filter((s) => !!s));
+	const senseList = $derived(senses(c));
 
 	// Sheet state: `editing` is the index of the custom counter being edited, -1 for a new one.
 	let sheetOpen = $state(false);
@@ -147,6 +153,16 @@
 
 	<button type="button" class="add" onclick={() => openCounter(-1)}>Add counter</button>
 </section>
+
+<h2 class="label group">Proficiencies and senses</h2>
+<div class="card profs">
+	<p><b>Weapons</b> {weapons.length ? weapons.join(', ') : 'None'}</p>
+	{#each styles as st (st.key)}
+		<p><b>{st.name}</b> {st.text}</p>
+	{/each}
+	<p><b>Senses</b> {senseList.length ? senseList.map((x) => `${x.name} ${x.range} ft`).join(', ') : 'None beyond normal sight'}</p>
+	<a href={resolve('/c/[id]/edit', { id: c.id })}>Change in Edit</a>
+</div>
 
 {#if !c.raceKey}
 	<div class="card pick">
@@ -323,6 +339,26 @@
 		background: transparent;
 		color: var(--color-accent);
 		font-weight: 800;
+	}
+
+	.profs {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 14px 16px;
+		font-size: 15px;
+	}
+
+	.profs b {
+		margin-right: 4px;
+	}
+
+	.profs a {
+		align-self: flex-start;
+		padding-top: 4px;
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--color-accent);
 	}
 
 	.pick {

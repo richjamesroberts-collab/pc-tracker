@@ -76,6 +76,39 @@ export interface ItemEffects {
 	spellDc?: number;
 	/** The AC bonus only counts without armor or a shield (Bracers of Defense). */
 	unarmoredOnly?: boolean;
+	/** Magic weapons: bonus to attack and damage rolls (+1 Weapon). */
+	attack?: number;
+	damage?: number;
+}
+
+export type WeaponProperty =
+	| 'ammunition'
+	| 'finesse'
+	| 'heavy'
+	| 'light'
+	| 'loading'
+	| 'reach'
+	| 'special'
+	| 'thrown'
+	| 'two-handed'
+	| 'versatile';
+
+/** What a weapon does when it hits, copied from the PHB weapon it is (a +1 Weapon becomes a longsword when the player picks). */
+export interface ItemWeapon {
+	/** The PHB weapon, lowercase ("longsword"): what proficiency is checked against. */
+	base: string;
+	category: 'simple' | 'martial';
+	/** Ranged weapon (bows, crossbows, darts, slings, nets); thrown melee weapons are melee. */
+	ranged: boolean;
+	/** "1d8", or "1" for a blowgun; empty for a net. */
+	damage: string;
+	/** slashing, piercing or bludgeoning; empty for a net. */
+	damageType: string;
+	properties: WeaponProperty[];
+	/** Damage when used two-handed. */
+	versatile?: string;
+	/** Normal and long range in feet, for ranged and thrown weapons. */
+	range?: [number, number];
 }
 
 /** Something the character carries. Bundled items copy their name, type, rarity, weight and charges when added. */
@@ -100,6 +133,9 @@ export interface InventoryItem {
 	weight?: number;
 	/** Armor or a shield; its AC counts while `equipped`. */
 	armor?: ItemArmor;
+	/** A weapon; it's listed under Attacks while `equipped`. */
+	weapon?: ItemWeapon;
+	/** Armor being worn, or a weapon at hand. */
 	equipped?: boolean;
 	/** Copied from the bundled item. Absent on entries added before effects were tracked, until filled in. */
 	effects?: ItemEffects;
@@ -110,6 +146,15 @@ export interface InventoryItem {
 
 export type Ability = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export type AbilityScores = Record<Ability, number>;
+
+/** A sense the player adds themselves (Devil's Sight, Goggles of Night, a Custom Lineage's darkvision). */
+export interface CustomSense {
+	id: string;
+	/** "Darkvision", "Blindsight", "Tremorsense", "Truesight", or anything else. */
+	name: string;
+	/** Feet. */
+	range: number;
+}
 
 export type Coin = 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
 export type Coins = Record<Coin, number>;
@@ -126,6 +171,10 @@ export interface Character {
 	/** Subrace (or dragon ancestry) key within the race. */
 	subraceKey?: string;
 	level: number;
+	/** Experience points. */
+	xp: number;
+	/** The group levels up at story milestones, so XP isn't tracked. */
+	milestone: boolean;
 	/**
 	 * Base ability scores (1-30): before racial increases and magic items, including Ability Score
 	 * Improvements from levelling. See `abilityScores` in rules/stats.ts for the totals.
@@ -150,6 +199,16 @@ export interface Character {
 	tempHp: number;
 	deathSaves: DeathSaves;
 	stable: boolean;
+
+	/**
+	 * Weapon proficiencies beyond class, subclass and race (feats, multiclassing, a Kensei's or Bladesinger's pick):
+	 * 'simple', 'martial', or a PHB weapon's lowercase name.
+	 */
+	weaponProficiencies: string[];
+	/** Fighting style keys from `FIGHTING_STYLES` in rules/attacks.ts. */
+	fightingStyles: string[];
+	/** Senses beyond race and class. */
+	senses: CustomSense[];
 
 	speed?: number;
 	/** Initiative as worked out (DEX plus features), or `initiativeOverride`; don't set directly. */
@@ -186,6 +245,8 @@ export interface Character {
 	concentration?: string;
 
 	items: InventoryItem[];
+	/** Which `ITEM_DATA_VERSION` the bundled-item copies on `items` were last filled in from (see data/content.ts). */
+	itemDataVersion?: number;
 	coins: Coins;
 
 	notes: string;
