@@ -17,6 +17,8 @@
 	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
+	import { ABILITIES, abilityMod, signedMod } from '$lib/rules/abilities';
+	import { abilityBreakdown } from '$lib/rules/stats';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -47,6 +49,9 @@
 
 	let hpOpen = $state(false);
 	let acOpen = $state(false);
+	let abilitiesOpen = $state(false);
+
+	const abilities = $derived(abilityBreakdown(c));
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
@@ -146,6 +151,17 @@
 	</div>
 {/if}
 
+<button type="button" class="abilities" aria-label="Ability scores. Tap for details." onclick={() => (abilitiesOpen = true)}>
+	{#each ABILITIES as a (a.key)}
+		{@const score = abilities.scores[a.key]}
+		<span class="ability" class:boosted={score !== abilities.withoutItems[a.key]}>
+			<span class="abbr">{a.short}</span>
+			<strong>{signedMod(abilityMod(score))}</strong>
+			<span class="score">{score}</span>
+		</span>
+	{/each}
+</button>
+
 {#if stats.length}
 	<div class="stats" style:--cols={stats.length}>
 		{#each stats as s (s.k)}
@@ -182,6 +198,23 @@
 
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
+
+<Sheet open={abilitiesOpen} onclose={() => (abilitiesOpen = false)} label="Ability scores">
+	<h2 class="sheet-title">Ability scores</h2>
+	<ul class="ability-list">
+		{#each ABILITIES as a (a.key)}
+			{@const score = abilities.scores[a.key]}
+			<li>
+				<span class="name">{a.name}</span>
+				<span class="total"><b>{score}</b> {signedMod(abilityMod(score))}</span>
+				<span class="from">
+					{[`Base ${c.abilities[a.key]}`, ...abilities.sources[a.key].map((src) => `${src.label} ${src.value}`)].join(' · ')}
+				</span>
+			</li>
+		{/each}
+	</ul>
+	<a class="edit-link" href={resolve('/c/[id]/edit', { id: c.id })}>Change base scores in Edit</a>
+</Sheet>
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
@@ -410,6 +443,112 @@
 		background: var(--color-conc-edge);
 		color: var(--color-conc-ink);
 		font-size: 18px;
+		font-weight: 800;
+	}
+
+	.abilities {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: 6px;
+		width: 100%;
+		margin-top: 12px;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		font-weight: 400;
+	}
+
+	.ability {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		min-width: 0;
+		padding: 6px 2px 5px;
+		border-radius: 12px;
+		background: var(--color-surface-raised);
+	}
+
+	.ability .abbr {
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: var(--color-text-muted);
+	}
+
+	.ability strong {
+		font-family: var(--font-display);
+		font-size: 19px;
+		font-weight: 900;
+		line-height: 1.2;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.ability .score {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Raised by a magic item right now. */
+	.ability.boosted {
+		background: var(--color-effect-bg);
+	}
+
+	.ability.boosted strong,
+	.ability.boosted .score {
+		color: var(--color-effect-ink);
+	}
+
+	.sheet-title {
+		font-size: 22px;
+	}
+
+	.ability-list {
+		list-style: none;
+		margin-top: 8px;
+	}
+
+	.ability-list li {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 0 8px;
+		padding: 10px 0;
+	}
+
+	.ability-list li + li {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.ability-list .name {
+		font-weight: 700;
+	}
+
+	.ability-list .total {
+		font-variant-numeric: tabular-nums;
+		color: var(--color-text-muted);
+		font-weight: 700;
+	}
+
+	.ability-list .total b {
+		font-size: 18px;
+		color: var(--color-text);
+	}
+
+	.ability-list .from {
+		grid-column: 1 / -1;
+		font-size: 13px;
+		color: var(--color-text-muted);
+	}
+
+	.edit-link {
+		display: block;
+		margin-top: 12px;
+		padding: 12px 0;
+		text-align: center;
+		color: var(--color-accent);
 		font-weight: 800;
 	}
 
