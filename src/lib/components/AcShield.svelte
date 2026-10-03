@@ -1,6 +1,6 @@
 <script lang="ts">
-	/** With `onclick`, the shield is a button (tap to change AC). */
-	let { ac, onclick }: { ac: number; onclick?: () => void } = $props();
+	/** With `onclick`, the shield is a button (tap to change AC). `size` is the width in pixels. */
+	let { ac, onclick, size = 54 }: { ac: number; onclick?: () => void; size?: number } = $props();
 </script>
 
 {#snippet face()}
@@ -14,17 +14,17 @@
 {/snippet}
 
 {#if onclick}
-	<button type="button" class="shield" aria-label="Armour class {ac}. Tap to change." {onclick}>{@render face()}</button>
+	<button type="button" class="shield" style:--s={size / 54} aria-label="Armour class {ac}. Tap to change." {onclick}>{@render face()}</button>
 {:else}
-	<div class="shield" role="img" aria-label="Armour class {ac}">{@render face()}</div>
+	<div class="shield" style:--s={size / 54} role="img" aria-label="Armour class {ac}">{@render face()}</div>
 {/if}
 
 <style>
 	.shield {
 		position: relative;
 		display: block;
-		width: 54px;
-		height: 60px;
+		width: calc(54px * var(--s, 1));
+		height: calc(60px * var(--s, 1));
 		flex-shrink: 0;
 	}
 
@@ -63,7 +63,7 @@
 	}
 
 	.k {
-		font-size: 9px;
+		font-size: calc(9px * var(--s, 1));
 		font-weight: 800;
 		letter-spacing: 0.06em;
 		color: var(--color-accent);
@@ -72,7 +72,7 @@
 	.v {
 		font-family: var(--font-display);
 		font-weight: 900;
-		font-size: 22px;
+		font-size: calc(22px * var(--s, 1));
 		line-height: 1;
 		color: var(--color-conc-ink);
 	}
