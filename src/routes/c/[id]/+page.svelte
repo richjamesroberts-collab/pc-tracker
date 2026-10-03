@@ -35,7 +35,6 @@
 	const stats = $derived(
 		[
 			c.speed != null && { k: 'Speed', v: `${c.speed}` },
-			c.initiativeModifier != null && { k: 'Init', v: `${c.initiativeModifier >= 0 ? '+' : ''}${c.initiativeModifier}` },
 			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` }
 		].filter((s): s is { k: string; v: string } => !!s)
 	);
@@ -81,7 +80,12 @@
 		<h1>{c.name}</h1>
 		<p>{[raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}</p>
 	</div>
-	<AcShield ac={c.ac} onclick={() => (acOpen = true)} />
+	{#if c.initiativeModifier != null}
+		<div class="init" role="img" aria-label="Initiative {signedMod(c.initiativeModifier)}">
+			<span class="k">INIT</span>
+			<span class="v">{signedMod(c.initiativeModifier)}</span>
+		</div>
+	{/if}
 	<button
 		type="button"
 		class="icon-btn"
@@ -119,26 +123,33 @@
 	</button>
 {/if}
 
-{#if down}
-	<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
-{:else}
-	<section class="card hp" aria-labelledby="hp-title">
-		<div class="hp-head">
-			<h2 id="hp-title" class="label">Hit points</h2>
-			{#if c.tempHp > 0}<span class="temp-chip">+{c.tempHp} temp</span>{/if}
-		</div>
-		<p class="hp-num"><span class="cur">{c.hpCurrent}</span><span class="max">/ {c.hpMax}</span></p>
-		<div class="bar" aria-hidden="true">
-			<div class="fill {hpTone}" style:width="{hpPct}%"></div>
-			<div class="fill temp" style:width="{tempPct}%"></div>
-		</div>
-		<div class="hp-buttons">
-			<button type="button" class="hit" onclick={() => openHp('damage')}>Damage</button>
-			<button type="button" class="heal" onclick={() => openHp('heal')}>Heal</button>
-			<button type="button" class="temp" onclick={() => openHp('temp')}>Temp HP</button>
-		</div>
-	</section>
-{/if}
+<div class="vitals-row" class:down>
+	<button type="button" class="card ac-card" aria-label="Armor class {c.ac}. Tap to change." onclick={() => (acOpen = true)}>
+		<span class="label">Armor class</span>
+		<AcShield ac={c.ac} size={76} />
+		<span class="ac-hint">Tap to change</span>
+	</button>
+	{#if down}
+		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
+	{:else}
+		<section class="card hp" aria-labelledby="hp-title">
+			<div class="hp-head">
+				<h2 id="hp-title" class="label">Hit points</h2>
+				{#if c.tempHp > 0}<span class="temp-chip">+{c.tempHp} temp</span>{/if}
+			</div>
+			<p class="hp-num"><span class="cur">{c.hpCurrent}</span><span class="max">/ {c.hpMax}</span></p>
+			<div class="bar" aria-hidden="true">
+				<div class="fill {hpTone}" style:width="{hpPct}%"></div>
+				<div class="fill temp" style:width="{tempPct}%"></div>
+			</div>
+			<div class="hp-buttons">
+				<button type="button" class="hit" onclick={() => openHp('damage')}>Damage</button>
+				<button type="button" class="heal" onclick={() => openHp('heal')}>Heal</button>
+				<button type="button" class="temp" onclick={() => openHp('temp')}>Temp HP</button>
+			</div>
+		</section>
+	{/if}
+</div>
 
 {#if c.concentration}
 	<div class="conc">
@@ -317,8 +328,82 @@
 		font-weight: 800;
 	}
 
+	/* AC on the left (a third of the row at most), hit points or death saves on the right. */
+	.vitals-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: 10px;
+		align-items: stretch;
+	}
+
+	.ac-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 14px 6px;
+		color: var(--color-text);
+		font-weight: 400;
+	}
+
+	.ac-card .label {
+		text-align: center;
+	}
+
+	/* Death saves need the full width, so AC drops below as a strip. */
+	.vitals-row.down {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.vitals-row.down .ac-card {
+		order: 2;
+		flex-direction: row;
+		gap: 12px;
+		padding: 10px 16px;
+	}
+
+	.ac-card:active :global(.shield) {
+		transform: scale(0.95);
+	}
+
+	.ac-hint {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--color-text-faint);
+	}
+
+	.init {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 54px;
+		height: 54px;
+		border-radius: 14px;
+		background: var(--color-surface-raised);
+		border: 1.5px solid var(--color-border-strong);
+	}
+
+	.init .k {
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		color: var(--color-text-muted);
+	}
+
+	.init .v {
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-weight: 900;
+		line-height: 1;
+	}
+
 	.hp {
-		padding: 16px;
+		min-width: 0;
+		padding: 14px;
 	}
 
 	.hp-head {
@@ -339,6 +424,7 @@
 
 	.hp-num {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 6px;
 		margin-top: 4px;
@@ -347,7 +433,7 @@
 	}
 
 	.cur {
-		font-size: 76px;
+		font-size: 64px;
 		font-weight: 900;
 		line-height: 1;
 	}
@@ -384,15 +470,22 @@
 		opacity: 0.55;
 	}
 
+	/* Damage and Heal side by side, Temp HP across the bottom, so they fit a narrow column. */
 	.hp-buttons {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 8px;
-		margin-top: 16px;
+		margin-top: 14px;
+	}
+
+	.hp-buttons .temp {
+		grid-column: 1 / -1;
+		height: 44px;
 	}
 
 	.hp-buttons button {
-		height: 56px;
+		height: 52px;
+		padding: 0 6px;
 		border: 0;
 		border-radius: 14px;
 		font-size: 16px;
