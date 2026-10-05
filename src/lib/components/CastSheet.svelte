@@ -4,7 +4,9 @@
 	import SpellDetails from './SpellDetails.svelte';
 	import { session } from '$lib/session.svelte';
 	import { METAMAGIC, metamagicCost, sorceryPointsLeft, spendPactSlot, spendSlot, spendSorceryPoints } from '$lib/rules/resources';
-	import { grantCastOptions, grantedSpells, slotsAllowed, spendCast, type CastSpend } from '$lib/rules/grants';
+	import { grantCasting, grantCastOptions, grantedSpells, slotsAllowed, spendCast, type CastSpend } from '$lib/rules/grants';
+	import { spellNotes } from '$lib/rules/spellnotes';
+	import { signedMod } from '$lib/rules/abilities';
 	import { arcanumLevels, ordinal, pactSlots, slotMax, slotsLeft } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
@@ -68,6 +70,12 @@
 	});
 
 	const selected = $derived(options.find((o) => o.key === choice));
+	/** A granted spell cast with its own ability (a tiefling fighter's Charisma), and what features add. */
+	const casting = $derived.by(() => {
+		const g = spell && grantedSpells(c).find((x) => x.id === spell.id);
+		return g ? grantCasting(c, g) : null;
+	});
+	const notes = $derived(spell ? spellNotes(c, spell) : []);
 	const knownMeta = $derived(METAMAGIC.filter((m) => c.metamagic.includes(m.key)));
 	const metaCost = $derived(spell ? meta.reduce((n, k) => n + metamagicCost(k, spell.level), 0) : 0);
 	const pointsLeft = $derived(sorceryPointsLeft(c));
@@ -120,6 +128,15 @@
 	{#if spell}
 		<SpellDetails {spell} />
 
+		{#if casting || notes.length}
+			<div class="for-you">
+				{#if casting}
+					<p><b>{casting.name}</b> · {signedMod(casting.attack)} to hit · DC {casting.dc}</p>
+				{/if}
+				{#each notes as note (note)}<p>{note}</p>{/each}
+			</div>
+		{/if}
+
 		{#if options.length}
 			<p class="label section">Cast using</p>
 			<div class="options" role="radiogroup" aria-label="Slot to use">
@@ -169,6 +186,20 @@
 	.section {
 		margin-top: 16px;
 		margin-bottom: 8px;
+	}
+
+	.for-you {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: 14px;
+		padding: 12px 14px;
+		border-radius: 14px;
+		border: 1px solid var(--color-spell-edge);
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
+		font-size: 14px;
+		font-weight: 600;
 	}
 
 	.options {

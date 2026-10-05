@@ -1229,6 +1229,20 @@ const CAST_OVERRIDES = {
 	'monk/sun-soul': { spells: { 'burning hands': [{ kind: 'points', points: 'ki', cost: 2, upcast: 'half-level' }] } }
 };
 
+/** Spellcasting abilities 5etools doesn't give, by owner. */
+const ABILITY_OVERRIDES = { 'fighter/psi-warrior': 'int' };
+
+/**
+ * The ability a set's spells are cast with: 'int', 'wis', 'cha', 'feat' (the ability the feat raised:
+ * Fey Touched) or a list to choose from (MPMM races). Absent: the class's own spellcasting ability.
+ */
+const grantAbility = (owner, set) => {
+	const a = ABILITY_OVERRIDES[owner] ?? set.ability;
+	if (!a) return undefined;
+	if (typeof a === 'string') return a === 'inherit' ? 'feat' : a;
+	return a.choose ?? fail(`${owner}: unknown spellcasting ability ${JSON.stringify(a)}`);
+};
+
 /** TCE feats and MPMM races whose spells can also be cast with the character's spell slots. */
 const SLOT_OWNERS = (owner, source) => (owner.startsWith('feat:') && source === 'TCE') || (/^(sub)?race:/.test(owner) && source === 'MPMM');
 
@@ -1366,6 +1380,7 @@ function addGrants(owner, sets, { shortName = '', labels, source, castFor } = {}
 			applyOverrides(owner, spells);
 			if (castFor) for (const x of [...spells, ...choices]) if (mode === 'innate') x.cast = castFor(x.cast);
 			const grantCast = mode === 'known' ? CAST_OVERRIDES[owner]?.grantCast : undefined;
+			const ability = grantAbility(owner, set);
 			list.push({
 				key: `${owner}#${list.length}`,
 				owner,
@@ -1374,6 +1389,7 @@ function addGrants(owner, sets, { shortName = '', labels, source, castFor } = {}
 				mode,
 				free: mode !== 'expanded' && !COUNTED_OWNERS.has(owner),
 				...(variant ? { variant } : {}),
+				...(ability ? { ability } : {}),
 				...(mode === 'innate' && SLOT_OWNERS(owner, source) ? { slots: true } : {}),
 				...(grantCast ? { cast: grantCast } : {}),
 				spells,
