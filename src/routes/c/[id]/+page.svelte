@@ -13,6 +13,9 @@
 	import DefensesCard from '$lib/components/DefensesCard.svelte';
 	import XpSheet from '$lib/components/XpSheet.svelte';
 	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
+	import SpellcastingSheet from '$lib/components/SpellcastingSheet.svelte';
+	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
+	import CountersCard from '$lib/components/CountersCard.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
@@ -74,6 +77,8 @@
 	const openAttack = $derived(attacks.find((a) => a.id === attackId) ?? null);
 	let xpOpen = $state(false);
 	let restOpen = $state(false);
+	let spellcastingOpen = $state(false);
+	let fontOpen = $state(false);
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
@@ -224,7 +229,9 @@
 		<h2 id="spellcasting-title" class="label">Spellcasting</h2>
 		<div class="stats" style:--cols={spellcasting.length}>
 			{#each spellcasting as s (s.k)}
-				<div class="stat spell"><strong>{s.v}</strong><span>{s.k}</span></div>
+				<button type="button" class="stat spell" aria-label="{s.k} {s.v}. Tap for details." onclick={() => (spellcastingOpen = true)}>
+					<strong>{s.v}</strong><span>{s.k}</span>
+				</button>
 			{/each}
 		</div>
 	</section>
@@ -232,7 +239,7 @@
 	<a class="card slots" href={resolve('/c/[id]/spells', { id: c.id })}>
 		<div class="slots-head">
 			<span class="label">Spell slots</span>
-			<span class="more">{spMax ? `Sorcery ${sorceryPointsLeft(c)} / ${spMax}` : 'Spells'} ›</span>
+			<span class="more">Spells ›</span>
 		</div>
 		<div class="slot-rows">
 			{#each slotMax(c) as max, i (i)}
@@ -243,12 +250,39 @@
 			{/if}
 		</div>
 	</a>
+
+	{#if spMax}
+		<section class="card sp" aria-labelledby="sp-title">
+			<div class="slots-head">
+				<h2 id="sp-title" class="label">Sorcery points</h2>
+				<span class="sp-count">{sorceryPointsLeft(c)} / {spMax}</span>
+			</div>
+			<Pips
+				label="sorcery point"
+				shape="diamond"
+				max={spMax}
+				left={sorceryPointsLeft(c)}
+				onspend={() => session.mutate('Spent a sorcery point', (ch) => (ch.sorceryPointsUsed += 1))}
+				onrestore={() => session.mutate('Got a sorcery point back', (ch) => (ch.sorceryPointsUsed = Math.max(0, ch.sorceryPointsUsed - 1)))}
+			/>
+			<button type="button" class="font" onclick={() => (fontOpen = true)}>Font of Magic: convert slots and points</button>
+		</section>
+	{/if}
 {/if}
+
+<CountersCard />
+
+<div class="rests">
+	<button type="button" onclick={() => rest('short')}>Short rest</button>
+	<button type="button" onclick={() => rest('long')}>Long rest</button>
+</div>
 
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
 <AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
+<SpellcastingSheet open={spellcastingOpen} onclose={() => (spellcastingOpen = false)} />
+<FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 
@@ -700,7 +734,15 @@
 	}
 
 	.stat.spell {
+		min-width: 0;
+		border: 0;
 		background: var(--color-spell-bg);
+		color: var(--color-text);
+		font-weight: 400;
+	}
+
+	.stat.spell:active {
+		transform: scale(0.97);
 	}
 
 	.stat.spell strong {
@@ -738,6 +780,44 @@
 		align-items: center;
 		gap: 6px;
 		font-size: 14px;
+	}
+
+	.sp {
+		margin-top: 12px;
+		padding: 14px 12px 12px 16px;
+	}
+
+	.sp-count {
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--color-effect-ink);
+	}
+
+	.font {
+		width: 100%;
+		min-height: 44px;
+		margin-top: 6px;
+		border-radius: 12px;
+		border: 1.5px solid var(--color-effect-edge);
+		background: var(--color-effect-bg);
+		color: var(--color-effect-ink);
+		font-weight: 800;
+	}
+
+	.rests {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		margin-top: 12px;
+	}
+
+	.rests button {
+		height: 48px;
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-border-strong);
+		color: var(--color-text);
+		font-size: 15px;
+		font-weight: 800;
 	}
 
 	.nudge {

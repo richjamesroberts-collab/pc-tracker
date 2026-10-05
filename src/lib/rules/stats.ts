@@ -297,6 +297,43 @@ export function spellcastingMod(c: StatInput, scores = abilityScores(c)): number
 	return ability ? abilityMod(scores[ability]) : 0;
 }
 
+export interface SpellcastingBreakdown {
+	ability: Breakdown;
+	dc: Breakdown;
+	attack: Breakdown;
+}
+
+/**
+ * The spellcasting modifier, spell save DC and spell attack bonus with where each part comes from.
+ * Totals match `spellMod`, `spellSaveDC` and `spellAttack`.
+ */
+export function spellcasting(c: StatInput, breakdown = abilityBreakdown(c)): SpellcastingBreakdown {
+	const mod = spellcastingMod(c, breakdown.scores);
+	const ability = spellAbility(c.classKey);
+	const modPart: StatSource =
+		c.spellModOverride != null
+			? { label: 'Your spellcasting modifier', value: signedMod(mod), from: 'Set in Edit' }
+			: ability
+				? { label: `${ABILITY_SHORT[ability]} modifier`, value: signedMod(mod), from: scoreDetail(c.abilities, breakdown, ability) }
+				: { label: 'Spellcasting modifier', value: signedMod(mod), from: 'No spellcasting ability' };
+	const prof = proficiencyBonus(c.level);
+	const profPart: StatSource = { label: 'Proficiency', value: signedMod(prof), from: `Level ${c.level} bonus` };
+	const dc = { total: 8 + prof + mod, parts: [{ label: 'Base', value: '8' }, profPart, modPart] };
+	const attack = { total: prof + mod, parts: [profPart, modPart] };
+	for (const i of c.items ?? []) {
+		if (!i.effects || !isActive(i)) continue;
+		if (i.effects.spellDc) {
+			dc.total += i.effects.spellDc;
+			dc.parts.push({ label: i.name, value: signedMod(i.effects.spellDc), from: 'Magic item' });
+		}
+		if (i.effects.spellAttack) {
+			attack.total += i.effects.spellAttack;
+			attack.parts.push({ label: i.name, value: signedMod(i.effects.spellAttack), from: 'Magic item' });
+		}
+	}
+	return { ability: { total: mod, parts: [modPart] }, dc, attack };
+}
+
 /** Max HP: what the player entered, plus a level's worth of any Constitution modifier change from items. */
 export function maxHp(c: StatInput, breakdown = abilityBreakdown(c)): Breakdown {
 	const diff = abilityMod(breakdown.scores.con) - abilityMod(breakdown.withoutItems.con);

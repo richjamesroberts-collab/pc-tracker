@@ -35,7 +35,7 @@ import {
 	spendResource
 } from './features';
 import { abilityMod, signedMod } from './abilities';
-import { abilityBreakdown, armorClass, initiative, maxHp, recompute, setAcTotal } from './stats';
+import { abilityBreakdown, armorClass, initiative, maxHp, recompute, setAcTotal, spellcasting } from './stats';
 import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
@@ -630,6 +630,18 @@ describe('initiative and spellcasting', () => {
 		expect(spellSaveDC(c)).toBe(16);
 		expect(spellAttack(c)).toBe(8);
 		expect(recompute({ ...c, spellModOverride: 6 }).spellMod).toBe(6);
+	});
+
+	it('explains the spellcasting numbers, matching the totals', () => {
+		const rod = magic('+1 Rod of the Pact Keeper', { spellAttack: 1, spellDc: 1 });
+		const c = recompute(pc({ classKey: 'warlock', level: 5, spellModOverride: undefined, abilities: scores({ cha: 18 }), items: [rod] }));
+		const s = spellcasting(c);
+		expect(s.ability.total).toBe(c.spellMod);
+		expect(s.ability.parts[0]).toMatchObject({ label: 'CHA modifier', value: '+4', from: 'CHA 18' });
+		expect(s.dc.total).toBe(spellSaveDC(c));
+		expect(s.dc.parts.map((p) => p.label)).toEqual(['Base', 'Proficiency', 'CHA modifier', '+1 Rod of the Pact Keeper']);
+		expect(s.attack.total).toBe(spellAttack(c));
+		expect(spellcasting({ ...c, spellModOverride: 6 }).attack.total).toBe(10);
 	});
 });
 

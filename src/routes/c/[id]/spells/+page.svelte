@@ -169,13 +169,23 @@
 {:else}
 	{#if cantrips.length}
 		<h2 class="label group">Cantrips</h2>
-		<div class="chips">
+		<ul class="card list">
 			{#each cantrips as { spell, grant } (spell.id)}
-				<button type="button" onclick={() => (casting = spell)}>
-					{spell.name}{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
-				</button>
+				<li>
+					<button type="button" class="spell" onclick={() => (casting = spell)}>
+						<span class="info">
+							<span class="name">
+								{spell.name}
+								{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
+								{#if spell.concentration}<span class="tag">Conc</span>{/if}
+							</span>
+							<span class="meta">{[spellMeta(spell), castWays.get(spell.id)].filter(Boolean).join(' · ')}</span>
+						</span>
+						<span class="cast">Cast</span>
+					</button>
+				</li>
 			{/each}
-		</div>
+		</ul>
 	{/if}
 
 	{#if prepares && levelled.length}
@@ -342,21 +352,6 @@
 		margin: 18px 4px 6px;
 	}
 
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.chips button {
-		min-height: 40px;
-		background: var(--color-spell-bg);
-		border: 1px solid var(--color-spell-edge);
-		color: var(--color-spell-ink);
-		font-size: 14px;
-		font-weight: 700;
-	}
-
 	.prep {
 		display: flex;
 		align-items: center;
@@ -439,10 +434,6 @@
 	.tag.grant {
 		background: var(--color-spell-ink);
 		color: var(--color-surface);
-	}
-
-	.chips .tag {
-		margin-left: 6px;
 	}
 
 	.meta {
