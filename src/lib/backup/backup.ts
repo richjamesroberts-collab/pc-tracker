@@ -123,7 +123,8 @@ const ARMOR_TYPES: ArmorType[] = ['light', 'medium', 'heavy', 'shield'];
 
 function armor(v: unknown): ItemArmor | undefined {
 	if (!isObj(v) || !ARMOR_TYPES.includes(v.type as ArmorType)) return undefined;
-	return { type: v.type as ArmorType, ac: Math.min(30, Math.max(0, Math.round(num(v.ac, 0)))) };
+	const base = typeof v.base === 'string' && v.base ? { base: v.base } : {};
+	return { type: v.type as ArmorType, ac: Math.min(30, Math.max(0, Math.round(num(v.ac, 0)))), ...base };
 }
 
 const WEAPON_PROPERTIES: WeaponProperty[] = ['ammunition', 'finesse', 'heavy', 'light', 'loading', 'reach', 'special', 'thrown', 'two-handed', 'versatile'];

@@ -45,7 +45,11 @@ import {
 	chargesLeft,
 	dawn,
 	setEquipped,
+	armorFits,
 	parseRegain,
+	picksArmor,
+	specificName,
+	weaponFits,
 	restoreCharges,
 	rollRegain,
 	setAttuned,
@@ -346,6 +350,35 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
 const maxRoll = () => 0.999;
 
 describe('magic items', () => {
+	it('names generic magic weapons and armor for what they are', () => {
+		expect(specificName('+1 Weapon', 'Longsword')).toBe('+1 Longsword');
+		expect(specificName('+2 Armor', 'Chain Mail')).toBe('+2 Chain Mail');
+		expect(specificName('Armor of Fire Resistance', 'Studded Leather Armor')).toBe('Studded Leather Armor of Fire Resistance');
+		expect(specificName('Mithral Armor', 'Half Plate Armor')).toBe('Mithral Half Plate Armor');
+		expect(specificName('Flame Tongue', 'Scimitar')).toBe('Flame Tongue (Scimitar)');
+	});
+
+	it('only offers weapons and armor the magic item can be', () => {
+		const w = (base: string, damageType = 'slashing') => ({ base, damageType });
+		expect(weaponFits('Weapon (any)', w('club', 'bludgeoning'))).toBe(true);
+		expect(weaponFits('Weapon (any sword)', w('rapier', 'piercing'))).toBe(true);
+		expect(weaponFits('Weapon (any sword)', w('greataxe'))).toBe(false);
+		expect(weaponFits('Weapon (any sword that deals slashing damage)', w('shortsword', 'piercing'))).toBe(false);
+		expect(weaponFits('Weapon (any sword that deals slashing damage)', w('scimitar'))).toBe(true);
+		expect(weaponFits('Weapon (any axe)', w('handaxe'))).toBe(true);
+		expect(weaponFits('Weapon (any axe)', w('longsword'))).toBe(false);
+		expect(weaponFits('Weapon (any axe or sword)', w('battleaxe'))).toBe(true);
+		expect(weaponFits('Weapon (any axe or sword)', w('mace', 'bludgeoning'))).toBe(false);
+
+		expect(armorFits('Armor (any)', { type: 'light' })).toBe(true);
+		expect(armorFits('Armor (any)', { type: 'shield' })).toBe(false);
+		expect(armorFits('Armor (medium or heavy)', { type: 'light' })).toBe(false);
+		expect(armorFits('Armor (medium or heavy)', { type: 'heavy' })).toBe(true);
+		expect(picksArmor('Armor (any)')).toBe(true);
+		expect(picksArmor('Armor (shield)')).toBe(false);
+		expect(picksArmor('Armor (plate armor)')).toBe(false);
+	});
+
 	it('limits attunement to three, more for high-level artificers', () => {
 		expect(attunementLimit(pc())).toBe(3);
 		expect(attunementLimit(pc({ classKey: 'artificer', level: 10 }))).toBe(4);
@@ -1019,6 +1052,8 @@ describe('skills', () => {
 		expect(skill(c, 'arcana').total).toBe(1);
 		expect(skill(c, 'stealth').notes).toEqual(expect.arrayContaining(['Cloak of Elvenkind: Advantage to hide, hood up', 'Chain Mail: disadvantage']));
 		expect(skill(pc({ items: [{ ...luck, attuned: false }] }), 'arcana').total).toBe(0);
+		const scale = item({ name: 'Armor of Gleaming', attunement: false, armor: { type: 'medium', ac: 14, base: 'scale mail' }, equipped: true });
+		expect(skill(pc({ items: [scale] }), 'stealth').notes).toContain('Armor of Gleaming: disadvantage');
 	});
 });
 
