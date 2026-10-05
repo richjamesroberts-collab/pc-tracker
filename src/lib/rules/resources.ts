@@ -1,6 +1,7 @@
 import type { Character } from '$lib/types';
 import { abilityMod } from './abilities';
 import { resetResources } from './features';
+import { shortRestCasts } from './grants';
 import { applyHealing } from './hp';
 import { pactSlots, slotMax, slotsLeft } from './spellcasting';
 import { abilityScores } from './stats';
@@ -106,6 +107,7 @@ export const hitDiceRegained = (c: Pick<Character, 'level' | 'hitDiceUsed'>) =>
 export function shortRest(c: Character): void {
 	c.pactSlotsUsed = 0;
 	resetResources(c, 'short');
+	shortRestCasts(c);
 }
 
 export function longRest(c: Character): void {

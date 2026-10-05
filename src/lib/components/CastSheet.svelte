@@ -4,12 +4,22 @@
 	import SpellDetails from './SpellDetails.svelte';
 	import { session } from '$lib/session.svelte';
 	import { METAMAGIC, metamagicCost, sorceryPointsLeft, spendPactSlot, spendSlot, spendSorceryPoints } from '$lib/rules/resources';
+	import { grantCastOptions, grantedSpells, slotsAllowed, spendCast, type CastSpend } from '$lib/rules/grants';
 	import { arcanumLevels, ordinal, pactSlots, slotMax, slotsLeft } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
 	let { spell, onclose }: { spell: Spell | null; onclose: () => void } = $props();
 
-	type Option = { key: string; label: string; detail: string; left: number; level: number; kind: 'slot' | 'pact' | 'arcanum' | 'ritual' };
+	type Option = {
+		key: string;
+		label: string;
+		detail: string;
+		left: number;
+		level: number;
+		kind: 'slot' | 'pact' | 'arcanum' | 'ritual' | 'grant';
+		/** For a granted spell's own ways to cast (at will, once per rest, ki): how it's paid for. */
+		spend?: CastSpend;
+	};
 
 	const c = $derived(session.character as Character);
 	let choice = $state<string | null>(null);
@@ -17,7 +27,21 @@
 
 	const options = $derived.by((): Option[] => {
 		if (!spell || spell.level === 0) return [];
-		const out: Option[] = [];
+		// A granted spell's own ways: free ones first, points (ki, sorcery) after the slots.
+		const own = grantCastOptions(c, spell).map((o): Option => ({ ...o, kind: 'grant' }));
+		const granted = grantedSpells(c).find((g) => g.id === spell.id);
+		const slots = !granted || slotsAllowed(c, granted);
+		const out: Option[] = own.filter((o) => o.spend?.kind !== 'points');
+		if (slots) addSlots(spell, out);
+		// An innate spell is only a ritual when its grant says so (Pact of the Chain), not for a Shadow monk's Silence.
+		if (spell.ritual && (slots || granted?.cast.some((x) => x.kind === 'ritual'))) {
+			out.push({ key: 'ritual', label: 'As a ritual', detail: '+10 minutes, no slot', left: 1, level: spell.level, kind: 'ritual' });
+		}
+		out.push(...own.filter((o) => o.spend?.kind === 'points'));
+		return out;
+	});
+
+	function addSlots(spell: Spell, out: Option[]) {
 		slotMax(c).forEach((_, i) => {
 			const level = i + 1;
 			if (level < spell.level) return;
@@ -32,11 +56,7 @@
 			const used = c.arcanumUsed.includes(spell.level);
 			out.push({ key: 'arcanum', label: 'Mystic Arcanum', detail: '1 / long rest', left: used ? 0 : 1, level: spell.level, kind: 'arcanum' });
 		}
-		if (spell.ritual) {
-			out.push({ key: 'ritual', label: 'As a ritual', detail: '+10 minutes, no slot', left: 1, level: spell.level, kind: 'ritual' });
-		}
-		return out;
-	});
+	}
 
 	// Pick the cheapest usable option whenever a new spell opens.
 	$effect(() => {
@@ -62,12 +82,22 @@
 		if (!spell) return;
 		const s = spell;
 		const opt = selected;
-		const atLevel = s.level === 0 ? 'cantrip' : free ? 'free' : opt?.kind === 'ritual' ? 'ritual' : ordinal(opt?.level ?? s.level);
+		const atLevel =
+			s.level === 0
+				? 'cantrip'
+				: free
+					? 'free'
+					: opt?.kind === 'ritual'
+						? 'ritual'
+						: opt?.kind === 'grant'
+							? opt.label.toLowerCase()
+							: ordinal(opt?.level ?? s.level);
 		session.mutate(`Cast ${s.name} (${atLevel})`, (ch) => {
 			if (!free && s.level > 0 && opt) {
 				if (opt.kind === 'slot') spendSlot(ch, opt.level);
 				else if (opt.kind === 'pact') spendPactSlot(ch);
 				else if (opt.kind === 'arcanum') ch.arcanumUsed = [...ch.arcanumUsed, s.level];
+				else if (opt.kind === 'grant' && opt.spend) spendCast(ch, opt.spend);
 			}
 			if (!free && metaCost) spendSorceryPoints(ch, metaCost);
 			if (s.concentration) ch.concentration = s.name;
@@ -78,9 +108,10 @@
 	const castLabel = $derived.by(() => {
 		if (!spell) return '';
 		if (spell.level === 0) return `Cast ${spell.name}`;
-		if (!selected || selected.left <= 0) return 'No slots left';
+		if (!selected || selected.left <= 0) return options.every((o) => o.kind === 'grant') ? 'None left' : 'No slots left';
 		if (selected.kind === 'ritual') return 'Cast as a ritual';
 		if (selected.kind === 'arcanum') return 'Cast with Mystic Arcanum';
+		if (selected.kind === 'grant' && selected.spend?.kind === 'free') return `Cast ${spell.name}`;
 		return `Cast at ${ordinal(selected.level)} level`;
 	});
 </script>
@@ -102,7 +133,7 @@
 					>
 						<b>{o.label}</b>
 						<span class="detail">{o.detail}</span>
-						<span class="left">{o.kind === 'ritual' ? '' : `${o.left} left`}</span>
+						<span class="left">{o.kind === 'ritual' || (o.kind === 'grant' && o.spend?.kind !== 'counter') ? '' : `${o.left} left`}</span>
 					</button>
 				{/each}
 			</div>
