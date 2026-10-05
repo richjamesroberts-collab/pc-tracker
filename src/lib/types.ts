@@ -33,6 +33,13 @@ export interface CharacterSpell {
 	id: string;
 	/** Prepared casters choose which spells are ready each day; known casters always have them ready. */
 	prepared: boolean;
+	/**
+	 * Picked for a spell grant (rules/grants.ts): a choice key (`cleric/nature#1:0`, the Nature domain's druid
+	 * cantrip) or, with `replaces`, the grant key of a subclass list it was swapped into.
+	 */
+	grant?: string;
+	/** The granted spell this one replaced at a level up (Aberrant Mind, Clockwork Soul). */
+	replaces?: string;
 }
 
 export interface DeathSaves {
@@ -311,6 +318,8 @@ export interface Character {
 	customResources: CustomResource[];
 
 	spells: CharacterSpell[];
+	/** Which list of a subclass's spells the player picked, by owner: { 'druid/land': 'Arctic' }. */
+	grantVariants?: Record<string, string>;
 	customSpells: Spell[];
 	/**
 	 * Copies of the pack spells this character uses, so a backup restored on a phone

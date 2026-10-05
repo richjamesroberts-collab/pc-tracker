@@ -38,6 +38,22 @@ describe('backup files', () => {
 		expect(parseBackupText(JSON.stringify(toBackup(c)))).toEqual(c);
 	});
 
+	it('keeps granted spell picks, swaps and variant lists', () => {
+		const c = {
+			...lyra(),
+			subclassKey: 'aberrant-mind',
+			spells: [
+				{ id: 'charm person|phb', prepared: true, grant: 'sorcerer/aberrant-mind#0', replaces: 'arms of hadar|phb' },
+				{ id: 'fireball|phb', prepared: true }
+			],
+			grantVariants: { 'druid/land': 'Arctic' }
+		};
+		const back = parseBackupText(JSON.stringify(toBackup(c)));
+		expect(back.spells).toEqual(c.spells);
+		expect(back.grantVariants).toEqual({ 'druid/land': 'Arctic' });
+		expect(parseBackupText(JSON.stringify(toBackup(lyra()))).grantVariants).toBeUndefined();
+	});
+
 	it('keeps saved copies of pack spells', () => {
 		const c = { ...lyra(), spellCache: [{ ...spell('toll the dead|xge', 'Toll the Dead'), source: 'XGE' }] };
 		const back = parseBackupText(JSON.stringify(toBackup(c)));

@@ -30,8 +30,8 @@
 	const missing = $derived(missingSpellIds(c));
 	const cantrips = $derived(all.filter((x) => x.spell.level === 0));
 	const levelled = $derived(all.filter((x) => x.spell.level > 0));
-	// Granted spells (domain, oath, circle) are always prepared and don't count.
-	const preparedCount = $derived(levelled.filter((x) => x.prepared && !x.grant).length);
+	// Free granted spells (domain, oath, circle) are always prepared and don't count.
+	const preparedCount = $derived(levelled.filter((x) => x.prepared && !x.grant?.free).length);
 	const limit = $derived(spellLimit(c));
 
 	let preparing = $state(false);
@@ -187,13 +187,13 @@
 				<li>
 					{#if preparing}
 						<label class="spell prep-row">
-							<input type="checkbox" checked={prepared} disabled={!!grant} onchange={() => togglePrepared(spell.id)} />
+							<input type="checkbox" checked={prepared} disabled={!!grant?.free} onchange={() => togglePrepared(spell.id)} />
 							<span class="info">
 								<span class="name">
 									{spell.name}
 									{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
 								</span>
-								<span class="meta">{grant ? `Always prepared · ${grant.name}` : spellMeta(spell)}</span>
+								<span class="meta">{grant?.free ? `Always prepared · ${grant.name}` : spellMeta(spell)}</span>
 							</span>
 						</label>
 					{:else}
