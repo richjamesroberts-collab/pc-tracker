@@ -5,7 +5,7 @@ import racesJson from './races.json';
 import itemsJson from './items.json';
 import gearJson from './gear.json';
 import { CLASSES } from './classes';
-import { RACES, raceLabel } from './races';
+import { RACE_BOOKS, RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
 import {
 	featureGroups,
@@ -240,5 +240,37 @@ describe('item effects and armor', () => {
 	});
 	it('has racial increases for every race', () => {
 		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();
+	});
+});
+
+describe("Volo's and Monsters of the Multiverse races", () => {
+	it('has a race entry for every race in races.json, grouped by a known book', () => {
+		const keys = new Set(RACES.map((r) => r.key));
+		for (const r of races) expect(keys.has(r.key), r.key).toBe(true);
+		expect(RACES.filter((r) => r.book === 'VGM')).toHaveLength(13);
+		expect(RACES.filter((r) => r.book === 'MPMM')).toHaveLength(30);
+		expect(RACES.every((r) => RACE_BOOKS.some((b) => b.key === r.book))).toBe(true);
+	});
+	it('gives MPMM races the flexible increase and VGM races their fixed ones', () => {
+		const trait = (key: string) => races.find((r) => r.key === key)!.traits.find((t) => t.name === 'Ability Score Increase')!.text;
+		expect(trait('tabaxi')).toMatch(/^Increase one ability score by 2 and a different one by 1/);
+		expect(trait('tabaxi-vgm')).toBe('Your Dexterity score increases by 2, and your Charisma score increases by 1.');
+		expect((raceAbilities as Record<string, { asi: unknown }>).tabaxi.asi).toEqual({
+			fixed: {},
+			choose: { from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], count: 3, amount: 1, max: 2 }
+		});
+	});
+	it('labels new races and subraces', () => {
+		expect(raceLabel({ raceKey: 'genasi', subraceKey: 'fire' })).toBe('Fire Genasi');
+		expect(raceLabel({ raceKey: 'aasimar-vgm', subraceKey: 'protector' })).toBe('Protector Aasimar');
+		expect(raceLabel({ raceKey: 'yuan-ti-pureblood-vgm' })).toBe('Yuan-ti Pureblood');
+	});
+	it('ends named list items with a period', () => {
+		const text = races.find((r) => r.key === 'aasimar')!.traits.find((t) => t.name === 'Celestial Revelation')!.text;
+		expect(text).toContain('• Radiant Soul. Two luminous');
+	});
+	it('gives every resource its own key', () => {
+		const keys = RESOURCES.map((r) => r.key);
+		expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
 	});
 });

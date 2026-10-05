@@ -35,7 +35,10 @@ const prof = (c: Character) => proficiencyBonus(c.level);
 const mod1 = (c: Character) => Math.max(1, c.spellMod);
 const long = () => 'long' as const;
 const short = () => 'short' as const;
-const psiDie = (c: Character) => dieByLevel(c.level, [[1, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
+const one = () => 1;
+const at3 = (c: Character) => byLevel(c.level, [[3, 1]]);
+const at5 = (c: Character) => byLevel(c.level, [[5, 1]]);
+const psiDie =(c: Character) => dieByLevel(c.level, [[1, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
 
 type Def = Omit<ResourceDef, 'owner'>;
 const cls = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'class', key } });
@@ -111,7 +114,69 @@ export const RESOURCES: ResourceDef[] = [
 	race('tiefling', { key: 'hellish-rebuke', name: 'Hellish Rebuke', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
 	race('tiefling', { key: 'infernal-darkness', name: 'Darkness', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
 	subrace('elf/drow', { key: 'faerie-fire', name: 'Faerie Fire', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
-	subrace('elf/drow', { key: 'drow-darkness', name: 'Darkness', max: (c) => byLevel(c.level, [[5, 1]]), reset: long })
+	subrace('elf/drow', { key: 'drow-darkness', name: 'Darkness', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
+
+	// Volo's Guide to Monsters. Keys get -vgm where the MPMM version has the same trait.
+	race('aasimar-vgm', { key: 'healing-hands-vgm', name: 'Healing Hands', max: one, reset: long }),
+	subrace('aasimar-vgm/protector', { key: 'radiant-soul', name: 'Radiant Soul', max: at3, reset: long }),
+	subrace('aasimar-vgm/scourge', { key: 'radiant-consumption', name: 'Radiant Consumption', max: at3, reset: long }),
+	subrace('aasimar-vgm/fallen', { key: 'necrotic-shroud', name: 'Necrotic Shroud', max: at3, reset: long }),
+	race('firbolg-vgm', { key: 'firbolg-vgm-detect-magic', name: 'Detect Magic', max: one, reset: short }),
+	race('firbolg-vgm', { key: 'firbolg-vgm-disguise-self', name: 'Disguise Self', max: one, reset: short }),
+	race('firbolg-vgm', { key: 'hidden-step-vgm', name: 'Hidden Step', max: one, reset: short }),
+	race('goblin-vgm', { key: 'fury-of-the-small-vgm', name: 'Fury of the Small', max: one, reset: short }),
+	race('goliath-vgm', { key: 'stones-endurance-vgm', name: "Stone's Endurance", max: one, reset: short, die: () => 'd12' }),
+	race('hobgoblin-vgm', { key: 'saving-face', name: 'Saving Face', max: one, reset: short }),
+	race('kobold-vgm', { key: 'grovel-cower-and-beg', name: 'Grovel, Cower, and Beg', max: one, reset: short }),
+	race('lizardfolk-vgm', { key: 'hungry-jaws-vgm', name: 'Hungry Jaws', max: one, reset: short }),
+	race('triton-vgm', { key: 'triton-vgm-fog-cloud', name: 'Fog Cloud', max: one, reset: long }),
+	race('triton-vgm', { key: 'triton-vgm-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
+	race('triton-vgm', { key: 'triton-vgm-wall-of-water', name: 'Wall of Water', max: at5, reset: long }),
+	race('yuan-ti-pureblood-vgm', { key: 'yuan-ti-pureblood-vgm-suggestion', name: 'Suggestion', max: at3, reset: long }),
+
+	// Monsters of the Multiverse. Racial spells are keyed '<race>-<spell>'; each can be cast once per long rest.
+	race('aarakocra', { key: 'aarakocra-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
+	race('aasimar', { key: 'healing-hands', name: 'Healing Hands', max: one, reset: long, die: (c) => `${prof(c)}d4` }),
+	race('aasimar', { key: 'celestial-revelation', name: 'Celestial Revelation', max: at3, reset: long }),
+	race('deep-gnome', { key: 'deep-gnome-disguise-self', name: 'Disguise Self', max: at3, reset: long }),
+	race('deep-gnome', { key: 'deep-gnome-nondetection', name: 'Nondetection', max: at5, reset: long }),
+	race('deep-gnome', { key: 'svirfneblin-camouflage', name: 'Svirfneblin Camouflage', max: prof, reset: long }),
+	race('duergar', { key: 'duergar-enlarge-reduce', name: 'Enlarge/Reduce', max: at3, reset: long }),
+	race('duergar', { key: 'duergar-invisibility', name: 'Invisibility', max: at5, reset: long }),
+	race('eladrin', { key: 'fey-step', name: 'Fey Step', max: prof, reset: long }),
+	race('fairy', { key: 'fairy-faerie-fire', name: 'Faerie Fire', max: at3, reset: long }),
+	race('fairy', { key: 'fairy-enlarge-reduce', name: 'Enlarge/Reduce', max: at5, reset: long }),
+	race('firbolg', { key: 'firbolg-detect-magic', name: 'Detect Magic', max: one, reset: long }),
+	race('firbolg', { key: 'firbolg-disguise-self', name: 'Disguise Self', max: one, reset: long }),
+	race('firbolg', { key: 'hidden-step', name: 'Hidden Step', max: prof, reset: long }),
+	subrace('genasi/air', { key: 'genasi-feather-fall', name: 'Feather Fall', max: at3, reset: long }),
+	subrace('genasi/air', { key: 'genasi-levitate', name: 'Levitate', max: at5, reset: long }),
+	subrace('genasi/earth', { key: 'merge-with-stone', name: 'Blade Ward (bonus action)', max: prof, reset: long }),
+	subrace('genasi/earth', { key: 'genasi-pass-without-trace', name: 'Pass without Trace', max: at5, reset: long }),
+	subrace('genasi/fire', { key: 'genasi-burning-hands', name: 'Burning Hands', max: at3, reset: long }),
+	subrace('genasi/fire', { key: 'genasi-flame-blade', name: 'Flame Blade', max: at5, reset: long }),
+	subrace('genasi/water', { key: 'genasi-create-or-destroy-water', name: 'Create or Destroy Water', max: at3, reset: long }),
+	subrace('genasi/water', { key: 'genasi-water-walk', name: 'Water Walk', max: at5, reset: long }),
+	race('githyanki', { key: 'githyanki-jump', name: 'Jump', max: at3, reset: long }),
+	race('githyanki', { key: 'githyanki-misty-step', name: 'Misty Step', max: at5, reset: long }),
+	race('githzerai', { key: 'githzerai-shield', name: 'Shield', max: at3, reset: long }),
+	race('githzerai', { key: 'githzerai-detect-thoughts', name: 'Detect Thoughts', max: at5, reset: long }),
+	race('goblin', { key: 'fury-of-the-small', name: 'Fury of the Small', max: prof, reset: long }),
+	race('goliath', { key: 'stones-endurance', name: "Stone's Endurance", max: prof, reset: long, die: () => 'd12' }),
+	race('harengon', { key: 'rabbit-hop', name: 'Rabbit Hop', max: prof, reset: long }),
+	race('hobgoblin', { key: 'fey-gift', name: 'Fey Gift', max: prof, reset: long }),
+	race('hobgoblin', { key: 'fortune-from-the-many', name: 'Fortune from the Many', max: prof, reset: long }),
+	race('kenku', { key: 'kenku-recall', name: 'Kenku Recall', max: prof, reset: long }),
+	race('kobold', { key: 'draconic-cry', name: 'Draconic Cry', max: prof, reset: long }),
+	race('lizardfolk', { key: 'hungry-jaws', name: 'Hungry Jaws', max: prof, reset: long }),
+	race('orc', { key: 'adrenaline-rush', name: 'Adrenaline Rush', max: prof, reset: long }),
+	race('orc', { key: 'orc-relentless-endurance', name: 'Relentless Endurance', max: one, reset: long }),
+	race('shadar-kai', { key: 'blessing-of-the-raven-queen', name: 'Blessing of the Raven Queen', max: prof, reset: long }),
+	race('shifter', { key: 'shifting', name: 'Shifting', max: prof, reset: long }),
+	race('triton', { key: 'triton-fog-cloud', name: 'Fog Cloud', max: one, reset: long }),
+	race('triton', { key: 'triton-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
+	race('triton', { key: 'triton-water-walk', name: 'Water Walk', max: at5, reset: long }),
+	race('yuan-ti', { key: 'yuan-ti-suggestion', name: 'Suggestion', max: at3, reset: long })
 ];
 
 function owns(c: Character, def: ResourceDef): boolean {
