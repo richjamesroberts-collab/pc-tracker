@@ -3,7 +3,7 @@ import { characterFeat, type FeatData } from '$lib/data/content';
 import { abilityMod } from './abilities';
 import { attacksPerAction, fightingStyleCount } from './attacks';
 import { resourcesFor } from './features';
-import { newGrants } from './grants';
+import { newGrantChoices, newGrants } from './grants';
 import { sorceryPointsMax } from './resources';
 import { abilityBreakdown } from './stats';
 import {
@@ -133,7 +133,7 @@ export interface LevelUpNeeds {
 	weaponNotes: string[];
 	/** New cantrips to learn. */
 	cantrips: number;
-	/** New spells to learn (known casters) or copy into the spellbook (wizards). */
+	/** New spells to learn (known casters) or copy into the spellbook (wizards); Magical Secrets picks are asked for with the granted spells. */
 	spells: number;
 	/** Known casters can swap one spell they know for another. */
 	swapSpell: boolean;
@@ -160,6 +160,10 @@ export function levelUpNeeds(
 	const newArcanum = arcanumLevels(next).find((l) => !before(arcanumLevels, [] as number[]).includes(l));
 	const prevPrep = before(prepStyle, 'none' as SpellPrep);
 	const weapons = weaponPicks({ raceKey: undefined, ...next }, first);
+	// Bard Magical Secrets: the known-spells table already counts them, so they come out of the new spells.
+	const secrets = newGrantChoices(first ? null : prev, next)
+		.filter((ch) => !ch.grant.free)
+		.reduce((n, ch) => n + ch.count, 0);
 	return {
 		subclass: !next.subclassKey && next.level >= subclassLevel(next.classKey),
 		asi: !first && isAsiLevel(next.classKey, next.level),
@@ -175,7 +179,7 @@ export function levelUpNeeds(
 		cantrips: Math.max(0, cantripsKnown(next) - before(cantripsKnown, 0)),
 		spells:
 			prep === 'known'
-				? Math.max(0, spellLimit(next) - (prevPrep === 'known' ? spellLimit(prev) : 0))
+				? Math.max(0, spellLimit(next) - (prevPrep === 'known' ? spellLimit(prev) : 0) - secrets)
 				: prep === 'spellbook'
 					? first
 						? 6
@@ -278,6 +282,12 @@ export interface LevelUpChoices {
 	learn?: string[];
 	/** Spells swapped out. */
 	forget?: string[];
+	/** Lists picked for subclasses with variants, by owner ({ 'druid/land': 'Arctic' }). */
+	grantVariants?: Record<string, string>;
+	/** Every pick for each grant choice asked about, by choice key; replaces what was picked before. */
+	grantSpells?: Record<string, string[]>;
+	/** A spell in a subclass list (Aberrant Mind) traded for another: `original` is the fixed spell it stands for. */
+	grantSwap?: { grant: string; original: string; to: string };
 }
 
 /** Ability increases a feat choice gives, as +1 picks. */
@@ -327,6 +337,18 @@ export function applyChoices(c: Character, choices: LevelUpChoices, level: numbe
 	if (choices.optionKinds?.length) {
 		const kinds = new Set(choices.optionKinds);
 		c.classOptions = [...c.classOptions.filter((o) => !kinds.has(o.kind)), ...(choices.options ?? []).filter((o) => kinds.has(o.kind))];
+	}
+
+	if (choices.grantVariants) c.grantVariants = { ...c.grantVariants, ...choices.grantVariants };
+	for (const [key, ids] of Object.entries(choices.grantSpells ?? {})) {
+		// A pick that was already one of the character's spells moves into the grant.
+		c.spells = c.spells.filter((s) => (s.grant !== key || s.replaces) && !(ids.includes(s.id) && !s.grant));
+		for (const id of ids) c.spells.push({ id, prepared: true, grant: key });
+	}
+	const swap = choices.grantSwap;
+	if (swap) {
+		c.spells = c.spells.filter((s) => !(s.grant === swap.grant && s.replaces === swap.original));
+		if (swap.to !== swap.original) c.spells.push({ id: swap.to, prepared: true, grant: swap.grant, replaces: swap.original });
 	}
 
 	const learn = choices.learn ?? [];

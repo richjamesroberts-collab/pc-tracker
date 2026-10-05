@@ -23,11 +23,20 @@
 		spells: string[];
 		arcanum: string[];
 		forget: string;
+		/** Lists picked for subclasses with variants (Land terrain), by owner. */
+		variants: Record<string, string>;
+		/** Picks for each grant choice by choice key, starting from those already made. */
+		grantPicks: Record<string, string[]>;
+		/** A subclass-list spell to trade: `<grant key>@<original spell id>`, or ''. */
+		swapFrom: string;
+		swapTo: string[];
 	}
 
 	export function newPicks(start: Character): FlowPicks {
 		const options: FlowPicks['options'] = {};
 		for (const o of start.classOptions) (options[o.kind] ??= []).push(o.ref);
+		const grantPicks: FlowPicks['grantPicks'] = {};
+		for (const s of start.spells) if (s.grant && !s.replaces) (grantPicks[s.grant] ??= []).push(s.id);
 		return {
 			index: 0,
 			subclass: [],
@@ -46,7 +55,11 @@
 			cantrips: [],
 			spells: [],
 			arcanum: [],
-			forget: ''
+			forget: '',
+			variants: {},
+			grantPicks,
+			swapFrom: '',
+			swapTo: []
 		};
 	}
 </script>
@@ -77,7 +90,20 @@
 	import { abilityBreakdown, recompute } from '$lib/rules/stats';
 	import { hitDie, hpForLevel, hpGain, xpForLevel } from '$lib/rules/xp';
 	import { characterSpells, spellListClass, spellPool } from '$lib/library.svelte';
-	import { grantedIds, newGrants } from '$lib/rules/grants';
+	import {
+		canSwapTo,
+		expandedBy,
+		filterLabel,
+		grantChoices,
+		grantedIds,
+		matchesFilter,
+		newGrantChoices,
+		newGrants,
+		schoolLimit,
+		swappable,
+		variantPicks,
+		type GrantCharacter
+	} from '$lib/rules/grants';
 	import type { ClassOption, Spell } from '$lib/types';
 
 	let {
@@ -162,6 +188,34 @@
 			return data ? [classOption(data)] : known ? [known] : [];
 		});
 
+	// Granted spells: what this level's subclass, pact boon, fighting styles and list picks bring.
+	/** Class options after this level's picks (a new pact boon brings its cantrips). */
+	const optionsNow = $derived([
+		...start.classOptions.filter((o) => !needs.options.some((n) => n.kind === o.kind)),
+		...needs.options.flatMap((o) => pickedOptions(o.kind))
+	]);
+	/** The character at this level with its subclass, pact boon, fighting styles and list picks, for its grants. */
+	const grantChar = $derived<GrantCharacter>({
+		classKey: start.classKey,
+		subclassKey,
+		level,
+		classOptions: optionsNow,
+		fightingStyles: needs.fightingStyles ? picks.styles : start.fightingStyles,
+		grantVariants: { ...start.grantVariants, ...picks.variants },
+		spells: start.spells
+	});
+	/** Lists to pick between that haven't been picked before (Land terrain at 2nd level). */
+	const variantsToPick = $derived(variantPicks(grantChar).filter((v) => !start.grantVariants?.[v.owner]));
+	const arrivingChoices = $derived(new Set(newGrantChoices(first ? null : start, grantChar).map((ch) => ch.key)));
+	/** Choices arriving now, plus older ones not filled yet (a character from before choices were asked for). */
+	const openChoices = $derived(grantChoices(grantChar).filter((ch) => arrivingChoices.has(ch.key) || ch.picked.length < ch.count));
+	const swaps = $derived(create || first ? [] : swappable(start));
+	const swap = $derived.by(() => {
+		const [grant, original] = picks.swapFrom.split('@');
+		return swaps.find((x) => x.grant.key === grant && x.original === original);
+	});
+	const hasGrants = $derived(variantsToPick.length > 0 || arrivingChoices.size > 0 || swaps.length > 0);
+
 	const choices = $derived<LevelUpChoices>({
 		hp: 0,
 		subclassKey: needsSubclass ? subclassKey : undefined,
@@ -179,7 +233,10 @@
 		optionKinds: needs.options.map((o) => o.kind),
 		options: needs.options.flatMap((o) => pickedOptions(o.kind)),
 		learn: [...picks.cantrips, ...picks.spells, ...picks.arcanum],
-		forget: picks.forget ? [picks.forget] : []
+		forget: picks.forget ? [picks.forget] : [],
+		grantVariants: Object.keys(picks.variants).length ? picks.variants : undefined,
+		grantSpells: openChoices.length ? Object.fromEntries(openChoices.map((ch) => [ch.key, picks.grantPicks[ch.key] ?? []])) : undefined,
+		grantSwap: swap && picks.swapTo[0] ? { grant: swap.grant.key, original: swap.original, to: picks.swapTo[0] } : undefined
 	});
 
 	/** The character after this level's choices so far (HP for the new level not yet added). */
@@ -209,6 +266,7 @@
 		| 'expertise'
 		| 'metamagic'
 		| 'spells'
+		| 'grants'
 		| 'review'
 		| ClassOptionKind;
 
@@ -225,6 +283,7 @@
 			needs.metamagic && 'metamagic',
 			...needs.options.map((o) => o.kind),
 			hasSpells && 'spells',
+			hasGrants && 'grants',
 			!create && 'review'
 		].filter((s): s is StepKey => !!s)
 	);
@@ -237,6 +296,7 @@
 		expertise: 'Expertise',
 		metamagic: 'Metamagic',
 		spells: 'Spells',
+		grants: 'Granted spells',
 		review: 'Review'
 	};
 	const title = (s: StepKey) =>
@@ -384,19 +444,23 @@
 	const listClass = $derived(spellListClass(start));
 	/** Spells already known or prepared for free (granted by the class or subclass at the new level). */
 	const knownIds = $derived(
-		new Set([...start.spells.map((s) => s.id), ...grantedIds(next)])
+		new Set([...start.spells.map((s) => s.id), ...grantedIds(grantChar)])
 	);
 	/** Spells a known caster can swap out: granted ones stay. */
 	const knownLevelled = $derived(characterSpells(start).filter((x) => x.spell.level > 0 && !x.grant));
 	const grantsGained = $derived(newGrants(start, next));
 	/** Highest level of spell the character can learn: their slots (pact slots for a warlock). */
 	const learnLevel = $derived(Math.max(slotMax(preview).length, pactSlots(preview)?.level ?? 0));
-	const spellItem = (s: Spell): PickItem => ({
-		id: s.id,
-		name: s.name,
-		meta: `${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}`
-	});
-	const onList = (s: Spell) => (s.classes.includes(listClass) || s.pack === 'custom') && !knownIds.has(s.id);
+	const spellItem = (s: Spell): PickItem => {
+		const expanded = expandedBy(grantChar, s);
+		return {
+			id: s.id,
+			name: s.name,
+			meta: `${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}${expanded && !s.classes.includes(listClass) ? ` · ${expanded.tag}` : ''}`
+		};
+	};
+	/** On the class list, or one a patron or Divine Soul adds, and not already known. */
+	const onList = (s: Spell) => (s.classes.includes(listClass) || s.pack === 'custom' || !!expandedBy(grantChar, s)) && !knownIds.has(s.id);
 	const cantripItems = $derived(pool.filter((s) => s.level === 0 && onList(s)).map(spellItem));
 	const spellItems = $derived(
 		pool.filter((s) => s.level > 0 && s.level <= learnLevel && onList(s) && !picks.arcanum.includes(s.id)).map(spellItem)
@@ -404,17 +468,69 @@
 	const arcanumItems = $derived(needs.arcanum ? pool.filter((s) => s.level === needs.arcanum && onList(s)).map(spellItem) : []);
 	const spellById = $derived(new Map(pool.map((s) => [s.id, s])));
 	const spellGoal = $derived(needs.spells + (picks.forget ? 1 : 0));
+	/** Eldritch Knight and Arcane Trickster: spells from outside their two schools so far, and how many are allowed. */
+	const schools = $derived(schoolLimit(next));
+	const offSchool = $derived.by(() => {
+		if (!schools) return 0;
+		const known = characterSpells(start).filter((x) => !x.grant?.free && x.spell.level > 0 && x.spell.id !== picks.forget);
+		const picked = picks.spells.map((id) => spellById.get(id)).filter((s): s is Spell => !!s);
+		return [...known.map((x) => x.spell), ...picked].filter((s) => !schools.schools.includes(s.school)).length;
+	});
 	const schoolNote = $derived(
-		start.classKey === 'fighter'
-			? 'Eldritch Knight: most spells you learn must be abjuration or evocation.'
-			: start.classKey === 'rogue'
-				? 'Arcane Trickster: most spells you learn must be enchantment or illusion.'
-				: ''
+		schools
+			? `${schools.schools.join(' or ')} only, except ${schools.anyMax} from any school (${offSchool} picked).`
+			: ''
 	);
 
 	// Fewer spells to learn (a swap undone) drops the extra picks.
 	$effect(() => {
 		if (picks.spells.length > spellGoal) picks.spells = picks.spells.slice(0, spellGoal);
+	});
+
+	// ---- Granted spells ------------------------------------------------------------------------
+
+
+	/** Spells picked anywhere else in this level, so a choice doesn't offer them twice. */
+	const pickedElsewhere = (key: string) =>
+		new Set([
+			...picks.cantrips,
+			...picks.spells,
+			...Object.entries(picks.grantPicks).flatMap(([k, ids]) => (k === key ? [] : ids))
+		]);
+	const choiceItems = (key: string) => {
+		const ch = openChoices.find((x) => x.key === key);
+		if (!ch) return [];
+		const elsewhere = pickedElsewhere(key);
+		return pool
+			.filter(
+				(s) =>
+					matchesFilter(s, ch.filter) &&
+					(s.level === 0 || s.level <= Math.max(learnLevel, ...(ch.filter.levels ?? [0]))) &&
+					(ch.picked.includes(s.id) || !knownIds.has(s.id))
+			)
+			.map((s) => ({ ...spellItem(s), disabled: elsewhere.has(s.id) }));
+	};
+	const choiceGoal = (key: string) => {
+		const ch = openChoices.find((x) => x.key === key);
+		return ch ? Math.min(ch.count, choiceItems(key).filter((i) => !i.disabled).length) : 0;
+	};
+	const swapItems = $derived.by(() => {
+		if (!swap) return [];
+		const current = spellById.get(swap.id);
+		if (!current) return [];
+		return pool.filter((s) => s.id !== swap.id && canSwapTo(swap.grant, current, s) && !knownIds.has(s.id)).map(spellItem);
+	});
+	const grantsOk = $derived(
+		variantsToPick.every((v) => !!picks.variants[v.owner]) &&
+			openChoices.every((ch) => !arrivingChoices.has(ch.key) || (picks.grantPicks[ch.key]?.length ?? 0) === choiceGoal(ch.key))
+	);
+
+	// Another spell to trade starts the replacement over.
+	let lastSwap = picks.swapFrom;
+	$effect(() => {
+		if (picks.swapFrom === lastSwap) return;
+		lastSwap = picks.swapFrom;
+		picks.swapTo = [];
 	});
 
 	// ---- Step checks and finishing -------------------------------------------------------------
@@ -435,6 +551,8 @@
 				return picks.expertise.length === Math.min(needs.expertise, expertiseOptions.length);
 			case 'metamagic':
 				return picks.metamagic.length === needs.metamagic;
+			case 'grants':
+				return grantsOk;
 			case 'overview':
 			case 'spells':
 			case 'review':
@@ -452,7 +570,8 @@
 	function finish() {
 		if (!ready) return;
 		const final = { ...($state.snapshot(choices) as LevelUpChoices), hp: create ? 0 : hp };
-		const learned = (final.learn ?? []).map((id) => spellById.get(id)).filter((s): s is Spell => !!s);
+		const ids = [...(final.learn ?? []), ...Object.values(final.grantSpells ?? {}).flat(), ...(final.grantSwap ? [final.grantSwap.to] : [])];
+		const learned = ids.map((id) => spellById.get(id)).filter((s): s is Spell => !!s);
 		onfinish(final, learned);
 	}
 
@@ -730,6 +849,57 @@
 			</PickList>
 		{/if}
 		<p class="hint">You can leave picks for later and add spells from the Spells tab.</p>
+	{:else if step === 'grants'}
+		{#each variantsToPick as v (v.owner)}
+			<h2 class="label">{v.label}</h2>
+			<div class="chips skills">
+				{#each v.variants as name (name)}
+					<button type="button" aria-pressed={picks.variants[v.owner] === name} onclick={() => (picks.variants = { ...picks.variants, [v.owner]: name })}
+						>{name}</button
+					>
+				{/each}
+			</div>
+		{/each}
+		{#each grantsGained as g (g.name)}
+			<p class="hint new">{g.name}: {g.spells.join(', ')}</p>
+		{/each}
+		{#each openChoices as ch (ch.key)}
+			{@const goal = choiceGoal(ch.key)}
+			{@const items = choiceItems(ch.key)}
+			<h2 class="label">{ch.grant.name} · {picks.grantPicks[ch.key]?.length ?? 0}/{ch.count}</h2>
+			<p class="hint">
+				Pick {ch.count}: {filterLabel(ch.filter, (id) => spellById.get(id)?.name ?? id)}.{ch.grant.free
+					? ' They don’t count against the spells you know.'
+					: ''}{arrivingChoices.has(ch.key) ? '' : ' Optional now; you can also pick them in the spellbook.'}
+			</p>
+			<PickList
+				{items}
+				bind:selected={() => picks.grantPicks[ch.key] ?? [], (ids) => (picks.grantPicks = { ...picks.grantPicks, [ch.key]: ids })}
+				max={Math.max(goal, ch.count)}
+				label={ch.grant.name}
+				search={items.length > 12}
+			>
+				{#snippet details(item)}{@const s = spellById.get(item.id)}{#if s}<SpellDetails spell={s} compact />{/if}{/snippet}
+			</PickList>
+		{/each}
+		{#if swaps.length}
+			<label class="field">
+				<span>Replace a {swaps[0].grant.name.toLowerCase().replace(/s$/, '')} (optional)</span>
+				<select bind:value={picks.swapFrom}>
+					<option value="">Keep them all</option>
+					{#each swaps as x (x.original)}
+						<option value="{x.grant.key}@{x.original}">{spellById.get(x.id)?.name ?? x.id}</option>
+					{/each}
+				</select>
+			</label>
+			{#if swap}
+				{@const sw = swap.grant.swap}
+				<p class="hint">A {sw ? `${sw.schools.join(' or ').toLowerCase()} spell from the ${sw.classes.join(', ')} lists` : 'spell'} of the same level.</p>
+				<PickList items={swapItems} bind:selected={picks.swapTo} max={1} label="Replacement" search>
+					{#snippet details(item)}{@const s = spellById.get(item.id)}{#if s}<SpellDetails spell={s} compact />{/if}{/snippet}
+				</PickList>
+			{/if}
+		{/if}
 	{:else if step === 'review'}
 		{@const names = (ids: string[]) => ids.map((id) => spellById.get(id)?.name ?? id).join(', ')}
 		<ul class="card review">
@@ -765,6 +935,11 @@
 			{#if picks.arcanum.length}<li><b>Mystic Arcanum</b> {names(picks.arcanum)}</li>{/if}
 			{#if picks.forget}<li><b>Replaced</b> {names([picks.forget])}</li>{/if}
 			{#each grantsGained as g (g.name)}<li><b>{g.name}</b> {g.spells.join(', ')}</li>{/each}
+			{#each Object.entries(picks.variants) as [owner, name] (owner)}<li><b>{variantsToPick.find((v) => v.owner === owner)?.label ?? 'List'}</b> {name}</li>{/each}
+			{#each openChoices as ch (ch.key)}
+				{#if picks.grantPicks[ch.key]?.length}<li><b>{ch.grant.name}</b> {names(picks.grantPicks[ch.key])}</li>{/if}
+			{/each}
+			{#if swap && picks.swapTo[0]}<li><b>Swapped</b> {names([swap.id])} → {names(picks.swapTo)}</li>{/if}
 		</ul>
 		{#if !ready}<p class="error">Some steps still need a choice.</p>{/if}
 	{:else}

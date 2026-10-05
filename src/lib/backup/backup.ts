@@ -239,7 +239,21 @@ function coins(v: unknown): Coins {
 
 function spellList(v: unknown): CharacterSpell[] {
 	if (!Array.isArray(v)) return [];
-	return v.filter((s) => isObj(s) && typeof s.id === 'string').map((s) => ({ id: s.id as string, prepared: !!s.prepared }));
+	return v
+		.filter((s) => isObj(s) && typeof s.id === 'string')
+		.map((s) => ({
+			id: s.id as string,
+			prepared: !!s.prepared,
+			...(typeof s.grant === 'string' ? { grant: s.grant } : {}),
+			...(typeof s.replaces === 'string' ? { replaces: s.replaces } : {})
+		}));
+}
+
+/** Text values by key, e.g. `grantVariants`; anything else is dropped. */
+function stringRecord(v: unknown): Record<string, string> | undefined {
+	if (!isObj(v)) return undefined;
+	const out = Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string'));
+	return Object.keys(out).length ? out : undefined;
 }
 
 /** Check spells from a backup or spell pack, keeping only known fields. `source` overrides the file's own when given. */
@@ -330,6 +344,7 @@ export function readBackup(data: unknown): Character {
 		resourcesUsed: usedRecord(raw.resourcesUsed),
 		customResources: customResources(raw.customResources),
 		spells: spellList(raw.spells),
+		grantVariants: stringRecord(raw.grantVariants),
 		customSpells: readSpells(raw.customSpells, 'Custom'),
 		spellCache: readSpells(raw.spellCache),
 		concentration: typeof raw.concentration === 'string' ? raw.concentration : undefined,
