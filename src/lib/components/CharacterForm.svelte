@@ -17,7 +17,7 @@
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { defenses, DEFENSE_NAMES } from '$lib/rules/defenses';
-	import { raceSkills, SKILLS } from '$lib/rules/skills';
+	import { raceSkills, skillChoices, SKILLS } from '$lib/rules/skills';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
 	import { OPTION_INFO, optionCount, optionKinds } from '$lib/rules/levelup';
@@ -104,6 +104,12 @@
 	}
 
 	const givenSkills = $derived(raceSkills(c));
+	const choices = $derived(skillChoices(c));
+	/** Skills the class or race offers that aren't on yet, marked on the chips. */
+	const offered = $derived(new Set(choices.flatMap((ch) => ch.from ?? [])));
+	const skillName = (k: Skill) => SKILLS.find((s) => s.key === k)?.name ?? k;
+	/** The player's own picks from a choice's list. */
+	const pickedFrom = (from: Skill[]) => from.filter((k) => c.skillProficiencies.includes(k) && !givenSkills.skills.includes(k)).length;
 	/** Where each save's proficiency comes from without the player's picks. */
 	const givenSave = (a: Ability) => saveProficiencySource({ ...c, saveProficiencies: [] }, a);
 
@@ -262,11 +268,11 @@
 </script>
 
 <form onsubmit={submit}>
-	{#if show('details')}
+	{#if show('basics')}
 		<div class="photo">
 			<label class="photo-pick">
 				<Portrait name={c.name || '?'} image={c.image} size={96} />
-				<span class="link">{c.image ? 'Change photo' : 'Add photo'}</span>
+				<span class="link">{c.image ? 'Change photo' : isNew ? 'Add photo (optional)' : 'Add photo'}</span>
 				<input class="sr-only" type="file" accept="image/*" onchange={pickPhoto} />
 			</label>
 			{#if c.image}
@@ -554,11 +560,23 @@
 			<legend class="label">Skills</legend>
 			<p class="hint">
 				Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
-				feats and racial choices.
+				feats and racial choices; dashed ones are on your class or race's list.
 			</p>
-			{#if givenSkills.skills.length}
+			{#if givenSkills.skills.length || choices.length}
 				<ul class="sources">
-					<li><b>{givenSkills.source}</b> {givenSkills.skills.map((k) => SKILLS.find((s) => s.key === k)?.name).join(', ')}</li>
+					{#if givenSkills.skills.length}
+						<li><b>{givenSkills.source}</b> {givenSkills.skills.map(skillName).join(', ')}</li>
+					{/if}
+					{#each choices as ch (ch.source)}
+						<li>
+							<b>{ch.source}</b>
+							{#if ch.from}
+								choose {ch.count} of {ch.from.map(skillName).join(', ')} ({pickedFrom(ch.from)} picked)
+							{:else}
+								choose any {ch.count === 1 ? 'skill' : `${ch.count} skills`}
+							{/if}
+						</li>
+					{/each}
 				</ul>
 			{/if}
 			<div class="chips skills">
@@ -566,7 +584,7 @@
 					{@const level = skillLevel(s.key)}
 					<button
 						type="button"
-						class={level}
+						class={[level, level === 'none' && offered.has(s.key) && 'offered']}
 						aria-pressed={level !== 'none'}
 						aria-label="{s.name}: {level === 'none' ? 'not proficient' : level}"
 						onclick={() => stepSkill(s.key)}
@@ -979,6 +997,12 @@
 		min-height: 36px;
 		padding: 0 10px;
 		font-size: 14px;
+	}
+
+	/* Off, but one the class or race lets the player pick. */
+	.chips.skills button.offered {
+		border-style: dashed;
+		border-color: var(--color-accent);
 	}
 
 	.chips.skills button.expertise {

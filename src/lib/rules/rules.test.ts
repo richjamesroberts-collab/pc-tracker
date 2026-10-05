@@ -55,7 +55,7 @@ import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
 import { defenses } from './defenses';
-import { skillChecks } from './skills';
+import { skillChecks, skillChoices, SKILL_KEYS } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
 import type { ItemWeapon } from '$lib/types';
@@ -971,6 +971,20 @@ describe('skills', () => {
 		expect(skill(c, 'perception').parts[1].from).toMatch(/^Elf \(Keen Senses\)/);
 		expect(skill(c, 'arcana')).toMatchObject({ total: 0, level: 'none' });
 		expect(skill(c, 'perception').notes).toContain('Passive perception: 14');
+	});
+
+	it('lists the skill picks the class and race offer', () => {
+		expect(skillChoices(pc({ classKey: 'fighter', raceKey: 'elf' }))).toEqual([
+			{ source: 'Fighter', count: 2, from: expect.arrayContaining(['athletics', 'perception']) }
+		]);
+		expect(skillChoices(pc({ classKey: 'bard', raceKey: 'human', subraceKey: 'variant' }))).toEqual([
+			{ source: 'Bard', count: 3 },
+			{ source: 'Human (Skills)', count: 1, from: undefined }
+		]);
+		expect(skillChoices(pc({ classKey: 'rogue', raceKey: 'human' }))).toHaveLength(1);
+		expect(skillChoices(pc({ classKey: 'wizard', raceKey: 'kenku-vgm' }))[1]).toMatchObject({ count: 2, from: ['acrobatics', 'deception', 'sleight-of-hand', 'stealth'] });
+		for (const ch of ['artificer', 'barbarian', 'cleric', 'druid', 'monk', 'paladin', 'ranger', 'rogue', 'sorcerer', 'warlock', 'wizard'])
+			for (const k of skillChoices(pc({ classKey: ch }))[0].from!) expect(SKILL_KEYS).toContain(k);
 	});
 
 	it('gives Jack of All Trades and Remarkable Athlete to skills without proficiency', () => {

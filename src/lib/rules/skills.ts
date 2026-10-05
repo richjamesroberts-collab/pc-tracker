@@ -53,6 +53,62 @@ export function raceSkills(c: Pick<Character, 'raceKey'>): { skills: Skill[]; so
 	return { skills: r.skills, source: `${RACE_MAP.get(c.raceKey!)?.name ?? c.raceKey} (${r.trait})` };
 }
 
+/** Skills a class picks from at 1st level (PHB, TCE), and how many; Bard picks any three. */
+const CLASS_SKILLS: Record<string, { count: number; from?: Skill[] }> = {
+	artificer: { count: 2, from: ['arcana', 'history', 'investigation', 'medicine', 'nature', 'perception', 'sleight-of-hand'] },
+	barbarian: { count: 2, from: ['animal-handling', 'athletics', 'intimidation', 'nature', 'perception', 'survival'] },
+	bard: { count: 3 },
+	cleric: { count: 2, from: ['history', 'insight', 'medicine', 'persuasion', 'religion'] },
+	druid: { count: 2, from: ['arcana', 'animal-handling', 'insight', 'medicine', 'nature', 'perception', 'religion', 'survival'] },
+	fighter: { count: 2, from: ['acrobatics', 'animal-handling', 'athletics', 'history', 'insight', 'intimidation', 'perception', 'survival'] },
+	monk: { count: 2, from: ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth'] },
+	paladin: { count: 2, from: ['athletics', 'insight', 'intimidation', 'medicine', 'persuasion', 'religion'] },
+	ranger: { count: 3, from: ['animal-handling', 'athletics', 'insight', 'investigation', 'nature', 'perception', 'stealth', 'survival'] },
+	rogue: {
+		count: 4,
+		from: ['acrobatics', 'athletics', 'deception', 'insight', 'intimidation', 'investigation', 'perception', 'performance', 'persuasion', 'sleight-of-hand', 'stealth']
+	},
+	sorcerer: { count: 2, from: ['arcana', 'deception', 'insight', 'intimidation', 'persuasion', 'religion'] },
+	warlock: { count: 2, from: ['arcana', 'deception', 'history', 'intimidation', 'investigation', 'nature', 'religion'] },
+	wizard: { count: 2, from: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'religion'] }
+};
+
+/** Skills a race (or `race/subrace`) picks from, and how many; no list means any skill. */
+const RACE_SKILL_CHOICES: Record<string, { count: number; from?: Skill[]; trait: string }> = {
+	'human/variant': { count: 1, trait: 'Skills' },
+	'half-elf': { count: 2, trait: 'Skill Versatility' },
+	'custom-lineage': { count: 1, trait: 'Variable Trait' },
+	centaur: { count: 1, from: ['animal-handling', 'medicine', 'nature', 'survival'], trait: 'Natural Affinity' },
+	changeling: { count: 2, from: ['deception', 'insight', 'intimidation', 'performance', 'persuasion'], trait: 'Changeling Instincts' },
+	githyanki: { count: 1, trait: 'Githyanki Psionics' },
+	kenku: { count: 2, trait: 'Kenku Recall' },
+	'kenku-vgm': { count: 2, from: ['acrobatics', 'deception', 'sleight-of-hand', 'stealth'], trait: 'Kenku Training' },
+	kobold: { count: 1, from: ['arcana', 'investigation', 'medicine', 'sleight-of-hand', 'survival'], trait: 'Kobold Legacy' },
+	lizardfolk: { count: 2, from: ['animal-handling', 'medicine', 'nature', 'perception', 'stealth', 'survival'], trait: "Nature's Intuition" },
+	'lizardfolk-vgm': { count: 2, from: ['animal-handling', 'nature', 'perception', 'stealth', 'survival'], trait: "Hunter's Lore" },
+	'orc-vgm': { count: 2, from: ['animal-handling', 'insight', 'intimidation', 'medicine', 'nature', 'perception', 'survival'], trait: 'Primal Intuition' },
+	shifter: { count: 1, from: ['acrobatics', 'athletics', 'intimidation', 'survival'], trait: 'Bestial Instincts' },
+	tortle: { count: 1, from: ['animal-handling', 'medicine', 'nature', 'perception', 'stealth', 'survival'], trait: "Nature's Intuition" }
+};
+
+export interface SkillChoice {
+	/** "Fighter" or "Half-Elf (Skill Versatility)". */
+	source: string;
+	count: number;
+	/** The skills to pick from; any skill when left out. */
+	from?: Skill[];
+}
+
+/** The skill picks the character's class and race offer at 1st level, for the form to point out. */
+export function skillChoices(c: Pick<Character, 'classKey' | 'raceKey' | 'subraceKey'>): SkillChoice[] {
+	const out: SkillChoice[] = [];
+	const cls = CLASS_SKILLS[c.classKey];
+	if (cls) out.push({ source: CLASS_MAP.get(c.classKey)?.name ?? c.classKey, ...cls });
+	const race = c.raceKey ? (RACE_SKILL_CHOICES[`${c.raceKey}/${c.subraceKey}`] ?? RACE_SKILL_CHOICES[c.raceKey]) : undefined;
+	if (race) out.push({ source: `${RACE_MAP.get(c.raceKey!)?.name ?? c.raceKey} (${race.trait})`, count: race.count, from: race.from });
+	return out;
+}
+
 /** Item bonuses and advantage on skills, by the bundled item's id, while the item is in use. */
 const ITEM_SKILLS: Record<string, { skill?: Skill; bonus?: number; note?: string }[]> = {
 	'stone of good luck|dmg': [{ bonus: 1 }],
