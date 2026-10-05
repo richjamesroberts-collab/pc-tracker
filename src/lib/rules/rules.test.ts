@@ -54,6 +54,8 @@ import {
 import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon, martialArtsDie } from './attacks';
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
+import { skillChecks } from './skills';
+import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
 import type { ItemWeapon } from '$lib/types';
 
@@ -788,6 +790,26 @@ describe('attacks', () => {
 		expect(attacks(fighter({ items: twin, fightingStyles: ['two-weapon'] }))[0].notes).toContain('Off-hand (bonus action): 1d6 + 3 piercing');
 	});
 
+	it('leaves Dueling out while holding two light weapons, with a note', () => {
+		const [sword] = attacks(fighter({ fightingStyles: ['dueling'], abilities: scores({ dex: 16 }), items: [wielded(SHORTSWORD), wielded(DAGGER)] }));
+		expect(sword).toMatchObject({ damage: '1d6 + 3 piercing', damageBonus: 3 });
+		expect(sword.notes).toContainEqual(expect.stringMatching(/^Dueling: 1d6 \+ 5 piercing if it’s your only weapon/));
+		const [alone] = attacks(fighter({ fightingStyles: ['dueling'], abilities: scores({ dex: 16 }), items: [wielded(SHORTSWORD)] }));
+		expect(alone.damage).toBe('1d6 + 5 piercing');
+	});
+
+	it('says where each part of the numbers comes from', () => {
+		const plus1 = wielded(LONGSWORD, { kind: 'magic', name: '+1 Longsword', effects: { attack: 1, damage: 1 } });
+		const [a] = attacks(fighter({ raceKey: 'half-orc', abilities: scores({ str: 16 }), items: [plus1] }));
+		expect(a.hitParts).toEqual([
+			{ label: 'STR modifier', value: '+4', from: 'STR 18: base 16, Race +2 · melee weapon' },
+			{ label: 'Proficiency', value: '+3', from: 'Fighter: Martial weapons (level 5 bonus)' },
+			{ label: '+1 Longsword', value: '+1', from: 'Magic weapon' }
+		]);
+		expect(a.damageParts.map((p) => `${p.label} ${p.value}`)).toEqual(['Weapon die 1d8', 'STR modifier +4', '+1 Longsword +1']);
+		expect(a).toMatchObject({ damage: '1d8 + 5 slashing', damageBonus: 5 });
+	});
+
 	it('gives monks their Martial Arts die and DEX', () => {
 		const monk = pc({ classKey: 'monk', level: 5, abilities: scores({ str: 10, dex: 16 }), items: [wielded(QUARTERSTAFF)] });
 		const [staff, fist] = attacks(monk);
@@ -908,7 +930,7 @@ describe("Volo's and Monsters of the Multiverse races", () => {
 		const tabaxi = attacks(pc({ raceKey: 'tabaxi', classKey: 'rogue', level: 1, abilities: scores({ str: 14 }) }));
 		expect(tabaxi.map((a) => a.name)).toEqual(['Claws (unarmed strike)', 'Unarmed strike']);
 		expect(tabaxi[0]).toMatchObject({ id: 'natural', toHit: 4, damage: '1d6 + 2 slashing' });
-		expect(tabaxi[0].damageParts[0]).toEqual({ label: 'Claws', value: '1d6' });
+		expect(tabaxi[0].damageParts[0]).toMatchObject({ label: 'Claws', value: '1d6' });
 		expect(attacks(pc({ raceKey: 'tabaxi-vgm', abilities: scores({ str: 14 }) }))[0].damage).toBe('1d4 + 2 slashing');
 		const bite = attacks(pc({ raceKey: 'lizardfolk', level: 5, abilities: scores({ str: 14 }) }))[0];
 		expect(bite.notes).toContain('Hungry Jaws: bite as a bonus action; on a hit gain 3 temporary HP');
@@ -935,5 +957,66 @@ describe("Volo's and Monsters of the Multiverse races", () => {
 		expect(keys(pc({ raceKey: 'genasi', subraceKey: 'earth', level: 5 }))).toEqual(['merge-with-stone', 'genasi-pass-without-trace']);
 		expect(keys(pc({ raceKey: 'aasimar-vgm', subraceKey: 'scourge', level: 3 }))).toEqual(['healing-hands-vgm', 'radiant-consumption']);
 		expect(resourcesFor(pc({ raceKey: 'aasimar', level: 5 }))[0].die!(pc({ level: 5 }))).toBe('3d4');
+	});
+});
+
+describe('skills', () => {
+	const skill = (c: Character, key: string) => skillChecks(c).find((s) => s.key === key)!;
+
+	it('adds proficiency, expertise and racial skills', () => {
+		const c = pc({ classKey: 'rogue', level: 5, raceKey: 'elf', abilities: scores({ dex: 16, wis: 12 }), skillProficiencies: ['stealth'], skillExpertise: ['stealth'] });
+		expect(skill(c, 'stealth')).toMatchObject({ total: 4 + 3 + 3, level: 'expertise' }); // DEX 16 + Elf 2
+		expect(skill(c, 'perception')).toMatchObject({ total: 1 + 3, level: 'proficient' });
+		expect(skill(c, 'perception').parts[1].from).toMatch(/^Elf \(Keen Senses\)/);
+		expect(skill(c, 'arcana')).toMatchObject({ total: 0, level: 'none' });
+		expect(skill(c, 'perception').notes).toContain('Passive perception: 14');
+	});
+
+	it('gives Jack of All Trades and Remarkable Athlete to skills without proficiency', () => {
+		const bard = pc({ classKey: 'bard', level: 5, skillProficiencies: ['persuasion'] });
+		expect(skill(bard, 'arcana')).toMatchObject({ total: 1, level: 'half' });
+		expect(skill(bard, 'persuasion').total).toBe(3);
+		const champ = pc({ classKey: 'fighter', subclassKey: 'champion', level: 7 });
+		expect(skill(champ, 'athletics').total).toBe(2);
+		expect(skill(champ, 'arcana').total).toBe(0);
+	});
+
+	it('counts item bonuses and notes armor and advantage', () => {
+		const luck = item({ ref: 'stone of good luck|dmg', name: 'Stone of Good Luck', attunement: true, attuned: true });
+		const gloves = item({ ref: 'gloves of thievery|dmg', name: 'Gloves of Thievery', attunement: false });
+		const cloak = item({ ref: 'cloak of elvenkind|dmg', name: 'Cloak of Elvenkind', attunement: true, attuned: true });
+		const chain = item({ kind: 'gear', name: 'Chain Mail', attunement: false, armor: { type: 'heavy', ac: 16 }, equipped: true });
+		const c = pc({ items: [luck, gloves, cloak, chain] });
+		expect(skill(c, 'sleight-of-hand').total).toBe(6);
+		expect(skill(c, 'arcana').total).toBe(1);
+		expect(skill(c, 'stealth').notes).toEqual(expect.arrayContaining(['Cloak of Elvenkind: Advantage to hide, hood up', 'Chain Mail: disadvantage']));
+		expect(skill(pc({ items: [{ ...luck, attuned: false }] }), 'arcana').total).toBe(0);
+	});
+});
+
+describe('saving throws', () => {
+	const save = (c: Character, a: string) => savingThrows(c).find((s) => s.ability === a)!;
+
+	it('adds proficiency from the class, class features and the player', () => {
+		const fighter = pc({ classKey: 'fighter', level: 5, abilities: scores({ str: 16, wis: 12 }), saveProficiencies: ['wis'] });
+		expect(save(fighter, 'str')).toMatchObject({ total: 6, proficient: true });
+		expect(save(fighter, 'str').parts[1].from).toMatch(/^Fighter/);
+		expect(save(fighter, 'wis')).toMatchObject({ total: 4, proficient: true });
+		expect(save(fighter, 'dex')).toMatchObject({ total: 0, proficient: false });
+		expect(savingThrows(pc({ classKey: 'monk', level: 14 })).every((s) => s.proficient)).toBe(true);
+		expect(save(pc({ classKey: 'rogue', level: 15 }), 'wis').proficient).toBe(true);
+	});
+
+	it('adds Aura of Protection and item bonuses, and notes advantage', () => {
+		const paladin = pc({ classKey: 'paladin', level: 6, abilities: scores({ cha: 16 }) });
+		expect(save(paladin, 'dex').total).toBe(3);
+		expect(save(pc({ classKey: 'paladin', level: 6, abilities: scores({ cha: 8 }) }), 'dex').total).toBe(1);
+		const cloak = item({ ref: 'cloak of protection|dmg', name: 'Cloak of Protection', attunement: true, attuned: true });
+		const luck = item({ ref: 'stone of good luck|dmg', name: 'Stone of Good Luck', attunement: true, attuned: true });
+		expect(save(pc({ items: [cloak, luck] }), 'str').total).toBe(2);
+		expect(save(pc({ items: [{ ...cloak, attuned: false }] }), 'str').total).toBe(0);
+		expect(save(pc({ raceKey: 'dwarf' }), 'con').notes).toContain('Dwarven Resilience (Dwarf): advantage against poison');
+		expect(save(pc({ raceKey: 'gnome' }), 'wis').notes[0]).toMatch(/^Gnome Cunning/);
+		expect(save(pc({ classKey: 'barbarian', level: 2 }), 'dex').notes[0]).toMatch(/^Danger Sense/);
 	});
 });

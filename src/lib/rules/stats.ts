@@ -34,6 +34,8 @@ export interface StatSource {
 	label: string;
 	/** "+2", "becomes 19", "16". */
 	value: string;
+	/** Where it comes from, for breakdowns that explain themselves: "DEX 16: base 14, Race +2". */
+	from?: string;
 }
 
 export interface AbilityBreakdown {
@@ -123,6 +125,14 @@ export function abilityBreakdown(
 }
 
 export const abilityScores = (c: Parameters<typeof abilityBreakdown>[0]) => abilityBreakdown(c).scores;
+
+/** "STR 18: base 16, Race +2", or "STR 16" when nothing changed it. */
+export function scoreDetail(base: AbilityScores, breakdown: AbilityBreakdown, a: Ability): string {
+	const head = `${ABILITY_SHORT[a]} ${breakdown.scores[a]}`;
+	const sources = breakdown.sources[a];
+	if (!sources.length) return head;
+	return `${head}: base ${base[a]}, ${sources.map((s) => `${s.label} ${s.value}`).join(', ')}`;
+}
 
 type StatInput = Pick<
 	Character,

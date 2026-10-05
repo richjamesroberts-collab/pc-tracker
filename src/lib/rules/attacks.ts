@@ -1,9 +1,9 @@
-import type { Ability, AbilityScores, Character, InventoryItem, ItemWeapon } from '$lib/types';
+import type { Ability, Character, ItemWeapon } from '$lib/types';
 import { ABILITY_SHORT, abilityMod, signedMod } from './abilities';
 import { isActive } from './items';
-import { isProficient, weaponProficiencies } from './proficiency';
+import { isProficient, proficiencyLabel, weaponProficiencySources } from './proficiency';
 import { proficiencyBonus } from './spellcasting';
-import { abilityScores, type StatSource } from './stats';
+import { abilityBreakdown, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
 
 export interface FightingStyle {
 	key: string;
@@ -121,6 +121,8 @@ export interface Attack {
 	toHit: number;
 	/** "1d8 + 3 slashing". */
 	damage: string;
+	/** The flat part of `damage`: everything added to the dice. */
+	damageBonus: number;
 	/** Two-handed damage for a versatile weapon. */
 	versatile?: string;
 	/** "Melee 5 ft", "Melee 10 ft (reach) · thrown 20/60 ft", "Ranged 80/320 ft". */
@@ -171,11 +173,23 @@ type AttackInput = Pick<
  * magic bonuses and fighting styles are worked in; features that depend on the moment (Sneak Attack,
  * Rage, smites) are notes.
  */
-export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)): Attack[] {
+export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBreakdown(c)): Attack[] {
+	const scores = breakdown.scores;
 	const prof = proficiencyBonus(c.level);
-	const profs = weaponProficiencies(c);
+	const profSources = weaponProficiencySources(c);
+	const profs = new Set(profSources.flatMap((s) => s.weapons));
 	const styles = new Set(c.fightingStyles ?? []);
 	const mod = (a: Ability) => abilityMod(scores[a]);
+	const scoreFrom = (a: Ability) => scoreDetail(c.abilities, breakdown, a);
+	const profPart = (w?: ItemWeapon): StatSource => {
+		const src = w && profSources.find((s) => s.weapons.includes(w.category) || s.weapons.includes(w.base));
+		const key = src && (src.weapons.includes(w!.category) ? w!.category : w!.base);
+		return {
+			label: 'Proficiency',
+			value: signedMod(prof),
+			from: `${src ? `${src.source}: ${proficiencyLabel(key!)}` : 'Everyone is proficient with unarmed strikes'} (level ${c.level} bonus)`
+		};
+	};
 	const sub = `${c.classKey}/${c.subclassKey}`;
 	const equipped = (c.items ?? []).filter((i) => i.equipped && i.weapon);
 	const lightMelee = equipped.filter((i) => !i.weapon!.ranged && i.weapon!.properties.includes('light'));
@@ -216,41 +230,61 @@ export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)
 		const proficient = isProficient(profs, w);
 
 		// Pick the best ability the weapon allows.
-		const options: { ability: Ability; label: string }[] = [];
-		if (has('finesse')) options.push({ ability: 'str', label: 'STR' }, { ability: 'dex', label: 'DEX (finesse)' });
-		else options.push(w.ranged ? { ability: 'dex', label: 'DEX' } : { ability: 'str', label: 'STR' });
-		if (c.classKey === 'monk' && isMonkWeapon(w)) options.push({ ability: 'dex', label: 'DEX (Martial Arts)' });
-		if (sub === 'warlock/hexblade' && proficient && !has('two-handed')) options.push({ ability: 'cha', label: 'CHA (Hex Warrior)' });
-		if (sub === 'artificer/battle-smith' && c.level >= 3 && i.kind === 'magic') options.push({ ability: 'int', label: 'INT (Battle Ready)' });
+		const options: { ability: Ability; label: string; why: string }[] = [];
+		if (has('finesse')) {
+			options.push({ ability: 'str', label: 'STR', why: 'melee weapon' }, { ability: 'dex', label: 'DEX', why: 'finesse: STR or DEX' });
+		} else options.push(w.ranged ? { ability: 'dex', label: 'DEX', why: 'ranged weapon' } : { ability: 'str', label: 'STR', why: 'melee weapon' });
+		if (c.classKey === 'monk' && isMonkWeapon(w)) options.push({ ability: 'dex', label: 'DEX', why: 'Martial Arts: monk weapon' });
+		if (sub === 'warlock/hexblade' && proficient && !has('two-handed')) {
+			options.push({ ability: 'cha', label: 'CHA', why: 'Hex Warrior: only the weapon you picked at your last long rest, or your pact weapon' });
+		}
+		if (sub === 'artificer/battle-smith' && c.level >= 3 && i.kind === 'magic') options.push({ ability: 'int', label: 'INT', why: 'Battle Ready: magic weapon' });
 		const best = options.reduce((a, b) => (mod(b.ability) > mod(a.ability) ? b : a));
-		const abilityPart = { label: best.label, value: signedMod(mod(best.ability)) };
+		const abilityPart: StatSource = {
+			label: `${best.label} modifier`,
+			value: signedMod(mod(best.ability)),
+			from: `${scoreFrom(best.ability)} · ${best.why}`
+		};
 
 		const magic = isActive(i) ? i.effects : undefined;
+		const magicFrom = `Magic weapon${i.attunement ? ', attuned' : ''}`;
 		const hitParts = [abilityPart];
-		if (proficient) hitParts.push({ label: 'Proficiency', value: signedMod(prof) });
-		if (magic?.attack) hitParts.push({ label: 'Magic', value: signedMod(magic.attack) });
-		if (styles.has('archery') && w.ranged) hitParts.push({ label: 'Archery', value: '+2' });
+		if (proficient) hitParts.push(profPart(w));
+		if (magic?.attack) hitParts.push({ label: i.name, value: signedMod(magic.attack), from: magicFrom });
+		if (styles.has('archery') && w.ranged) hitParts.push({ label: 'Archery', value: '+2', from: 'Fighting style: ranged weapons' });
 
 		const damageParts = [abilityPart];
-		if (magic?.damage) damageParts.push({ label: 'Magic', value: signedMod(magic.damage) });
+		if (magic?.damage) damageParts.push({ label: i.name, value: signedMod(magic.damage), from: magicFrom });
 		const flat = mod(best.ability) + (magic?.damage ?? 0);
-		const dueling = styles.has('dueling') && !w.ranged && !has('two-handed');
-		if (dueling) damageParts.push({ label: 'Dueling (one hand)', value: '+2' });
+		// Dueling needs no other weapon in hand, so it doesn't count while this is one of a two-weapon pair.
+		const paired = lightMelee.length > 1 && lightMelee.includes(i);
+		const duelingWeapon = styles.has('dueling') && !w.ranged && !has('two-handed');
+		const dueling = duelingWeapon && !paired;
+		if (dueling) {
+			damageParts.push({
+				label: 'Dueling',
+				value: '+2',
+				from: `Fighting style: one-handed melee weapon, no other weapon${has('versatile') ? ' (not when used two-handed)' : ''}`
+			});
+		}
 
 		// Monks use their Martial Arts die when it beats the weapon's.
 		let dice = w.damage;
 		if (c.classKey === 'monk' && isMonkWeapon(w) && dieAverage(`1${martialArtsDie(c.level)}`) > dieAverage(dice)) {
 			dice = `1${martialArtsDie(c.level)}`;
-			damageParts.unshift({ label: 'Martial Arts die', value: dice });
-		}
+			damageParts.unshift({ label: 'Martial Arts die', value: dice, from: `Monk level ${c.level}, beats the weapon's ${w.damage}` });
+		} else if (dice) damageParts.unshift({ label: 'Weapon die', value: dice, from: `${proficiencyLabel(w.base)}, ${w.damageType}` });
 
 		const notes = featureNotes(!w.ranged, has('finesse') || w.ranged, best.ability);
 		if (!proficient) notes.unshift('Not proficient: no proficiency bonus');
+		if (duelingWeapon && paired) {
+			notes.push(`Dueling: ${damageText(dice, flat + 2, w.damageType)} if it’s your only weapon in hand (left out while you hold two light weapons)`);
+		}
 		if (styles.has('great-weapon') && !w.ranged && (has('two-handed') || has('versatile'))) {
 			notes.push(`Great Weapon Fighting: reroll 1s and 2s on damage dice${has('versatile') ? ' when used two-handed' : ''}`);
 		}
 		if (styles.has('thrown') && has('thrown')) notes.push('Thrown Weapon Fighting: +2 damage when thrown');
-		if (lightMelee.length > 1 && lightMelee.includes(i)) {
+		if (paired) {
 			// The bonus-action attack adds no ability modifier unless it's negative or the character has Two-Weapon Fighting.
 			const offFlat = flat - (styles.has('two-weapon') || mod(best.ability) < 0 ? 0 : mod(best.ability));
 			notes.push(`Off-hand (bonus action): ${damageText(dice, offFlat, w.damageType)}`);
@@ -269,6 +303,7 @@ export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)
 			name: i.name,
 			toHit: hitParts.reduce((n, p) => n + Number(p.value), 0),
 			damage: damageText(dice, flat + (dueling ? 2 : 0), w.damageType),
+			damageBonus: flat + (dueling ? 2 : 0),
 			...(has('versatile') && w.versatile ? { versatile: damageText(w.versatile, flat, w.damageType) } : {}),
 			reach,
 			properties: w.properties
@@ -288,8 +323,9 @@ export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)
 	}
 
 	const natural = c.raceKey ? NATURAL_WEAPONS[c.raceKey] : undefined;
-	if (natural) out.push(unarmedStrike(c, scores, equipped.length > 0 || shield, featureNotes(true, false, 'str'), natural));
-	out.push(unarmedStrike(c, scores, equipped.length > 0 || shield, featureNotes(true, false, 'str')));
+	const armed = equipped.length > 0 || shield;
+	if (natural) out.push(unarmedStrike(c, breakdown, profPart(), armed, featureNotes(true, false, 'str'), natural));
+	out.push(unarmedStrike(c, breakdown, profPart(), armed, featureNotes(true, false, 'str')));
 	return out;
 }
 
@@ -313,7 +349,15 @@ const NATURAL_WEAPONS: Record<string, NaturalWeapon> = {
 };
 
 /** A plain unarmed strike, or one made with a racial natural weapon. */
-function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, notes: string[], natural?: NaturalWeapon): Attack {
+function unarmedStrike(
+	c: AttackInput,
+	breakdown: AbilityBreakdown,
+	profPart: StatSource,
+	armed: boolean,
+	notes: string[],
+	natural?: NaturalWeapon
+): Attack {
+	const scores = breakdown.scores;
 	const prof = proficiencyBonus(c.level);
 	const str = abilityMod(scores.str);
 	const dex = abilityMod(scores.dex);
@@ -328,8 +372,20 @@ function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, no
 	if (c.fightingStyles?.includes('unarmed') && !natural) dice.push(armed ? '1d6' : '1d8');
 	const die = dice.reduce((a, b) => (dieAverage(b) > dieAverage(a) ? b : a));
 	const dieLabel = die === natural?.die ? natural.name : monk ? 'Martial Arts die' : 'Unarmed Fighting';
+	const dieFrom =
+		die === '1'
+			? 'Unarmed strikes deal 1 damage'
+			: die === natural?.die
+				? `Racial natural weapon, ${natural.type}`
+				: monk
+					? `Monk level ${c.level}`
+					: `Fighting style: ${armed ? 'd6 with a weapon or shield at hand, d8 with none' : 'd8 with no weapon or shield at hand'}`;
 
-	const abilityPart = { label: monk && ability === 'dex' ? 'DEX (Martial Arts)' : ABILITY_SHORT[ability], value: signedMod(m) };
+	const abilityPart: StatSource = {
+		label: `${ABILITY_SHORT[ability]} modifier`,
+		value: signedMod(m),
+		from: `${scoreDetail(c.abilities, breakdown, ability)} · ${monk && ability === 'dex' ? 'Martial Arts: DEX instead of STR' : 'unarmed strike'}`
+	};
 	const extra = monk ? ['Martial Arts: an unarmed strike as a bonus action after attacking'] : [];
 	if (monk && c.level >= 6) extra.push('Ki-Empowered Strikes: counts as magical');
 	if (natural?.name === 'Bite') {
@@ -341,12 +397,13 @@ function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, no
 		name: natural ? `${natural.name} (unarmed strike)` : 'Unarmed strike',
 		toHit: m + prof,
 		damage: damageText(die, m, natural?.type ?? 'bludgeoning'),
+		damageBonus: die === '1' ? 1 + m : m,
 		reach: 'Melee 5 ft',
 		properties: '',
 		proficient: true,
 		ability,
-		hitParts: [abilityPart, { label: 'Proficiency', value: signedMod(prof) }],
-		damageParts: die === '1' ? [{ label: 'Unarmed', value: '1' }, abilityPart] : [{ label: dieLabel, value: die }, abilityPart],
+		hitParts: [abilityPart, profPart],
+		damageParts: [{ label: die === '1' ? 'Unarmed' : dieLabel, value: die, from: dieFrom }, abilityPart],
 		// Extra weapon dice on a critical need a weapon.
 		notes: [...extra, ...notes.filter((n) => !n.startsWith('Brutal') && !n.startsWith('Savage'))]
 	};

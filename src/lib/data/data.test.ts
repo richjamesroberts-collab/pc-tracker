@@ -238,6 +238,14 @@ describe('item effects and armor', () => {
 		expect(c.itemDataVersion).toBe(ITEM_DATA_VERSION);
 		expect(needsItemData(c)).toBe(false);
 	});
+	it('only counts a Rod of Alertness’s AC bonus once it’s planted, so it isn’t an effect', () => {
+		expect(magicById.get('rod of alertness|dmg')!.effects?.ac).toBeUndefined();
+		const rod = { ...inventoryItem(magicById.get('rod of alertness|dmg')!), attuned: true, effects: { ac: 1 } };
+		const c = { ...newCharacter(), items: [rod], itemDataVersion: 1 };
+		expect(needsItemData(c)).toBe(true);
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0].effects).toEqual({});
+	});
 	it('has racial increases for every race', () => {
 		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();
 	});

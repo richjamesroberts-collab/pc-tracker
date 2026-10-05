@@ -322,8 +322,9 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
 /**
  * Bump when bundled items gain fields that inventory entries copy, and teach `fillItemData` to fill them.
  * 1: weapon stats, and magic weapons' attack and damage bonuses.
+ * 2: Rod of Alertness loses its AC bonus (it only applies for 10 minutes after the rod is planted).
  */
-export const ITEM_DATA_VERSION = 1;
+export const ITEM_DATA_VERSION = 2;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
@@ -343,6 +344,7 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 		const e = 'effects' in data ? data.effects : undefined;
 		if (i.effects && e?.attack && i.effects.attack === undefined) i.effects.attack = e.attack;
 		if (i.effects && e?.damage && i.effects.damage === undefined) i.effects.damage = e.damage;
+		if (i.ref === 'rod of alertness|dmg' && i.effects?.ac) delete i.effects.ac;
 	}
 	c.itemDataVersion = ITEM_DATA_VERSION;
 }
