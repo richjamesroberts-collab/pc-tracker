@@ -385,6 +385,8 @@ export interface FeatData {
 	expertise?: number;
 	/** Extra max HP per level (Tough). */
 	hpPerLevel?: number;
+	/** Weapon proficiencies to pick (Weapon Master). */
+	weapons?: number;
 	/** Plain paragraphs joined by `\n`. */
 	text: string;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
 import type { FeatData } from '$lib/data/content';
 import type { Character } from '$lib/types';
-import { applyLevelUp, isAsiLevel, levelUpChanges, levelUpNeeds, optionCount, subclassLevel } from './levelup';
+import { applyChoices, applyLevelUp, hasChoices, isAsiLevel, levelUpChanges, levelUpNeeds, optionCount, startingHp, subclassLevel, weaponPicks } from './levelup';
 import { recompute } from './stats';
 import { hpGain } from './xp';
 
@@ -173,5 +173,59 @@ describe('applying a level up', () => {
 		const c = pc({ level: 20 });
 		expect(applyLevelUp(c, { hp: 8, subclassKey: 'champion' })).toBe(false);
 		expect(c.subclassKey).toBeUndefined();
+	});
+});
+
+describe('a new character, level by level', () => {
+	const at1 = (o: Partial<Character>) => pc({ level: 1, ...o });
+
+	it('counts 1st-level choices from nothing', () => {
+		const fighter = at1({});
+		expect(levelUpNeeds(fighter, fighter, true)).toMatchObject({ fightingStyles: 1, asi: false, cantrips: 0, spells: 0 });
+		const rogue = at1({ classKey: 'rogue' });
+		expect(levelUpNeeds(rogue, rogue, true).expertise).toBe(2);
+		const wizard = at1({ classKey: 'wizard' });
+		expect(levelUpNeeds(wizard, wizard, true)).toMatchObject({ cantrips: 3, spells: 6, swapSpell: false, subclass: false });
+		const sorcerer = at1({ classKey: 'sorcerer' });
+		expect(levelUpNeeds(sorcerer, sorcerer, true)).toMatchObject({ subclass: true, cantrips: 4, spells: 2 });
+		const barbarian = at1({ classKey: 'barbarian' });
+		expect(hasChoices(levelUpNeeds(barbarian, barbarian, true))).toBe(false);
+	});
+
+	it('asks for a racial feat and weapon picks at 1st level', () => {
+		const human = at1({ classKey: 'barbarian', raceKey: 'human', subraceKey: 'variant' });
+		expect(levelUpNeeds(human, human, true).raceFeat).toBe(true);
+		expect(levelUpNeeds(human, { ...human, level: 2 }).raceFeat).toBe(false);
+		const hobgoblin = at1({ classKey: 'wizard', raceKey: 'hobgoblin-vgm' });
+		expect(levelUpNeeds(hobgoblin, hobgoblin, true).weapons).toBe(2);
+	});
+
+	it('knows when Bladesingers and Kensei pick weapons', () => {
+		expect(weaponPicks({ classKey: 'wizard', subclassKey: 'bladesinging', level: 2 }, false).count).toBe(1);
+		expect(weaponPicks({ classKey: 'monk', subclassKey: 'kensei', level: 3 }, false).count).toBe(2);
+		expect(weaponPicks({ classKey: 'monk', subclassKey: 'kensei', level: 6 }, false).count).toBe(1);
+		expect(weaponPicks({ classKey: 'monk', subclassKey: 'kensei', level: 7 }, false).count).toBe(0);
+		const monk = pc({ classKey: 'monk', level: 2 });
+		expect(levelUpNeeds(monk, up(monk, 'kensei')).weapons).toBe(2);
+	});
+
+	it('applies 1st-level choices without levelling, a racial feat without a level', () => {
+		const c = at1({ classKey: 'fighter', raceKey: 'human', subraceKey: 'variant' });
+		const alert = feat({ id: 'alert|phb', name: 'Alert' });
+		applyChoices(c, { hp: 0, fightingStyles: ['defense'], weapons: ['whip'], improvement: { kind: 'feat', feat: alert, skills: [], expertise: [], fromRace: true } }, 1);
+		expect(c.level).toBe(1);
+		expect(c.fightingStyles).toEqual(['defense']);
+		expect(c.weaponProficiencies).toEqual(['whip']);
+		expect(c.feats).toMatchObject([{ name: 'Alert' }]);
+		expect(c.feats[0].level).toBeUndefined();
+	});
+
+	it('works out starting hit points', () => {
+		// d10 at 1st, then 6 a level, +2 CON each level.
+		const fighter = pc({ level: 5, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 8 } });
+		expect(startingHp(fighter)).toBe(10 + 2 + 4 * (6 + 2));
+		expect(startingHp(fighter, [10, null, 1, 3])).toBe(12 + 12 + 8 + 3 + 5);
+		const tough = pc({ level: 2, abilities: { str: 16, dex: 12, con: 10, int: 10, wis: 10, cha: 8 }, feats: [{ id: 't', name: 'Tough', hpPerLevel: 2 }] });
+		expect(startingHp(tough)).toBe(12 + 8);
 	});
 });
