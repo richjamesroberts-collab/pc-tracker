@@ -45,6 +45,9 @@ export interface StatSource {
 	from?: string;
 }
 
+/** "10 (Unarmored) +5 (DEX) +3 (+1 Shield)": each number, then where it comes from. */
+export const formula = (parts: StatSource[]) => parts.map((p, n) => `${n ? p.value : p.value.replace(/^\+/, '')} (${p.label})`).join(' ');
+
 export interface AbilityBreakdown {
 	/** Totals with everything applied. */
 	scores: AbilityScores;
@@ -184,7 +187,9 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 		total = c.acBase;
 		parts.push({ label: 'Your AC', value: `${c.acBase}` });
 	} else if (body) {
-		const { type, ac } = body.armor!;
+		const { type } = body.armor!;
+		// The armor's magic bonus is part of its number: "17 (+1 Chain Mail)".
+		const ac = body.armor!.ac + magicAc(body);
 		const dexPart = type === 'light' ? dex : type === 'medium' ? Math.min(dex, 2) : 0;
 		total = ac + dexPart;
 		parts.push({ label: body.name, value: `${ac}` });
@@ -245,20 +250,18 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 	}
 
 	if (c.acAuto && shield) {
-		total += shield.armor!.ac;
-		parts.push({ label: shield.name, value: signedMod(shield.armor!.ac) });
+		const ac = shield.armor!.ac + magicAc(shield);
+		total += ac;
+		parts.push({ label: shield.name, value: signedMod(ac) });
 	}
 
-	// Magic bonuses: armor and shields only while worn (and only in auto mode, where they're modelled),
-	// everything else while attuned.
-	// Worn armor and shields first, so their bonus reads next to them in the breakdown.
-	const bonusItems = (c.items ?? []).filter((i) => i.effects?.ac && isActive(i)).sort((a, b) => Number(!!b.armor) - Number(!!a.armor));
+	// Other items' magic bonuses, while attuned. Armor and shields count theirs in their own AC above
+	// (and not at all when the player enters AC, which already allows for them).
+	const bonusItems = (c.items ?? []).filter((i) => i.effects?.ac && !i.armor && isActive(i));
 	for (const i of bonusItems) {
-		if (i.armor && !c.acAuto) continue;
 		if (i.effects!.unarmoredOnly && c.acAuto && (body || shield)) continue;
 		total += i.effects!.ac!;
-		// Worn armor and shields are listed above with their own AC, so their magic reads as a bonus.
-		parts.push({ label: i.armor ? `${i.name} bonus` : i.name, value: signedMod(i.effects!.ac!) });
+		parts.push({ label: i.name, value: signedMod(i.effects!.ac!) });
 	}
 
 	if (c.acAdjust) {

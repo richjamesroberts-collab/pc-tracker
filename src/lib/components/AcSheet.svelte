@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { armorClass, setAcTotal } from '$lib/rules/stats';
+	import { armorClass, formula, setAcTotal } from '$lib/rules/stats';
 	import type { Character } from '$lib/types';
 
 	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
@@ -41,7 +41,7 @@
 
 <Sheet {open} {onclose} label="Armor class">
 	<h2>Armor class</h2>
-	<p class="muted">{breakdown.parts.map((p) => `${p.label} ${p.value}`).join(' · ')}</p>
+	<p class="muted">{formula(breakdown.parts)}</p>
 	<p class="muted small">
 		{c.acAuto
 			? 'Changes here are a temporary adjustment on top of your armor, for things like the Shield spell or cover.'
