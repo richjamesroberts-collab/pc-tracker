@@ -96,6 +96,11 @@ describe('level up changes', () => {
 		const monk = pc({ classKey: 'monk', level: 1 });
 		expect(levelUpChanges(monk, up(monk))).toContain('New: Ki 2');
 	});
+
+	it('lists granted spells that arrive', () => {
+		const sorcerer = pc({ classKey: 'sorcerer', subclassKey: 'aberrant-mind', level: 2 });
+		expect(levelUpChanges(sorcerer, up(sorcerer))).toContain('Psionic Spells: Calm Emotions, Detect Thoughts');
+	});
 });
 
 describe('applying a level up', () => {

@@ -30,7 +30,8 @@
 	const missing = $derived(missingSpellIds(c));
 	const cantrips = $derived(all.filter((x) => x.spell.level === 0));
 	const levelled = $derived(all.filter((x) => x.spell.level > 0));
-	const preparedCount = $derived(levelled.filter((x) => x.prepared).length);
+	// Granted spells (domain, oath, circle) are always prepared and don't count.
+	const preparedCount = $derived(levelled.filter((x) => x.prepared && !x.grant).length);
 	const limit = $derived(spellLimit(c));
 
 	let preparing = $state(false);
@@ -162,8 +163,10 @@
 	{#if cantrips.length}
 		<h2 class="label group">Cantrips</h2>
 		<div class="chips">
-			{#each cantrips as { spell } (spell.id)}
-				<button type="button" onclick={() => (casting = spell)}>{spell.name}</button>
+			{#each cantrips as { spell, grant } (spell.id)}
+				<button type="button" onclick={() => (casting = spell)}>
+					{spell.name}{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
+				</button>
 			{/each}
 		</div>
 	{/if}
@@ -180,14 +183,17 @@
 	{#each groups as [level, list] (level)}
 		<h2 class="label group">{ordinal(level)} level</h2>
 		<ul class="card list">
-			{#each list as { spell, prepared } (spell.id)}
+			{#each list as { spell, prepared, grant } (spell.id)}
 				<li>
 					{#if preparing}
 						<label class="spell prep-row">
-							<input type="checkbox" checked={prepared} onchange={() => togglePrepared(spell.id)} />
+							<input type="checkbox" checked={prepared} disabled={!!grant} onchange={() => togglePrepared(spell.id)} />
 							<span class="info">
-								<span class="name">{spell.name}</span>
-								<span class="meta">{spellMeta(spell)}</span>
+								<span class="name">
+									{spell.name}
+									{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
+								</span>
+								<span class="meta">{grant ? `Always prepared · ${grant.name}` : spellMeta(spell)}</span>
 							</span>
 						</label>
 					{:else}
@@ -195,6 +201,7 @@
 							<span class="info">
 								<span class="name">
 									{spell.name}
+									{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
 									{#if spell.concentration}<span class="tag">Conc</span>{/if}
 									{#if spell.ritual}<span class="tag">Ritual</span>{/if}
 								</span>
@@ -420,6 +427,15 @@
 		background: var(--color-conc-bg);
 		color: var(--color-conc-ink);
 		vertical-align: 2px;
+	}
+
+	.tag.grant {
+		background: var(--color-spell-ink);
+		color: var(--color-surface);
+	}
+
+	.chips .tag {
+		margin-left: 6px;
 	}
 
 	.meta {

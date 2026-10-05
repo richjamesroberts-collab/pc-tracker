@@ -3,6 +3,7 @@ import { characterFeat, type FeatData } from '$lib/data/content';
 import { abilityMod } from './abilities';
 import { attacksPerAction, fightingStyleCount } from './attacks';
 import { resourcesFor } from './features';
+import { newGrants } from './grants';
 import { sorceryPointsMax } from './resources';
 import { abilityBreakdown } from './stats';
 import {
@@ -234,6 +235,7 @@ export function levelUpChanges(prev: Character, next: Character): string[] {
 		const [l0, l1] = [prepStyle(prev) === 'none' ? 0 : spellLimit(prev), spellLimit(next)];
 		if (l0 !== l1) out.push(`Spells you can prepare ${l0} → ${l1}`);
 	}
+	for (const g of newGrants(prev, next)) out.push(`${g.name}: ${g.spells.join(', ')}`);
 	return out;
 }
 

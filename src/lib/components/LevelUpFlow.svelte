@@ -77,6 +77,7 @@
 	import { abilityBreakdown, recompute } from '$lib/rules/stats';
 	import { hitDie, hpForLevel, hpGain, xpForLevel } from '$lib/rules/xp';
 	import { characterSpells, spellListClass, spellPool } from '$lib/library.svelte';
+	import { grantedIds, newGrants } from '$lib/rules/grants';
 	import type { ClassOption, Spell } from '$lib/types';
 
 	let {
@@ -381,8 +382,13 @@
 
 	const pool = $derived(spellPool(start));
 	const listClass = $derived(spellListClass(start));
-	const knownIds = $derived(new Set(start.spells.map((s) => s.id)));
-	const knownLevelled = $derived(characterSpells(start).filter((x) => x.spell.level > 0));
+	/** Spells already known or prepared for free (granted by the class or subclass at the new level). */
+	const knownIds = $derived(
+		new Set([...start.spells.map((s) => s.id), ...grantedIds(next)])
+	);
+	/** Spells a known caster can swap out: granted ones stay. */
+	const knownLevelled = $derived(characterSpells(start).filter((x) => x.spell.level > 0 && !x.grant));
+	const grantsGained = $derived(newGrants(start, next));
 	/** Highest level of spell the character can learn: their slots (pact slots for a warlock). */
 	const learnLevel = $derived(Math.max(slotMax(preview).length, pactSlots(preview)?.level ?? 0));
 	const spellItem = (s: Spell): PickItem => ({
@@ -525,6 +531,9 @@
 	<h1>{title(step)}</h1>
 	{#if create && newFeatures.length}
 		<p class="hint new">New at level {level}: {newFeatures.map((f) => f.name).join(', ')}</p>
+	{/if}
+	{#if create}
+		{#each grantsGained as g (g.name)}<p class="hint new">{g.name}: {g.spells.join(', ')}</p>{/each}
 	{/if}
 
 	{#if step === 'overview'}
@@ -755,6 +764,7 @@
 			{#if picks.spells.length}<li><b>{needs.prep === 'spellbook' ? 'Spellbook' : 'Spells'}</b> {names(picks.spells)}</li>{/if}
 			{#if picks.arcanum.length}<li><b>Mystic Arcanum</b> {names(picks.arcanum)}</li>{/if}
 			{#if picks.forget}<li><b>Replaced</b> {names([picks.forget])}</li>{/if}
+			{#each grantsGained as g (g.name)}<li><b>{g.name}</b> {g.spells.join(', ')}</li>{/each}
 		</ul>
 		{#if !ready}<p class="error">Some steps still need a choice.</p>{/if}
 	{:else}
