@@ -4,7 +4,8 @@
 	import CounterSheet from '$lib/components/CounterSheet.svelte';
 	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { loadContent, featureGroups, type Content } from '$lib/data/content';
+	import { loadContent, loadFeats, loadOptions, featureGroups, type ClassOptionData, type Content, type FeatData } from '$lib/data/content';
+	import { OPTION_INFO } from '$lib/rules/levelup';
 	import { proficiencyBonus, resourceLeft, resourcesFor, restoreCustom, restoreResource, spendCustom, spendResource, type ResourceDef } from '$lib/rules/features';
 	import { longRest } from '$lib/rules/resources';
 	import { signedMod } from '$lib/rules/abilities';
@@ -20,6 +21,8 @@
 	const defs = $derived(resourcesFor(c));
 
 	let content = $state<Content | null>(null);
+	let featData = $state.raw<Map<string, FeatData>>(new Map());
+	let optionData = $state.raw<Map<string, ClassOptionData>>(new Map());
 	let failed = $state(false);
 	let attempt = $state(0);
 
@@ -27,14 +30,38 @@
 		void attempt;
 		failed = false;
 		let live = true;
-		loadContent().then(
-			(x) => live && (content = x),
+		Promise.all([loadContent(), loadFeats(), loadOptions()]).then(
+			([x, f, o]) => {
+				if (!live) return;
+				content = x;
+				featData = new Map(f.map((d) => [d.id, d]));
+				optionData = new Map(o.map((d) => [d.id, d]));
+			},
 			() => live && (failed = true)
 		);
 		return () => (live = false);
 	});
 
 	const groups = $derived(content ? featureGroups(content, c) : []);
+	/** Feats, then each kind of class option the character knows, with their text where it's bundled. */
+	const picks = $derived([
+		{
+			key: 'feats',
+			title: 'Feats',
+			list: c.feats.map((f) => ({
+				name: f.name,
+				meta: f.level ? `Lv ${f.level}` : '',
+				text: (f.ref && featData.get(f.ref)?.text) || ''
+			}))
+		},
+		...(Object.keys(OPTION_INFO) as (keyof typeof OPTION_INFO)[]).map((kind) => ({
+			key: kind,
+			title: OPTION_INFO[kind].many,
+			list: c.classOptions
+				.filter((o) => o.kind === kind)
+				.map((o) => ({ name: o.name, meta: '', text: optionData.get(o.ref)?.text ?? '' }))
+		}))
+	].filter((g) => g.list.length));
 	const weapons = $derived(proficiencyList(weaponProficiencies(c)).map(proficiencyLabel));
 	const styles = $derived(c.fightingStyles.map((k) => FIGHTING_STYLE_MAP.get(k)).filter((s) => !!s));
 	const senseList = $derived(senses(c));
@@ -196,6 +223,24 @@
 					</summary>
 					<div class="text" class:optional={'optional' in f && f.optional}>
 						{#each f.text.split('\n').filter((p) => p.trim()) as para, j (j)}
+							<p>{para}</p>
+						{/each}
+					</div>
+				</details>
+			{/each}
+		</div>
+	{/each}
+	{#each picks as group (group.key)}
+		<h2 class="label group">{group.title}</h2>
+		<div class="card list">
+			{#each group.list as f, i (i)}
+				<details>
+					<summary>
+						<span class="fname">{f.name}</span>
+						{#if f.meta}<span class="lv">{f.meta}</span>{/if}
+					</summary>
+					<div class="text">
+						{#each (f.text || 'Added by hand; no description bundled.').split('\n').filter((p) => p.trim()) as para, j (j)}
 							<p>{para}</p>
 						{/each}
 					</div>

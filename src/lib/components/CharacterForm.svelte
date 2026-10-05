@@ -15,7 +15,9 @@
 	import { raceSkills, SKILLS } from '$lib/rules/skills';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
-	import type { Ability, Character, Skill } from '$lib/types';
+	import { OPTION_INFO, optionCount, optionKinds } from '$lib/rules/levelup';
+	import { characterFeat, classOption, loadFeats, loadOptions, type ClassOptionData, type FeatData } from '$lib/data/content';
+	import type { Ability, Character, ClassOptionKind, Skill } from '$lib/types';
 
 	let {
 		initial,
@@ -104,6 +106,30 @@
 
 	function toggleStyle(key: string) {
 		c.fightingStyles = c.fightingStyles.includes(key) ? c.fightingStyles.filter((k) => k !== key) : [...c.fightingStyles, key];
+	}
+
+	let featList = $state.raw<FeatData[]>([]);
+	let optionList = $state.raw<ClassOptionData[]>([]);
+	$effect(() => {
+		Promise.all([loadFeats(), loadOptions()]).then(
+			([f, o]) => {
+				featList = f;
+				optionList = o;
+			},
+			() => {}
+		);
+	});
+	/** Option lists the class has at this level, plus any the character already has picks in. */
+	const kinds = $derived([...new Set<ClassOptionKind>([...optionKinds(c), ...c.classOptions.map((o) => o.kind)])]);
+
+	function addFeat(id: string) {
+		const f = featList.find((x) => x.id === id);
+		if (f) c.feats = [...c.feats, characterFeat(f, undefined)];
+	}
+
+	function addOption(id: string) {
+		const o = optionList.find((x) => x.id === id);
+		if (o && !c.classOptions.some((x) => x.ref === id)) c.classOptions = [...c.classOptions, classOption(o)];
 	}
 
 	function addSense() {
@@ -525,6 +551,72 @@
 			{#if st}<p class="hint"><b>{st.name}:</b> {st.text}</p>{/if}
 		{/each}
 	</fieldset>
+
+	<fieldset>
+		<legend class="label">Feats</legend>
+		{#if c.feats.length}
+			<div class="chips">
+				{#each c.feats as f (f.id)}
+					<button type="button" aria-pressed="true" aria-label="Remove {f.name}" onclick={() => (c.feats = c.feats.filter((x) => x.id !== f.id))}>{f.name} ×</button>
+				{/each}
+			</div>
+		{/if}
+		<label class="field">
+			<span>Add a feat</span>
+			<select
+				value=""
+				onchange={(e) => {
+					addFeat(e.currentTarget.value);
+					e.currentTarget.value = '';
+				}}
+			>
+				<option value="">Choose…</option>
+				{#each featList as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+			</select>
+		</label>
+		<p class="hint">
+			Feats taken when levelling up apply their ability increases, skills and saves for you. One added or removed here is only listed:
+			change scores, skills, saves and max HP to match.
+		</p>
+	</fieldset>
+
+	{#if kinds.length}
+		<fieldset>
+			<legend class="label">Class options</legend>
+			{#each kinds as kind (kind)}
+				{@const mine = c.classOptions.filter((o) => o.kind === kind)}
+				{@const addable = optionList.filter((o) => o.kind === kind && !mine.some((x) => x.ref === o.id))}
+				<p class="sub">{OPTION_INFO[kind].many} ({mine.length}/{optionCount(c, kind)})</p>
+				{#if mine.length}
+					<div class="chips">
+						{#each mine as o (o.ref)}
+							<button
+								type="button"
+								aria-pressed="true"
+								aria-label="Remove {o.name}"
+								onclick={() => (c.classOptions = c.classOptions.filter((x) => x.ref !== o.ref))}>{o.name} ×</button
+							>
+						{/each}
+					</div>
+				{/if}
+				{#if addable.length}
+					<label class="field">
+						<span>Add {OPTION_INFO[kind].one.toLowerCase()}</span>
+						<select
+							value=""
+							onchange={(e) => {
+								addOption(e.currentTarget.value);
+								e.currentTarget.value = '';
+							}}
+						>
+							<option value="">Choose…</option>
+							{#each addable as o (o.id)}<option value={o.id}>{o.name}{o.prerequisite ? ` (${o.prerequisite})` : ''}</option>{/each}
+						</select>
+					</label>
+				{/if}
+			{/each}
+		</fieldset>
+	{/if}
 
 	<fieldset>
 		<legend class="label">Senses</legend>

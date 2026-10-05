@@ -1,4 +1,4 @@
-import type { Character, InventoryItem, ItemArmor, ItemEffects, ItemWeapon } from '$lib/types';
+import type { Ability, AbilityScores, Character, CharacterFeat, ClassOption, ClassOptionKind, InventoryItem, ItemArmor, ItemEffects, ItemWeapon, Skill } from '$lib/types';
 import { CLASS_MAP } from './classes';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
@@ -366,3 +366,81 @@ export function priceLabel(cp: number): string {
 	if (cp % 10 === 0) return `${cp / 10} sp`;
 	return `${cp} cp`;
 }
+
+/** A feat from feats.json, with the parts level up applies for the player. */
+export interface FeatData {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	/** As the player reads it: "Dexterity 13 or higher", "Elf or Half-Elf". Not enforced. */
+	prerequisite?: string;
+	/** +1 to a fixed ability, or to one of `choose` (by `amount`). */
+	ability?: { fixed?: Partial<AbilityScores>; choose?: Ability[]; amount?: number };
+	/** Saving throw proficiency in the ability chosen for `ability` (Resilient). */
+	save?: Ability[];
+	/** Skill proficiencies to pick: from a list, or any skill. */
+	skills?: { from: Skill[] | 'any'; count: number };
+	/** Expertise in this many skills the character is proficient in. */
+	expertise?: number;
+	/** Extra max HP per level (Tough). */
+	hpPerLevel?: number;
+	/** Plain paragraphs joined by `\n`. */
+	text: string;
+}
+
+/** An invocation, pact boon, maneuver, arcane shot, rune, infusion or elemental discipline from options.json. */
+export interface ClassOptionData {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	kind: ClassOptionKind;
+	prerequisite?: string;
+	/** Class level needed. */
+	level?: number;
+	/** Pact boon needed ("blade", "chain", "tome", "talisman"). */
+	pact?: string;
+	text: string;
+}
+
+let featCache: Promise<FeatData[]> | undefined;
+let optionCache: Promise<ClassOptionData[]> | undefined;
+
+/** Loads the bundled feats as a separate chunk, once. */
+export function loadFeats(): Promise<FeatData[]> {
+	featCache ??= import('./feats.json').then(
+		(m) => m.default as FeatData[],
+		(err) => {
+			featCache = undefined;
+			throw err;
+		}
+	);
+	return featCache;
+}
+
+/** Loads the bundled class options as a separate chunk, once. */
+export function loadOptions(): Promise<ClassOptionData[]> {
+	optionCache ??= import('./options.json').then(
+		(m) => m.default as ClassOptionData[],
+		(err) => {
+			optionCache = undefined;
+			throw err;
+		}
+	);
+	return optionCache;
+}
+
+/** A new feat entry for the character, copying what the app needs without the bundled data. */
+export function characterFeat(f: FeatData, level: number | undefined, abilities: Ability[] = []): CharacterFeat {
+	return {
+		id: crypto.randomUUID(),
+		ref: f.id,
+		name: f.name,
+		...(level !== undefined ? { level } : {}),
+		...(abilities.length ? { abilities: [...abilities] } : {}),
+		...(f.hpPerLevel ? { hpPerLevel: f.hpPerLevel } : {})
+	};
+}
+
+export const classOption = (o: ClassOptionData): ClassOption => ({ ref: o.id, name: o.name, kind: o.kind });

@@ -4,6 +4,8 @@
 //   src/lib/data/races.json     PHB, VGM and MPMM races, and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 //   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
+//   src/lib/data/feats.json     PHB/XGE/TCE feats, with the ability increases, saves, skills and expertise they give
+//   src/lib/data/options.json   Invocations, pact boons, maneuvers, arcane shots, runes, infusions and elemental disciplines
 //   src/lib/data/race-abilities.json  Racial ability score increases, darkvision and defenses, small enough to bundle with the app shell
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
@@ -1022,3 +1024,126 @@ if (gearOut.length < MIN_GEAR) fail(`Expected at least ${MIN_GEAR} gear items, f
 const gearPath = join(root, 'src/lib/data/gear.json');
 writeFileSync(gearPath, JSON.stringify(gearOut));
 console.log(`Wrote ${gearOut.length} gear items to ${gearPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Feats (PHB/XGE/TCE), with the parts the app applies when one is taken at level up
+
+const titleCase = (s) => s.replace(/\b\w/g, (ch) => ch.toUpperCase());
+const skillKey = (name) => name.replace(/ /g, '-');
+
+/** "Level 5", "Pact of the Blade", "Eldritch Blast cantrip": the prerequisite as the player reads it. */
+function prerequisiteText(list) {
+	if (!list?.length) return undefined;
+	const alternatives = list.map((p) => {
+		const parts = [];
+		if (p.level) parts.push(`Level ${typeof p.level === 'number' ? p.level : p.level.level}`);
+		if (p.pact) parts.push(`Pact of the ${p.pact}`);
+		for (const s of p.spell ?? []) {
+			const [name, kind] = s.split('#');
+			parts.push(name === 'hex/curse' ? 'Hex spell or a warlock feature that curses' : `${titleCase(name)}${kind === 'c' ? ' cantrip' : ''}`);
+		}
+		// Races and abilities listed together are alternatives: "Elf or Half-Elf", "Intelligence or Wisdom 13 or higher".
+		if (p.race) parts.push(p.race.map((r) => titleCase(r.subrace ? `${r.subrace} ${r.name}` : r.name)).join(' or '));
+		if (p.ability) {
+			const scores = p.ability.flatMap((a) => Object.entries(a));
+			const same = scores.every(([, v]) => v === scores[0][1]);
+			parts.push(
+				same
+					? `${scores.map(([k]) => ABILITIES[k]).join(' or ')} ${scores[0][1]} or higher`
+					: scores.map(([k, v]) => `${ABILITIES[k]} ${v} or higher`).join(' or ')
+			);
+		}
+		for (const pr of p.proficiency ?? []) for (const [k, v] of Object.entries(pr)) parts.push(`Proficiency with ${v} ${k === 'weapon' ? 'weapons' : k}`);
+		if (p.spellcasting || p.spellcasting2020) parts.push('The ability to cast at least one spell');
+		for (const i of p.item ?? []) parts.push(i);
+		return parts.join(', ');
+	});
+	return alternatives.filter(Boolean).join(' or ') || undefined;
+}
+
+function featAbility(list) {
+	if (!list?.length) return undefined;
+	const [a] = list;
+	if (a.choose) return { choose: a.choose.from, amount: a.choose.amount ?? 1 };
+	const fixed = Object.fromEntries(Object.entries(a).filter(([k]) => k in ABILITIES));
+	return Object.keys(fixed).length ? { fixed } : undefined;
+}
+
+function featSkills(f) {
+	const any = f.skillToolLanguageProficiencies?.[0]?.choose?.find((x) => x.from.includes('anySkill'));
+	if (any) return { from: 'any', count: any.count ?? 1 };
+	const choose = f.skillProficiencies?.[0]?.choose;
+	if (choose) return { from: choose.from.map(skillKey), count: choose.count ?? 1 };
+	return undefined;
+}
+
+// Feats that change numbers the app works out, beyond ability scores, skills and saves.
+const FEAT_HP_PER_LEVEL = { 'tough|phb': 2 };
+
+const featsOut = readJson('feats.json')
+	.feat.filter((f) => SOURCES.includes(f.source))
+	.map((f) => {
+		const id = `${f.name}|${f.source}`.toLowerCase();
+		const ability = featAbility(f.ability);
+		const skills = featSkills(f);
+		const prerequisite = prerequisiteText(f.prerequisite);
+		const save = f.savingThrowProficiencies?.[0]?.choose?.from;
+		const expertise = f.expertise?.[0]?.anyProficientSkill;
+		return {
+			id,
+			name: f.name,
+			source: f.source,
+			...(prerequisite ? { prerequisite } : {}),
+			...(ability ? { ability } : {}),
+			...(save ? { save } : {}),
+			...(skills ? { skills } : {}),
+			...(expertise ? { expertise } : {}),
+			...(FEAT_HP_PER_LEVEL[id] ? { hpPerLevel: FEAT_HP_PER_LEVEL[id] } : {}),
+			text: flatten(f.entries).join('\n')
+		};
+	})
+	.sort((a, b) => a.name.localeCompare(b.name));
+
+for (const f of featsOut) if (/\{[@=#]/.test(f.text)) fail(`Unresolved 5etools tag in feat ${f.name}`);
+for (const id of Object.keys(FEAT_HP_PER_LEVEL)) if (!featsOut.some((f) => f.id === id)) fail(`Feat ${id} is not in the 5etools data`);
+const MIN_FEATS = 72;
+if (featsOut.length < MIN_FEATS) fail(`Expected at least ${MIN_FEATS} feats, found ${featsOut.length}.`);
+const featsPath = join(root, 'src/lib/data/feats.json');
+writeFileSync(featsPath, JSON.stringify(featsOut));
+console.log(`Wrote ${featsOut.length} feats to ${featsPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Class options the player picks from a list: invocations, pact boons, maneuvers, arcane shots,
+// runes, infusions and elemental disciplines. Fighting styles and metamagic have their own tables in the app.
+
+const OPTION_KINDS = { EI: 'invocation', PB: 'pact-boon', 'MV:B': 'maneuver', AS: 'arcane-shot', RN: 'rune', AI: 'infusion', ED: 'discipline' };
+
+const optionsOut = [...optionalFeatureIndex.values()]
+	.flatMap((f) => {
+		const kind = f.featureType.map((t) => OPTION_KINDS[t]).find(Boolean);
+		if (!kind) return [];
+		const prereq = f.prerequisite ?? [];
+		const level = prereq.find((p) => p.level)?.level?.level;
+		const pact = prereq.find((p) => p.pact)?.pact;
+		const prerequisite = prerequisiteText(f.prerequisite);
+		return [
+			{
+				id: `${f.name}|${f.source}`.toLowerCase(),
+				name: f.name,
+				source: f.source,
+				kind,
+				...(prerequisite ? { prerequisite } : {}),
+				...(level ? { level } : {}),
+				...(pact ? { pact: pact.toLowerCase() } : {}),
+				text: flatten(f.entries).join('\n')
+			}
+		];
+	})
+	.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
+
+for (const o of optionsOut) if (/\{[@=#]/.test(o.text)) fail(`Unresolved 5etools tag in ${o.name}`);
+const MIN_OPTIONS = 120;
+if (optionsOut.length < MIN_OPTIONS) fail(`Expected at least ${MIN_OPTIONS} class options, found ${optionsOut.length}.`);
+const optionsPath = join(root, 'src/lib/data/options.json');
+writeFileSync(optionsPath, JSON.stringify(optionsOut));
+console.log(`Wrote ${optionsOut.length} class options to ${optionsPath}`);

@@ -54,7 +54,7 @@ export const hitDie = (classKey: string) => HIT_DIE[classKey] ?? 8;
 export interface HpGain {
 	/** The hit die's fixed value (half the die plus one), the PHB's alternative to rolling. */
 	average: number;
-	/** Added to the roll or average each level: CON modifier, Dwarven Toughness, Draconic Resilience. */
+	/** Added to the roll or average each level: CON modifier, Dwarven Toughness, Draconic Resilience, Tough. */
 	bonus: number;
 	parts: { label: string; value: number }[];
 }
@@ -63,12 +63,13 @@ export interface HpGain {
  * Max HP gained for a new level. Uses CON without magic items, since the player's max HP doesn't
  * include them (rules/stats.ts adds those on top).
  */
-export function hpGain(c: Parameters<typeof abilityBreakdown>[0] & Pick<Character, 'subclassKey'>): HpGain {
+export function hpGain(c: Parameters<typeof abilityBreakdown>[0] & Pick<Character, 'subclassKey'> & Partial<Pick<Character, 'feats'>>): HpGain {
 	const die = hitDie(c.classKey);
 	const con = abilityMod(abilityBreakdown(c).withoutItems.con);
 	const parts = [{ label: 'CON', value: con }];
 	if (c.raceKey === 'dwarf' && c.subraceKey === 'hill') parts.push({ label: 'Dwarven Toughness', value: 1 });
 	if (c.classKey === 'sorcerer' && c.subclassKey === 'draconic') parts.push({ label: 'Draconic Resilience', value: 1 });
+	for (const f of c.feats ?? []) if (f.hpPerLevel) parts.push({ label: f.name, value: f.hpPerLevel });
 	return { average: die / 2 + 1, bonus: parts.reduce((n, p) => n + p.value, 0), parts };
 }
 

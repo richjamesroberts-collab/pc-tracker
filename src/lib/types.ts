@@ -192,6 +192,31 @@ export interface CustomDefense {
 	source?: string;
 }
 
+/** A feat the character has. Choices it gave (ability increases, skills, saves) are already in the other fields. */
+export interface CharacterFeat {
+	id: string;
+	/** Bundled feat id (`name|source`, see feats.json); absent for one the player typed in. */
+	ref?: string;
+	name: string;
+	/** Character level it was taken at; absent for a feat from race or background. */
+	level?: number;
+	/** What it raised, for the breakdown on Features (base `abilities` already include it). */
+	abilities?: Ability[];
+	/** Extra max HP per level (Tough), copied from the bundled feat so HP for new levels stays synchronous. */
+	hpPerLevel?: number;
+}
+
+/** Invocations, pact boons, maneuvers, arcane shots, runes, infusions and elemental disciplines (options.json `kind`). */
+export type ClassOptionKind = 'invocation' | 'pact-boon' | 'maneuver' | 'arcane-shot' | 'rune' | 'infusion' | 'discipline';
+
+/** One pick from a class option list, copied from options.json so lists work without loading it. */
+export interface ClassOption {
+	/** Bundled option id (`name|source`). */
+	ref: string;
+	name: string;
+	kind: ClassOptionKind;
+}
+
 export type Coin = 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
 export type Coins = Record<Coin, number>;
 
@@ -251,6 +276,10 @@ export interface Character {
 	saveProficiencies: Ability[];
 	/** Fighting style keys from `FIGHTING_STYLES` in rules/attacks.ts. */
 	fightingStyles: string[];
+	/** Feats taken at level up (or added in Edit). */
+	feats: CharacterFeat[];
+	/** Invocations, maneuvers, infusions and the like the character knows. */
+	classOptions: ClassOption[];
 	/** Senses beyond race and class. */
 	senses: CustomSense[];
 	/** Resistances and immunities beyond race, class and items. */

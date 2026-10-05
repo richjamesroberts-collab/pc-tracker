@@ -27,6 +27,8 @@ export function newCharacter(): Character {
 		skillExpertise: [],
 		saveProficiencies: [],
 		fightingStyles: [],
+		feats: [],
+		classOptions: [],
 		senses: [],
 		defenses: [],
 		spellMod: 0,
@@ -60,7 +62,7 @@ export function initials(name: string): string {
 export function migrateToBaseStats(c: Character): Character {
 	c.abilities ??= { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
 	c.raceAbilityChoices ??= [];
-	// XP, weapon proficiencies, fighting styles, senses, hit dice, skills, saves and defenses came later still.
+	// XP, weapon proficiencies, fighting styles, senses, hit dice, skills, saves, defenses, feats and class options came later still.
 	c.xp ??= 0;
 	c.milestone ??= false;
 	c.weaponProficiencies ??= [];
@@ -71,6 +73,8 @@ export function migrateToBaseStats(c: Character): Character {
 	c.skillExpertise ??= [];
 	c.saveProficiencies ??= [];
 	c.defenses ??= [];
+	c.feats ??= [];
+	c.classOptions ??= [];
 	// `hpBase` arrived with the other base stats, so it marks a character that's already been moved over.
 	return c.hpBase === undefined ? legacyToBase(c) : c;
 }

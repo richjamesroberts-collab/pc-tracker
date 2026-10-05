@@ -244,3 +244,39 @@ describe('experience, proficiencies, senses and weapons', () => {
 		expect(c.items[2].equipped).toBeUndefined();
 	});
 });
+
+describe('feats and class options', () => {
+	it('fills them in when importing an old backup', () => {
+		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'warlock' } });
+		expect(c).toMatchObject({ feats: [], classOptions: [] });
+	});
+
+	it('keeps them, dropping junk', () => {
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: {
+				id: 'a',
+				name: 'X',
+				classKey: 'warlock',
+				feats: [
+					{ id: 'f', ref: 'tough|phb', name: 'Tough', level: 4, hpPerLevel: 2 },
+					{ id: 'g', ref: 'resilient|phb', name: ' Resilient ', abilities: ['con', 'luck'] },
+					{ name: '' },
+					'Alert'
+				],
+				classOptions: [
+					{ ref: 'agonizing blast|phb', name: 'Agonizing Blast', kind: 'invocation' },
+					{ ref: 'agonizing blast|phb', name: 'Agonizing Blast', kind: 'invocation' },
+					{ ref: 'pact of the blade|phb', name: 'Pact of the Blade', kind: 'pact-boon' },
+					{ ref: 'x', name: 'X', kind: 'spell' }
+				]
+			}
+		});
+		expect(c.feats).toEqual([
+			{ id: 'f', ref: 'tough|phb', name: 'Tough', level: 4, hpPerLevel: 2 },
+			{ id: 'g', ref: 'resilient|phb', name: 'Resilient', abilities: ['con'] }
+		]);
+		expect(c.classOptions.map((o) => o.name)).toEqual(['Agonizing Blast', 'Pact of the Blade']);
+	});
+});

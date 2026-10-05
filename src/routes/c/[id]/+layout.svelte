@@ -59,7 +59,7 @@
 		);
 	});
 
-	const showTabs = $derived(!!session.character && page.route.id !== '/c/[id]/edit');
+	const showTabs = $derived(!!session.character && page.route.id !== '/c/[id]/edit' && page.route.id !== '/c/[id]/level-up');
 
 	// Keep the screen awake at the table. Needs HTTPS (or localhost); silently skipped otherwise.
 	onMount(() => {
