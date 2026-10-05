@@ -42,7 +42,6 @@
 
 	/** Details entered after the levels, copied back onto `base`. */
 	const DETAIL_FIELDS = [
-		'image',
 		'xp',
 		'milestone',
 		'acAuto',
@@ -207,7 +206,7 @@
 			/>
 		{/key}
 	{:else if stage === 'details' && final}
-		<p class="lead">All optional: a portrait, XP, armor class and the rest. Change any of it later in Edit.</p>
+		<p class="lead">All optional: XP, armor class, speed and the rest. Change any of it later in Edit.</p>
 		<CharacterForm
 			initial={final}
 			isNew
