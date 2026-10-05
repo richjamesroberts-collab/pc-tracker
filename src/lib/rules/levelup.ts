@@ -16,7 +16,7 @@ import {
 	spellLimit,
 	type SpellPrep
 } from './spellcasting';
-import { levelUp, MAX_LEVEL } from './xp';
+import { hitDie, hpForLevel, hpGain, levelUp, MAX_LEVEL } from './xp';
 
 type Steps = [level: number, value: number][];
 
@@ -87,12 +87,38 @@ export const optionKinds = (c: Pick<Character, 'classKey' | 'subclassKey' | 'lev
 
 type LevelInput = Pick<Character, 'classKey' | 'subclassKey' | 'level' | 'spellMod'>;
 
+/** Races that give a feat at 1st level. */
+const RACE_FEAT = (c: Pick<Character, 'raceKey' | 'subraceKey'>) =>
+	(c.raceKey === 'human' && c.subraceKey === 'variant') || c.raceKey === 'custom-lineage';
+
+/**
+ * Weapon proficiencies the player picks at this level: a Hobgoblin's Martial Training (VGM) at 1st level,
+ * a Bladesinger's Training in War and Song, and Kensei weapons.
+ */
+export function weaponPicks(
+	c: Pick<Character, 'classKey' | 'subclassKey' | 'level' | 'raceKey'>,
+	first: boolean
+): { count: number; notes: string[] } {
+	const picks: [number, string][] = [];
+	if (first && c.raceKey === 'hobgoblin-vgm') picks.push([2, 'Martial Training: two martial weapons.']);
+	if (c.classKey === 'wizard' && c.subclassKey === 'bladesinging' && c.level === 2) {
+		picks.push([1, 'Training in War and Song: one one-handed melee weapon.']);
+	}
+	if (c.classKey === 'monk' && c.subclassKey === 'kensei') {
+		if (c.level === 3) picks.push([2, 'Kensei weapons: one melee and one ranged weapon without the heavy or special property.']);
+		if ([6, 11, 17].includes(c.level)) picks.push([1, 'One more kensei weapon (no heavy or special property).']);
+	}
+	return { count: picks.reduce((n, [k]) => n + k, 0), notes: picks.map(([, note]) => note) };
+}
+
 /** What the player has to choose when `prev` becomes `next` (one level up, subclass already picked if it's due). */
 export interface LevelUpNeeds {
 	/** A subclass is due and the character has none. */
 	subclass: boolean;
 	/** Ability Score Improvement or a feat. */
 	asi: boolean;
+	/** A feat from the race at 1st level (Variant Human, Custom Lineage). */
+	raceFeat: boolean;
 	/** Fighting styles the class gives at the new level, when the character has fewer. */
 	fightingStyles: number;
 	/** New skills to gain expertise in. */
@@ -101,6 +127,9 @@ export interface LevelUpNeeds {
 	metamagic: number;
 	/** Option lists that grow at this level, with the new total. */
 	options: { kind: ClassOptionKind; total: number }[];
+	/** Weapon proficiencies to pick, and what they're for. */
+	weapons: number;
+	weaponNotes: string[];
 	/** New cantrips to learn. */
 	cantrips: number;
 	/** New spells to learn (known casters) or copy into the spellbook (wizards). */
@@ -112,37 +141,64 @@ export interface LevelUpNeeds {
 	prep: SpellPrep;
 }
 
+/**
+ * What the new level asks for. `prev` is the character before it (with what they know so far); `next` is
+ * the character at the new level. With `first`, `next` is a new character's 1st level: everything counts
+ * from nothing, and `prev` only says what's already picked.
+ */
 export function levelUpNeeds(
 	prev: LevelInput & Pick<Character, 'fightingStyles' | 'metamagic' | 'classOptions'>,
-	next: LevelInput
+	next: LevelInput & Partial<Pick<Character, 'raceKey' | 'subraceKey'>>,
+	first = false
 ): LevelUpNeeds {
 	const prep = prepStyle(next);
+	const before = <T>(fn: (c: typeof prev) => T, none: T) => (first ? none : fn(prev));
 	const known = (kind: ClassOptionKind) => prev.classOptions.filter((o) => o.kind === kind).length;
 	const styles = fightingStyleCount(next);
 	const meta = metamagicCount(next);
-	const newArcanum = arcanumLevels(next).find((l) => !arcanumLevels(prev).includes(l));
-	const prevPrep = prepStyle(prev);
+	const newArcanum = arcanumLevels(next).find((l) => !before(arcanumLevels, [] as number[]).includes(l));
+	const prevPrep = before(prepStyle, 'none' as SpellPrep);
+	const weapons = weaponPicks({ raceKey: undefined, ...next }, first);
 	return {
 		subclass: !next.subclassKey && next.level >= subclassLevel(next.classKey),
-		asi: isAsiLevel(next.classKey, next.level),
+		asi: !first && isAsiLevel(next.classKey, next.level),
+		raceFeat: first && RACE_FEAT(next),
 		fightingStyles: styles > prev.fightingStyles.length ? styles : 0,
 		expertise: expertiseGained(next.classKey, next.level),
 		metamagic: meta > prev.metamagic.length ? meta : 0,
 		options: optionKinds(next)
 			.map((kind) => ({ kind, total: optionCount(next, kind) }))
-			.filter((o) => o.total > optionCount(prev, o.kind) || o.total > known(o.kind)),
-		cantrips: Math.max(0, cantripsKnown(next) - cantripsKnown(prev)),
+			.filter((o) => o.total > before((c) => optionCount(c, o.kind), 0) || o.total > known(o.kind)),
+		weapons: weapons.count,
+		weaponNotes: weapons.notes,
+		cantrips: Math.max(0, cantripsKnown(next) - before(cantripsKnown, 0)),
 		spells:
 			prep === 'known'
 				? Math.max(0, spellLimit(next) - (prevPrep === 'known' ? spellLimit(prev) : 0))
-				: prep === 'spellbook' && next.level > 1
-					? 2
+				: prep === 'spellbook'
+					? first
+						? 6
+						: 2
 					: 0,
 		swapSpell: prep === 'known' && prevPrep === 'known' && spellLimit(prev) > 0,
 		arcanum: newArcanum ?? null,
 		prep
 	};
 }
+
+/** The level asks the player for something. */
+export const hasChoices = (n: LevelUpNeeds) =>
+	n.subclass ||
+	n.asi ||
+	n.raceFeat ||
+	n.fightingStyles > 0 ||
+	n.expertise > 0 ||
+	n.metamagic > 0 ||
+	n.options.length > 0 ||
+	n.weapons > 0 ||
+	n.cantrips > 0 ||
+	n.spells > 0 ||
+	n.arcanum !== null;
 
 /** Numbers that change at the new level, as short lines: "Proficiency bonus +2 → +3", "Rage 3 → 4". */
 export function levelUpChanges(prev: Character, next: Character): string[] {
@@ -194,6 +250,10 @@ export interface FeatChoice {
 	ability?: Ability;
 	skills: Skill[];
 	expertise: Skill[];
+	/** Weapon proficiencies it gives (Weapon Master). */
+	weapons?: string[];
+	/** A race's 1st-level feat (Variant Human), not one taken at a level. */
+	fromRace?: boolean;
 }
 
 export interface LevelUpChoices {
@@ -203,6 +263,8 @@ export interface LevelUpChoices {
 	improvement?: AsiChoice | FeatChoice;
 	/** The full list of fighting styles after levelling. */
 	fightingStyles?: string[];
+	/** Weapon proficiencies picked (Hobgoblin, Bladesinger, Kensei). */
+	weapons?: string[];
 	/** Skills gaining expertise from the class. */
 	expertise?: Skill[];
 	/** The full list of metamagic options after levelling. */
@@ -224,13 +286,12 @@ export function featAbilities(choice: FeatChoice): Ability[] {
 }
 
 /**
- * Go up a level with everything the player chose, in one change. Returns false at level 20.
- * `choices.hp` is the gain for the new level; a Tough feat or a higher CON modifier taken now also adds HP for the levels before.
- * Spells are only added by id; copy pack spells with `cacheSpell` afterwards. Run `recompute` after (session.mutate does).
+ * Apply what the player chose for `level` (the level being gained; 1 for a new character), without changing
+ * the level or adding its hit points. A Tough feat or a higher CON modifier taken now also adds HP for the
+ * levels before. Spells are only added by id; copy pack spells with `cacheSpell` afterwards.
  */
-export function applyLevelUp(c: Character, choices: LevelUpChoices): boolean {
-	if (c.level >= MAX_LEVEL) return false;
-	const level = c.level + 1;
+export function applyChoices(c: Character, choices: LevelUpChoices, level: number): void {
+	const earlier = level - 1;
 	if (choices.subclassKey) c.subclassKey = choices.subclassKey;
 
 	const conMod = () => abilityMod(abilityBreakdown(c).withoutItems.con);
@@ -244,19 +305,21 @@ export function applyLevelUp(c: Character, choices: LevelUpChoices): boolean {
 		if (imp.feat.save && imp.ability && !c.saveProficiencies.includes(imp.ability)) c.saveProficiencies.push(imp.ability);
 		for (const s of imp.skills) if (!c.skillProficiencies.includes(s)) c.skillProficiencies.push(s);
 		for (const s of imp.expertise) if (!c.skillExpertise.includes(s)) c.skillExpertise.push(s);
-		c.feats.push(characterFeat(imp.feat, level, raised));
+		for (const w of imp.weapons ?? []) if (!c.weaponProficiencies.includes(w)) c.weaponProficiencies.push(w);
+		c.feats.push(characterFeat(imp.feat, imp.fromRace ? undefined : level, raised));
 		if (imp.feat.hpPerLevel) {
-			c.hpBase += imp.feat.hpPerLevel * c.level;
-			c.hpCurrent += imp.feat.hpPerLevel * c.level;
+			c.hpBase += imp.feat.hpPerLevel * earlier;
+			c.hpCurrent += imp.feat.hpPerLevel * earlier;
 		}
 	}
 
 	// A new CON modifier counts as if it had been there from 1st level; `choices.hp` already uses it for the new level.
-	const conChange = (conMod() - conBefore) * c.level;
+	const conChange = (conMod() - conBefore) * earlier;
 	c.hpBase += conChange;
 	c.hpCurrent = Math.max(0, c.hpCurrent + conChange);
 
 	if (choices.fightingStyles) c.fightingStyles = [...new Set(choices.fightingStyles)];
+	for (const w of choices.weapons ?? []) if (!c.weaponProficiencies.includes(w)) c.weaponProficiencies.push(w);
 	for (const s of choices.expertise ?? []) if (!c.skillExpertise.includes(s)) c.skillExpertise.push(s);
 	if (choices.metamagic) c.metamagic = [...new Set(choices.metamagic)];
 	if (choices.optionKinds?.length) {
@@ -273,6 +336,25 @@ export function applyLevelUp(c: Character, choices: LevelUpChoices): boolean {
 		const name = c.concentration.toLowerCase();
 		if ([...forget].some((id) => id.split('|')[0] === name)) c.concentration = undefined;
 	}
+}
 
+/**
+ * Go up a level with everything the player chose, in one change. Returns false at level 20.
+ * `choices.hp` is the gain for the new level. Run `recompute` after (session.mutate does).
+ */
+export function applyLevelUp(c: Character, choices: LevelUpChoices): boolean {
+	if (c.level >= MAX_LEVEL) return false;
+	applyChoices(c, choices, c.level + 1);
 	return levelUp(c, choices.hp);
+}
+
+/**
+ * Max HP for a new character built level by level: the hit die's full value at 1st level, the average
+ * (or `rolls`, one per level after the first) for the rest, plus CON and per-level bonuses for every level.
+ */
+export function startingHp(c: Parameters<typeof hpGain>[0], rolls: (number | null)[] = []): number {
+	const gain = hpGain(c);
+	let total = hitDie(c.classKey) + gain.bonus;
+	for (let l = 2; l <= c.level; l++) total += hpForLevel(rolls[l - 2] ?? gain.average, gain.bonus);
+	return Math.max(1, total);
 }

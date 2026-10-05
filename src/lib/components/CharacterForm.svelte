@@ -314,7 +314,7 @@
 		</p>
 	{/if}
 
-	{#if cls}
+	{#if cls && !isNew}
 		<label class="field">
 			<span>Subclass</span>
 			<select bind:value={c.subclassKey}>
@@ -329,7 +329,9 @@
 	<fieldset>
 		<legend class="label">Ability scores</legend>
 		<p class="hint">
-			Enter base scores: before racial increases and magic items, with any Ability Score Improvements from levelling.
+			{isNew
+				? "Enter base scores: before racial increases. Ability Score Improvements come later, as you go through each level's choices."
+				: 'Enter base scores: before racial increases and magic items, with any Ability Score Improvements from levelling.'}
 		</p>
 		<div class="scores">
 			{#each ABILITIES as a (a.key)}
@@ -405,12 +407,12 @@
 		{/if}
 	</fieldset>
 
-	<div class="three">
-		<label class="field">
-			<span>Max HP</span>
-			<input type="number" inputmode="numeric" min="1" bind:value={c.hpBase} required />
-		</label>
+	<div class={isNew ? 'two even' : 'three'}>
 		{#if !isNew}
+			<label class="field">
+				<span>Max HP</span>
+				<input type="number" inputmode="numeric" min="1" bind:value={c.hpBase} required />
+			</label>
 			<label class="field">
 				<span>Current HP</span>
 				<input type="number" inputmode="numeric" min="0" max={preview.hp.total} bind:value={c.hpCurrent} />
@@ -421,7 +423,7 @@
 			<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder="30" />
 		</label>
 	</div>
-	{#if preview.hp.total !== c.hpBase}
+	{#if !isNew && preview.hp.total !== c.hpBase}
 		<p class="hint">With magic items: max HP {preview.hp.total} ({preview.hp.parts.slice(1).map((p) => `${p.label} ${p.value}`).join(', ')})</p>
 	{/if}
 
@@ -440,49 +442,53 @@
 		{c.initiativeOverride != null ? 'Clear the box to use this.' : 'Type a number to use your own (Alert feat).'}
 	</p>
 
-	<fieldset>
-		<legend class="label">Weapon proficiencies</legend>
-		{#if givenSources.length}
-			<ul class="sources">
-				{#each givenSources as src (src.source)}
-					<li><b>{src.source}</b> {proficiencyList(src.weapons).map(proficiencyLabel).join(', ')}</li>
-				{/each}
-			</ul>
-		{/if}
-		{#if !givenProfs.includes('martial') || c.weaponProficiencies.length}
-			<p class="sub">Also proficient with (feats, multiclassing, Kensei, Bladesinger or Hobgoblin picks)</p>
-		{/if}
-		<div class="chips">
-			{#each ['simple', 'martial'] as k (k)}
-				{#if !givenProfs.includes(k)}
-					<button type="button" aria-pressed={c.weaponProficiencies.includes(k)} onclick={() => toggleProf(k)}>{proficiencyLabel(k)}</button>
-				{/if}
-			{/each}
-			{#each c.weaponProficiencies.filter((k) => k !== 'simple' && k !== 'martial') as k (k)}
-				<button type="button" aria-pressed="true" aria-label="Remove {proficiencyLabel(k)}" onclick={() => toggleProf(k)}>{proficiencyLabel(k)} ×</button>
-			{/each}
-		</div>
-		{#if addableWeapons.length}
-			<label class="field">
-				<span>Add a weapon</span>
-				<select
-					value=""
-					onchange={(e) => {
-						const v = e.currentTarget.value;
-						if (v) toggleProf(v);
-						e.currentTarget.value = '';
-					}}
-				>
-					<option value="">Choose…</option>
-					{#each addableWeapons as g (g.category)}
-						<optgroup label={proficiencyLabel(g.category)}>
-							{#each g.names as n (n)}<option value={n}>{proficiencyLabel(n)}</option>{/each}
-						</optgroup>
+	<!-- Weapon picks come up in a new character's level steps when something asks for them. -->
+	{#if !isNew}
+		<fieldset>
+			<legend class="label">Weapon proficiencies</legend>
+			{#if givenSources.length}
+				<ul class="sources">
+					{#each givenSources as src (src.source)}
+						<li><b>{src.source}</b> {proficiencyList(src.weapons).map(proficiencyLabel).join(', ')}</li>
 					{/each}
-				</select>
-			</label>
-		{/if}
-	</fieldset>
+				</ul>
+			{/if}
+			{#if !givenProfs.includes('martial') || c.weaponProficiencies.length}
+				<p class="sub">Also proficient with (feats, multiclassing, Kensei, Bladesinger or Hobgoblin picks)</p>
+			{/if}
+			<div class="chips">
+				{#each ['simple', 'martial'] as k (k)}
+					{#if !givenProfs.includes(k)}
+						<button type="button" aria-pressed={c.weaponProficiencies.includes(k)} onclick={() => toggleProf(k)}>{proficiencyLabel(k)}</button>
+					{/if}
+				{/each}
+				{#each c.weaponProficiencies.filter((k) => k !== 'simple' && k !== 'martial') as k (k)}
+					<button type="button" aria-pressed="true" aria-label="Remove {proficiencyLabel(k)}" onclick={() => toggleProf(k)}>{proficiencyLabel(k)} ×</button>
+				{/each}
+			</div>
+			{#if addableWeapons.length}
+				<label class="field">
+					<span>Add a weapon</span>
+					<select
+						value=""
+						onchange={(e) => {
+							const v = e.currentTarget.value;
+							if (v) toggleProf(v);
+							e.currentTarget.value = '';
+						}}
+					>
+						<option value="">Choose…</option>
+						{#each addableWeapons as g (g.category)}
+							<optgroup label={proficiencyLabel(g.category)}>
+								{#each g.names as n (n)}<option value={n}>{proficiencyLabel(n)}</option>{/each}
+							</optgroup>
+						{/each}
+					</select>
+				</label>
+			{/if}
+		</fieldset>
+
+	{/if}
 
 	<fieldset>
 		<legend class="label">Saving throws</legend>
@@ -530,92 +536,96 @@
 		</div>
 	</fieldset>
 
-	<fieldset>
-		<legend class="label">Fighting styles</legend>
-		<p class="hint">
-			{styleCount
-				? `Your class gives ${styleCount === 1 ? 'one' : styleCount} (${c.fightingStyles.length} picked).`
-				: 'Your class has none at this level; pick one if you took the Fighting Initiate feat.'}
-			Archery, Defense, Dueling, Two-Weapon and Unarmed Fighting are worked into AC and Attacks.
-		</p>
-		<div class="chips">
-			{#each styleOptions as st (st.key)}
-				<button type="button" aria-pressed={c.fightingStyles.includes(st.key)} onclick={() => toggleStyle(st.key)}>{st.name}</button>
-			{/each}
-			{#each c.fightingStyles.filter((k) => !styleOptions.some((o) => o.key === k)) as k (k)}
-				<button type="button" aria-pressed="true" onclick={() => toggleStyle(k)}>{FIGHTING_STYLE_MAP.get(k)?.name ?? k} ×</button>
-			{/each}
-		</div>
-		{#each c.fightingStyles as k (k)}
-			{@const st = FIGHTING_STYLE_MAP.get(k)}
-			{#if st}<p class="hint"><b>{st.name}:</b> {st.text}</p>{/if}
-		{/each}
-	</fieldset>
-
-	<fieldset>
-		<legend class="label">Feats</legend>
-		{#if c.feats.length}
+	<!-- A new character picks fighting styles, feats and class options level by level instead. -->
+	{#if !isNew}
+		<fieldset>
+			<legend class="label">Fighting styles</legend>
+			<p class="hint">
+				{styleCount
+					? `Your class gives ${styleCount === 1 ? 'one' : styleCount} (${c.fightingStyles.length} picked).`
+					: 'Your class has none at this level; pick one if you took the Fighting Initiate feat.'}
+				Archery, Defense, Dueling, Two-Weapon and Unarmed Fighting are worked into AC and Attacks.
+			</p>
 			<div class="chips">
-				{#each c.feats as f (f.id)}
-					<button type="button" aria-pressed="true" aria-label="Remove {f.name}" onclick={() => (c.feats = c.feats.filter((x) => x.id !== f.id))}>{f.name} ×</button>
+				{#each styleOptions as st (st.key)}
+					<button type="button" aria-pressed={c.fightingStyles.includes(st.key)} onclick={() => toggleStyle(st.key)}>{st.name}</button>
+				{/each}
+				{#each c.fightingStyles.filter((k) => !styleOptions.some((o) => o.key === k)) as k (k)}
+					<button type="button" aria-pressed="true" onclick={() => toggleStyle(k)}>{FIGHTING_STYLE_MAP.get(k)?.name ?? k} ×</button>
 				{/each}
 			</div>
-		{/if}
-		<label class="field">
-			<span>Add a feat</span>
-			<select
-				value=""
-				onchange={(e) => {
-					addFeat(e.currentTarget.value);
-					e.currentTarget.value = '';
-				}}
-			>
-				<option value="">Choose…</option>
-				{#each featList as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
-			</select>
-		</label>
-		<p class="hint">
-			Feats taken when levelling up apply their ability increases, skills and saves for you. One added or removed here is only listed:
-			change scores, skills, saves and max HP to match.
-		</p>
-	</fieldset>
-
-	{#if kinds.length}
-		<fieldset>
-			<legend class="label">Class options</legend>
-			{#each kinds as kind (kind)}
-				{@const mine = c.classOptions.filter((o) => o.kind === kind)}
-				{@const addable = optionList.filter((o) => o.kind === kind && !mine.some((x) => x.ref === o.id))}
-				<p class="sub">{OPTION_INFO[kind].many} ({mine.length}/{optionCount(c, kind)})</p>
-				{#if mine.length}
-					<div class="chips">
-						{#each mine as o (o.ref)}
-							<button
-								type="button"
-								aria-pressed="true"
-								aria-label="Remove {o.name}"
-								onclick={() => (c.classOptions = c.classOptions.filter((x) => x.ref !== o.ref))}>{o.name} ×</button
-							>
-						{/each}
-					</div>
-				{/if}
-				{#if addable.length}
-					<label class="field">
-						<span>Add {OPTION_INFO[kind].one.toLowerCase()}</span>
-						<select
-							value=""
-							onchange={(e) => {
-								addOption(e.currentTarget.value);
-								e.currentTarget.value = '';
-							}}
-						>
-							<option value="">Choose…</option>
-							{#each addable as o (o.id)}<option value={o.id}>{o.name}{o.prerequisite ? ` (${o.prerequisite})` : ''}</option>{/each}
-						</select>
-					</label>
-				{/if}
+			{#each c.fightingStyles as k (k)}
+				{@const st = FIGHTING_STYLE_MAP.get(k)}
+				{#if st}<p class="hint"><b>{st.name}:</b> {st.text}</p>{/if}
 			{/each}
 		</fieldset>
+
+		<fieldset>
+			<legend class="label">Feats</legend>
+			{#if c.feats.length}
+				<div class="chips">
+					{#each c.feats as f (f.id)}
+						<button type="button" aria-pressed="true" aria-label="Remove {f.name}" onclick={() => (c.feats = c.feats.filter((x) => x.id !== f.id))}>{f.name} ×</button>
+					{/each}
+				</div>
+			{/if}
+			<label class="field">
+				<span>Add a feat</span>
+				<select
+					value=""
+					onchange={(e) => {
+						addFeat(e.currentTarget.value);
+						e.currentTarget.value = '';
+					}}
+				>
+					<option value="">Choose…</option>
+					{#each featList as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+				</select>
+			</label>
+			<p class="hint">
+				Feats taken when levelling up apply their ability increases, skills and saves for you. One added or removed here is only listed:
+				change scores, skills, saves and max HP to match.
+			</p>
+		</fieldset>
+
+		{#if kinds.length}
+			<fieldset>
+				<legend class="label">Class options</legend>
+				{#each kinds as kind (kind)}
+					{@const mine = c.classOptions.filter((o) => o.kind === kind)}
+					{@const addable = optionList.filter((o) => o.kind === kind && !mine.some((x) => x.ref === o.id))}
+					<p class="sub">{OPTION_INFO[kind].many} ({mine.length}/{optionCount(c, kind)})</p>
+					{#if mine.length}
+						<div class="chips">
+							{#each mine as o (o.ref)}
+								<button
+									type="button"
+									aria-pressed="true"
+									aria-label="Remove {o.name}"
+									onclick={() => (c.classOptions = c.classOptions.filter((x) => x.ref !== o.ref))}>{o.name} ×</button
+								>
+							{/each}
+						</div>
+					{/if}
+					{#if addable.length}
+						<label class="field">
+							<span>Add {OPTION_INFO[kind].one.toLowerCase()}</span>
+							<select
+								value=""
+								onchange={(e) => {
+									addOption(e.currentTarget.value);
+									e.currentTarget.value = '';
+								}}
+							>
+								<option value="">Choose…</option>
+								{#each addable as o (o.id)}<option value={o.id}>{o.name}{o.prerequisite ? ` (${o.prerequisite})` : ''}</option>{/each}
+							</select>
+						</label>
+					{/if}
+				{/each}
+			</fieldset>
+	{/if}
+
 	{/if}
 
 	<fieldset>
@@ -714,7 +724,7 @@
 			</p>
 			<p class="derived">Spell save DC {preview.spellDc} · spell attack {signedMod(preview.spellAttack)}</p>
 
-			{#if c.classKey === 'sorcerer' && c.level >= 3}
+			{#if !isNew && c.classKey === 'sorcerer' && c.level >= 3}
 				<p class="sub">Metamagic options</p>
 				<div class="checks">
 					{#each METAMAGIC as m (m.key)}
@@ -734,7 +744,7 @@
 
 	<div class="buttons">
 		<button type="button" class="secondary" onclick={oncancel}>Cancel</button>
-		<button type="submit" class="primary" disabled={!valid}>{isNew ? 'Create character' : 'Save'}</button>
+		<button type="submit" class="primary" disabled={!valid}>{isNew ? 'Next' : 'Save'}</button>
 	</div>
 </form>
 

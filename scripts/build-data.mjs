@@ -4,7 +4,7 @@
 //   src/lib/data/races.json     PHB, VGM and MPMM races, and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 //   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
-//   src/lib/data/feats.json     PHB/XGE/TCE feats, with the ability increases, saves, skills and expertise they give
+//   src/lib/data/feats.json     PHB/XGE/TCE feats, with the ability increases, saves, skills, expertise and weapons they give
 //   src/lib/data/options.json   Invocations, pact boons, maneuvers, arcane shots, runes, infusions and elemental disciplines
 //   src/lib/data/race-abilities.json  Racial ability score increases, darkvision and defenses, small enough to bundle with the app shell
 // Usage: npm run data            (expects ../5etools-2014-src)
@@ -1089,6 +1089,7 @@ const featsOut = readJson('feats.json')
 		const prerequisite = prerequisiteText(f.prerequisite);
 		const save = f.savingThrowProficiencies?.[0]?.choose?.from;
 		const expertise = f.expertise?.[0]?.anyProficientSkill;
+		const weapons = f.weaponProficiencies?.[0]?.choose?.count;
 		return {
 			id,
 			name: f.name,
@@ -1098,6 +1099,7 @@ const featsOut = readJson('feats.json')
 			...(save ? { save } : {}),
 			...(skills ? { skills } : {}),
 			...(expertise ? { expertise } : {}),
+			...(weapons ? { weapons } : {}),
 			...(FEAT_HP_PER_LEVEL[id] ? { hpPerLevel: FEAT_HP_PER_LEVEL[id] } : {}),
 			text: flatten(f.entries).join('\n')
 		};
