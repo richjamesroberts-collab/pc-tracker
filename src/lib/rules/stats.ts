@@ -257,7 +257,8 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 		if (i.armor && !c.acAuto) continue;
 		if (i.effects!.unarmoredOnly && c.acAuto && (body || shield)) continue;
 		total += i.effects!.ac!;
-		parts.push({ label: i.name, value: signedMod(i.effects!.ac!) });
+		// Worn armor and shields are listed above with their own AC, so their magic reads as a bonus.
+		parts.push({ label: i.armor ? `${i.name} bonus` : i.name, value: signedMod(i.effects!.ac!) });
 	}
 
 	if (c.acAdjust) {

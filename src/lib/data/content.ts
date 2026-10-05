@@ -333,8 +333,9 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
  * 2: Rod of Alertness loses its AC bonus (it only applies for 10 minutes after the rod is planted).
  * 3: damage resistances and immunities, and condition immunities.
  * 4: generic magic weapons already picked as a weapon are named for it ("+1 Weapon" becomes "+1 Longsword").
+ * 5: armor and shields of a set kind get their bundled AC back (the item sheet let a +1 Shield's 2 be typed over as 1).
  */
-export const ITEM_DATA_VERSION = 4;
+export const ITEM_DATA_VERSION = 5;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
@@ -358,6 +359,7 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 		for (const k of ['resist', 'immune', 'conditionImmune'] as const) {
 			if (i.effects && e?.[k] && i.effects[k] === undefined) i.effects[k] = [...e[k]];
 		}
+		if (data.armor && i.armor && (i.armor.type !== data.armor.type || i.armor.ac !== data.armor.ac)) i.armor = { ...data.armor };
 		if (i.kind === 'magic' && i.weapon && !data.weapon && i.name === data.name && i.type.startsWith('Weapon (any')) {
 			const base = gear.get(`${i.weapon.base}|phb`)?.name;
 			if (base) i.name = specificName(data.name, base);

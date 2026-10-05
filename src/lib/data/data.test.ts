@@ -254,6 +254,13 @@ describe('item effects and armor', () => {
 		fillItemData(c, magicById, gearById);
 		expect(c.items.map((i) => i.name)).toEqual(['+1 Longsword', 'Dawnbringer', '+2 Weapon']);
 	});
+	it('gives armor and shields of a set kind their bundled AC back', () => {
+		const shield = { ...inventoryItem(magicById.get('+1 shield|dmg')!), armor: { type: 'shield' as const, ac: 1 }, equipped: true };
+		const c = { ...newCharacter(), acAuto: true, abilities: { ...newCharacter().abilities, dex: 20 }, items: [shield], itemDataVersion: 4 };
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0].armor).toEqual({ type: 'shield', ac: 2 });
+		expect(armorClass(c)).toMatchObject({ total: 18 });
+	});
 	it('only counts a Rod of Alertness’s AC bonus once it’s planted, so it isn’t an effect', () => {
 		expect(magicById.get('rod of alertness|dmg')!.effects?.ac).toBeUndefined();
 		const rod = { ...inventoryItem(magicById.get('rod of alertness|dmg')!), attuned: true, effects: { ac: 1 } };
