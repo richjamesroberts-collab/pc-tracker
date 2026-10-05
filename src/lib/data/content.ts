@@ -173,7 +173,14 @@ export function loadItems(): Promise<MagicItem[]> {
 /** A plain copy of an item's effects (the library may be a reactive proxy, which can't be structured-cloned). */
 function copyEffects(e: ItemEffects | undefined): ItemEffects {
 	if (!e) return {};
-	return { ...e, ...(e.set ? { set: { ...e.set } } : {}), ...(e.add ? { add: { ...e.add } } : {}) };
+	return {
+		...e,
+		...(e.set ? { set: { ...e.set } } : {}),
+		...(e.add ? { add: { ...e.add } } : {}),
+		...(e.resist ? { resist: [...e.resist] } : {}),
+		...(e.immune ? { immune: [...e.immune] } : {}),
+		...(e.conditionImmune ? { conditionImmune: [...e.conditionImmune] } : {})
+	};
 }
 
 /** A plain copy of a weapon's stats. */
@@ -323,14 +330,15 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
  * Bump when bundled items gain fields that inventory entries copy, and teach `fillItemData` to fill them.
  * 1: weapon stats, and magic weapons' attack and damage bonuses.
  * 2: Rod of Alertness loses its AC bonus (it only applies for 10 minutes after the rod is planted).
+ * 3: damage resistances and immunities, and condition immunities.
  */
-export const ITEM_DATA_VERSION = 2;
+export const ITEM_DATA_VERSION = 3;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
 
 /**
- * Fill in weapon stats and magic weapon bonuses on bundled items added before they were tracked,
+ * Fill in weapon stats, magic weapon bonuses and defenses on bundled items added before they were tracked,
  * and mark the character as up to date. Entries the player already changed are left alone.
  */
 export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: Map<string, GearItem>): void {
@@ -345,6 +353,9 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 		if (i.effects && e?.attack && i.effects.attack === undefined) i.effects.attack = e.attack;
 		if (i.effects && e?.damage && i.effects.damage === undefined) i.effects.damage = e.damage;
 		if (i.ref === 'rod of alertness|dmg' && i.effects?.ac) delete i.effects.ac;
+		for (const k of ['resist', 'immune', 'conditionImmune'] as const) {
+			if (i.effects && e?.[k] && i.effects[k] === undefined) i.effects[k] = [...e[k]];
+		}
 	}
 	c.itemDataVersion = ITEM_DATA_VERSION;
 }

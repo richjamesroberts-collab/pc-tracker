@@ -11,6 +11,7 @@
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
+	import { defenses, DEFENSE_NAMES } from '$lib/rules/defenses';
 	import { raceSkills, SKILLS } from '$lib/rules/skills';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
@@ -46,6 +47,7 @@
 			(c.acAuto || whole(c.acBase)) &&
 			(c.milestone || (whole(c.xp) && c.xp >= 0)) &&
 			c.senses.every((x) => x.name.trim() && whole(x.range) && x.range > 0) &&
+			c.defenses.every((x) => x.name.trim()) &&
 			scoresValid
 	);
 
@@ -64,6 +66,8 @@
 	const styleCount = $derived(fightingStyleCount(c));
 	const styleOptions = $derived(fightingStyleOptions(c));
 	const givenSenses = $derived(senses({ ...c, senses: [] }));
+	const given = $derived(defenses({ ...c, defenses: [] }));
+	const givenDefenses = $derived([...given.resistances, ...given.immunities]);
 	const xpLevel = $derived(whole(c.xp) ? levelForXp(c.xp) : 0);
 
 	function toggleProf(key: string) {
@@ -104,6 +108,10 @@
 
 	function addSense() {
 		c.senses = [...c.senses, { id: crypto.randomUUID(), name: 'Darkvision', range: 60 }];
+	}
+
+	function addDefense() {
+		c.defenses = [...c.defenses, { id: crypto.randomUUID(), kind: 'resistance', name: '', source: '' }];
 	}
 
 	// Worked-out numbers for the form as it stands, so the player sees what their entries come to.
@@ -193,6 +201,11 @@
 		if (!whole(out.xp) || out.xp < 0) out.xp = 0;
 		if (!out.milestone && (isNew || out.level !== initial.level)) out.xp = Math.max(out.xp, xpForLevel(out.level));
 		out.senses = out.senses.map((x) => ({ ...x, name: x.name.trim() }));
+		out.defenses = out.defenses.map(({ source, ...x }) => ({
+			...x,
+			name: x.name.trim().toLowerCase(),
+			...(source?.trim() ? { source: source.trim() } : {})
+		}));
 		onsave(out);
 	}
 </script>
@@ -548,6 +561,47 @@
 		<p class="hint">For Custom Lineage darkvision, Goggles of Night, Devil's Sight and the like. The longest range of each sense counts.</p>
 	</fieldset>
 
+	<fieldset>
+		<legend class="label">Resistances and immunities</legend>
+		{#if givenDefenses.length}
+			<ul class="sources">
+				{#each givenDefenses as d (d.kind + d.name + (d.when ?? ''))}
+					<li>
+						<b>{d.kind === 'resistance' ? 'Resist' : 'Immune'} {d.name}{d.when ? ` (${d.when})` : ''}</b>
+						{d.sources.join(', ')}
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="hint">Nothing from your race, class or attuned items.</p>
+		{/if}
+		{#each c.defenses as d, i (d.id)}
+			<div class="defense">
+				<label class="field">
+					<span>Type</span>
+					<select bind:value={d.kind}>
+						<option value="resistance">Resist</option>
+						<option value="immunity">Immune</option>
+					</select>
+				</label>
+				<label class="field">
+					<span>To</span>
+					<input bind:value={d.name} list="defense-names" placeholder="cold" autocapitalize="none" required />
+				</label>
+				<button type="button" class="remove" aria-label="Remove {d.name || 'this'}" onclick={() => (c.defenses = c.defenses.filter((_, j) => j !== i))}>×</button>
+				<label class="field from">
+					<span>From (optional)</span>
+					<input bind:value={d.source} placeholder="Feat, boon, DM ruling" autocapitalize="words" />
+				</label>
+			</div>
+		{/each}
+		<datalist id="defense-names">
+			{#each DEFENSE_NAMES as n (n)}<option value={n}></option>{/each}
+		</datalist>
+		<button type="button" class="add-sense" onclick={addDefense}>Add a resistance or immunity</button>
+		<p class="hint">For feats like Infernal Constitution, boons, curses lifted or a DM ruling. A damage type or a condition (charmed, poisoned).</p>
+	</fieldset>
+
 	{#if caster}
 		<fieldset>
 			<legend class="label">Spellcasting</legend>
@@ -886,6 +940,22 @@
 		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 44px;
 		align-items: end;
 		gap: 8px;
+	}
+
+	.defense {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 44px;
+		align-items: end;
+		gap: 8px;
+	}
+
+	.defense + .defense {
+		padding-top: 10px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.defense .from {
+		grid-column: 1 / -1;
 	}
 
 	.remove {

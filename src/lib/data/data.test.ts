@@ -246,6 +246,16 @@ describe('item effects and armor', () => {
 		fillItemData(c, magicById, gearById);
 		expect(c.items[0].effects).toEqual({});
 	});
+	it('copies resistances and immunities onto items, but not from potions', () => {
+		expect(magicById.get('ring of fire resistance|dmg')!.effects?.resist).toEqual(['fire']);
+		expect(magicById.get('periapt of proof against poison|dmg')!.effects).toMatchObject({ immune: ['poison'], conditionImmune: ['poisoned'] });
+		expect(magicById.get('potion of fire resistance|dmg')!.effects?.resist).toBeUndefined();
+		const ring = { ...inventoryItem(magicById.get('ring of fire resistance|dmg')!), effects: {} };
+		const c = { ...newCharacter(), items: [ring], itemDataVersion: 2 };
+		expect(needsItemData(c)).toBe(true);
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0].effects).toEqual({ resist: ['fire'] });
+	});
 	it('has racial increases for every race', () => {
 		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();
 	});

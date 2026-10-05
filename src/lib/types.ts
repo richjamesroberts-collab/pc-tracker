@@ -80,6 +80,12 @@ export interface ItemEffects {
 	/** Magic weapons: bonus to attack and damage rolls (+1 Weapon). */
 	attack?: number;
 	damage?: number;
+	/** Damage types resisted (lowercase: "fire"). */
+	resist?: string[];
+	/** Damage types the wearer is immune to. */
+	immune?: string[];
+	/** Conditions the wearer can't have ("poisoned"). */
+	conditionImmune?: string[];
 }
 
 export type WeaponProperty =
@@ -176,6 +182,16 @@ export interface CustomSense {
 	range: number;
 }
 
+/** A resistance or immunity the player adds themselves (Infernal Constitution, a boon, a DM ruling). */
+export interface CustomDefense {
+	id: string;
+	kind: 'resistance' | 'immunity';
+	/** Damage type or condition, lowercase: "cold", "charmed". */
+	name: string;
+	/** Where it comes from, shown in the breakdown: "Infernal Constitution". */
+	source?: string;
+}
+
 export type Coin = 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
 export type Coins = Record<Coin, number>;
 
@@ -237,6 +253,8 @@ export interface Character {
 	fightingStyles: string[];
 	/** Senses beyond race and class. */
 	senses: CustomSense[];
+	/** Resistances and immunities beyond race, class and items. */
+	defenses: CustomDefense[];
 
 	speed?: number;
 	/** Initiative as worked out (DEX plus features), or `initiativeOverride`; don't set directly. */

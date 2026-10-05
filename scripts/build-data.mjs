@@ -4,7 +4,7 @@
 //   src/lib/data/races.json     PHB, VGM and MPMM races, and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 //   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
-//   src/lib/data/race-abilities.json  Racial ability score increases and darkvision, small enough to bundle with the app shell
+//   src/lib/data/race-abilities.json  Racial ability score increases, darkvision and defenses, small enough to bundle with the app shell
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -602,14 +602,28 @@ const racesOut = raceList.map((r) => {
 	};
 });
 
-// Racial ability score increases and darkvision, by race key then subrace key. `replaces` marks subraces
-// whose increase is instead of the race's (Variant Human), not on top of it.
+// Racial ability score increases, darkvision and damage resistances and immunities, by race key then subrace
+// key. `replaces` marks subraces whose increase is instead of the race's (Variant Human), not on top of it.
+// `resist`, `immune` and `conditionImmune` are lowercase damage types and conditions, on top of the race's.
 function asiOf(ability) {
 	const set = ability?.[0];
 	if (!set) return undefined;
 	const fixed = Object.fromEntries(Object.entries(set).filter(([k]) => k !== 'choose'));
 	const out = { fixed };
 	if (set.choose) out.choose = { from: set.choose.from, count: set.choose.count ?? 1, amount: set.choose.amount ?? 1 };
+	return out;
+}
+
+/**
+ * `{ resist, immune, conditionImmune }` from a 5etools race, subrace or item, keeping only fixed entries
+ * (choices like a Dragonborn's are worked out elsewhere).
+ */
+function defensesOf(x) {
+	const out = {};
+	for (const k of ['resist', 'immune', 'conditionImmune']) {
+		const fixed = (x[k] ?? []).filter((v) => typeof v === 'string');
+		if (fixed.length) out[k] = fixed;
+	}
 	return out;
 }
 
@@ -620,18 +634,27 @@ for (const r of raceList) {
 	const entry = { asi: flexible(r) ? LINEAGE_ASI : asiOf(r.ability ?? standard?.ability), subraces: {} };
 	// Custom Lineage's darkvision is one of two choices, so the player adds it themselves.
 	if (r.darkvision && r.name !== 'Custom Lineage') entry.darkvision = r.darkvision;
-	for (const s of subraces.filter((s) => s.name && (s.ability || s.darkvision))) {
+	Object.assign(entry, defensesOf(r));
+	for (const s of subraces.filter((s) => s.name && (s.ability || s.darkvision || Object.keys(defensesOf(s)).length))) {
 		entry.subraces[subraceKey(s)] = {
 			...(s.ability ? { asi: asiOf(s.ability) } : {}),
 			...(s.ability && !r.ability && standard?.ability ? { replaces: true } : {}),
-			...(s.darkvision ? { darkvision: s.darkvision } : {})
+			...(s.darkvision ? { darkvision: s.darkvision } : {}),
+			...defensesOf(s)
 		};
+	}
+	// Dragonborn resist their ancestry's damage type (5etools has it as a choice, the ancestry table has the answer).
+	if (r.name === 'Dragonborn') {
+		for (const a of racesOut.find((x) => x.key === raceKey(r)).subraces) {
+			const type = /resistance to (\w+) damage/.exec(a.traits[0].text)?.[1] ?? fail(`No resistance for ${a.name} dragonborn`);
+			entry.subraces[a.key] = { resist: [type] };
+		}
 	}
 	raceAbilities[raceKey(r)] = entry;
 }
 const raceAbilitiesPath = join(root, 'src/lib/data/race-abilities.json');
 writeFileSync(raceAbilitiesPath, JSON.stringify(raceAbilities));
-console.log(`Wrote racial ability increases and darkvision to ${raceAbilitiesPath}`);
+console.log(`Wrote racial ability increases, darkvision and defenses to ${raceAbilitiesPath}`);
 
 const MIN_RACES = 53;
 if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, found ${racesOut.length}.`);
@@ -796,6 +819,9 @@ function itemEffects(i, type, text) {
 	if (bonus(i.bonusSpellAttack)) e.spellAttack = bonus(i.bonusSpellAttack);
 	if (bonus(i.bonusSpellSaveDc)) e.spellDc = bonus(i.bonusSpellSaveDc);
 	if (i.name === 'Bracers of Defense') e.unarmoredOnly = true;
+	// Damage resistances and immunities while the item is in use. Potions last an hour after drinking, so
+	// carrying one doesn't count.
+	if (i.type?.split('|')[0] !== 'P') Object.assign(e, defensesOf(i));
 	return e;
 }
 

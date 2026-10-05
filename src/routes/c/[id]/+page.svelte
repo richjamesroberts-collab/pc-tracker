@@ -9,7 +9,8 @@
 	import Sheet from '$lib/components/Sheet.svelte';
 	import BackupSheet from '$lib/components/BackupSheet.svelte';
 	import AttackSheet from '$lib/components/AttackSheet.svelte';
-	import CheckSheet, { type Check } from '$lib/components/CheckSheet.svelte';
+	import SavingThrows from '$lib/components/SavingThrows.svelte';
+	import DefensesCard from '$lib/components/DefensesCard.svelte';
 	import XpSheet from '$lib/components/XpSheet.svelte';
 	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -18,12 +19,11 @@
 	import { CLASSES } from '$lib/data/classes';
 	import { raceLabel } from '$lib/data/races';
 	import { isDead, isDown } from '$lib/rules/hp';
-	import { hitDiceLeft, hitDiceMax, longRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
+	import { longRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import {
 		isCaster,
 		ordinal,
 		pactSlots,
-		proficiencyBonus,
 		slotMax,
 		slotsLeft,
 		SPELL_ABILITY,
@@ -31,13 +31,10 @@
 		spellSaveDC
 	} from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
-	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
+	import { signedMod } from '$lib/rules/abilities';
 	import { abilityBreakdown } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
-	import { skillChecks, type SkillLevel } from '$lib/rules/skills';
-	import { savingThrows } from '$lib/rules/saves';
 	import { senses } from '$lib/rules/senses';
-	import { hitDie, xpProgress } from '$lib/rules/xp';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -53,7 +50,6 @@
 
 	const stats = $derived(
 		[
-			{ k: 'Proficiency', v: signedMod(proficiencyBonus(c.level)) },
 			c.speed != null && { k: 'Speed', v: `${c.speed}` },
 			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
 			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
@@ -69,32 +65,13 @@
 
 	let hpOpen = $state(false);
 	let acOpen = $state(false);
-	let abilitiesOpen = $state(false);
 
 	const abilities = $derived(abilityBreakdown(c));
 	const attacks = $derived(attackList(c, abilities));
 	const perAction = $derived(attacksPerAction(c));
-	const xp = $derived(xpProgress(c));
 	/** Id of the attack whose sheet is open. */
 	let attackId = $state<string | null>(null);
 	const openAttack = $derived(attacks.find((a) => a.id === attackId) ?? null);
-	const skills = $derived(skillChecks(c, abilities));
-	const saves = $derived(savingThrows(c, abilities));
-	const LEVEL: Record<SkillLevel, string> = { none: 'Not proficient', half: 'Half proficiency', proficient: 'Proficient', expertise: 'Expertise' };
-	/** The skill ('skill:stealth') or save ('save:dex') whose sheet is open. */
-	let checkKey = $state<string | null>(null);
-	const openCheck = $derived.by((): Check | null => {
-		const [kind, key] = checkKey?.split(':') ?? [];
-		if (kind === 'skill') {
-			const s = skills.find((x) => x.key === key);
-			if (s) return { ...s, sub: `${ABILITIES.find((a) => a.key === s.ability)?.name} · ${LEVEL[s.level]}` };
-		}
-		if (kind === 'save') {
-			const s = saves.find((x) => x.ability === key);
-			if (s) return { ...s, name: `${s.name} save`, sub: s.proficient ? 'Proficient' : 'Not proficient' };
-		}
-		return null;
-	});
 	let xpOpen = $state(false);
 	let restOpen = $state(false);
 	let hpMode = $state<HpMode>('damage');
@@ -197,6 +174,8 @@
 	{/if}
 </div>
 
+<DefensesCard />
+
 {#if c.concentration}
 	<div class="conc">
 		<span>Concentrating · {c.concentration}</span>
@@ -208,64 +187,15 @@
 	</div>
 {/if}
 
-<button type="button" class="abilities" aria-label="Ability scores. Tap for details." onclick={() => (abilitiesOpen = true)}>
-	{#each ABILITIES as a (a.key)}
-		{@const score = abilities.scores[a.key]}
-		<span class="ability" class:boosted={score !== abilities.withoutItems[a.key]}>
-			<span class="abbr">{a.short}</span>
-			<strong>{signedMod(abilityMod(score))}</strong>
-			<span class="score">{score}</span>
-		</span>
-	{/each}
-</button>
+<SavingThrows />
 
-<section class="saves" aria-labelledby="saves-title">
-	<h2 id="saves-title" class="label">Saving throws</h2>
-	<div class="save-row">
-		{#each saves as s (s.ability)}
-			<button
-				type="button"
-				class="save"
-				class:proficient={s.proficient}
-				aria-label="{s.name} saving throw {signedMod(s.total)}{s.proficient ? ', proficient' : ''}. Tap for details."
-				onclick={() => (checkKey = `save:${s.ability}`)}
-			>
-				<span class="abbr"><span class="prof {s.proficient ? 'proficient' : 'none'}" aria-hidden="true"></span>{ABILITY_SHORT[s.ability]}</span>
-				<strong>{signedMod(s.total)}</strong>
-			</button>
+{#if stats.length}
+	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
+		{#each stats as s (s.k)}
+			<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
 		{/each}
 	</div>
-</section>
-
-<section class="skills" aria-labelledby="skills-title">
-	<h2 id="skills-title" class="label">Skills</h2>
-	<div class="card skill-list">
-		{#each skills as s (s.key)}
-			<button
-				type="button"
-				class="skill"
-				aria-label="{s.name} {signedMod(s.total)}{s.level === 'none' ? '' : `, ${s.level === 'half' ? 'half proficiency' : s.level}`}. Tap for details."
-				onclick={() => (checkKey = `skill:${s.key}`)}
-			>
-				<span class="prof {s.level}" aria-hidden="true"></span>
-				<span class="s-name">{s.name}{#if s.notes.some((n) => !n.startsWith('Passive'))}<span class="s-flag" aria-hidden="true">*</span>{/if}</span>
-				<span class="s-mod">{signedMod(s.total)}</span>
-			</button>
-		{/each}
-	</div>
-</section>
-
-<div class="stats" style:--cols={Math.min(stats.length, 4)}>
-	{#each stats as s (s.k)}
-		<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
-	{/each}
-</div>
-
-<button type="button" class="card dice" aria-label="Hit dice: {hitDiceLeft(c)} of {hitDiceMax(c)} d{hitDie(c.classKey)} left. Tap for a short rest." onclick={() => (restOpen = true)}>
-	<span class="label">Hit dice</span>
-	<span class="dice-num"><b>{hitDiceLeft(c)}</b> / {hitDiceMax(c)} d{hitDie(c.classKey)}</span>
-	<span class="more">Short rest ›</span>
-</button>
+{/if}
 
 <section class="attacks" aria-labelledby="attacks-title">
 	<div class="attacks-head">
@@ -315,50 +245,11 @@
 	</a>
 {/if}
 
-{#if !c.milestone}
-	<button type="button" class="card xp" aria-label="Experience: {c.xp} XP. Tap to add XP or level up." onclick={() => (xpOpen = true)}>
-		<span class="xp-head">
-			<span class="label">Experience</span>
-			{#if xp.ready}
-				<span class="ready">Level up!</span>
-			{:else}
-				<span class="xp-num">{c.xp.toLocaleString('en')}{xp.next !== null ? ` / ${xp.next.toLocaleString('en')}` : ''} XP</span>
-			{/if}
-		</span>
-		<span class="xp-bar" aria-hidden="true"><span class="xp-fill" class:ready={xp.ready} style:width="{xp.fraction * 100}%"></span></span>
-		{#if xp.next !== null}
-			<span class="xp-next">{xp.ready ? `${c.xp.toLocaleString('en')} XP · tap to reach level ${c.level + 1}` : `${(xp.next - c.xp).toLocaleString('en')} to level ${c.level + 1}`}</span>
-		{/if}
-	</button>
-{/if}
-
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
 <AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
-<CheckSheet
-	check={openCheck}
-	edit={checkKey?.startsWith('save') ? 'Change saving throw proficiencies in Edit' : 'Change skill proficiencies in Edit'}
-	onclose={() => (checkKey = null)}
-/>
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
-
-<Sheet open={abilitiesOpen} onclose={() => (abilitiesOpen = false)} label="Ability scores">
-	<h2 class="sheet-title">Ability scores</h2>
-	<ul class="ability-list">
-		{#each ABILITIES as a (a.key)}
-			{@const score = abilities.scores[a.key]}
-			<li>
-				<span class="name">{a.name}</span>
-				<span class="total"><b>{score}</b> {signedMod(abilityMod(score))}</span>
-				<span class="from">
-					{[`Base ${c.abilities[a.key]}`, ...abilities.sources[a.key].map((src) => `${src.label} ${src.value}`)].join(' · ')}
-				</span>
-			</li>
-		{/each}
-	</ul>
-	<a class="edit-link" href={resolve('/c/[id]/edit', { id: c.id })}>Change base scores in Edit</a>
-</Sheet>
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
@@ -675,240 +566,6 @@
 		font-weight: 800;
 	}
 
-	.abilities {
-		display: grid;
-		grid-template-columns: repeat(6, minmax(0, 1fr));
-		gap: 6px;
-		width: 100%;
-		margin-top: 12px;
-		padding: 0;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-		color: var(--color-text);
-		font-weight: 400;
-	}
-
-	.ability {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		min-width: 0;
-		padding: 6px 2px 5px;
-		border-radius: 12px;
-		background: var(--color-surface-raised);
-	}
-
-	.ability .abbr {
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-		color: var(--color-text-muted);
-	}
-
-	.ability strong {
-		font-family: var(--font-display);
-		font-size: 19px;
-		font-weight: 900;
-		line-height: 1.2;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.ability .score {
-		font-size: 12px;
-		font-weight: 700;
-		color: var(--color-text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
-	/* Raised by a magic item right now. */
-	.ability.boosted {
-		background: var(--color-effect-bg);
-	}
-
-	.ability.boosted strong,
-	.ability.boosted .score {
-		color: var(--color-effect-ink);
-	}
-
-	.saves,
-	.skills {
-		margin-top: 10px;
-	}
-
-	.saves .label,
-	.skills .label {
-		margin: 0 4px 6px;
-	}
-
-	.save-row {
-		display: grid;
-		grid-template-columns: repeat(6, minmax(0, 1fr));
-		gap: 6px;
-	}
-
-	.save {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		min-width: 0;
-		min-height: 48px;
-		padding: 5px 2px;
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-weight: 400;
-	}
-
-	.save .abbr {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-		color: var(--color-text-muted);
-	}
-
-	.save .prof {
-		width: 8px;
-		height: 8px;
-	}
-
-	.save strong {
-		font-family: var(--font-display);
-		font-size: 17px;
-		font-weight: 900;
-		line-height: 1.2;
-		font-variant-numeric: tabular-nums;
-	}
-
-	/* Two columns, filled down then across like a printed sheet. */
-	.skill-list {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		grid-template-rows: repeat(9, auto);
-		grid-auto-flow: column;
-		column-gap: 1px;
-		overflow: hidden;
-		background: var(--color-border);
-	}
-
-	.skill {
-		display: grid;
-		grid-template-columns: 10px minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 6px;
-		min-height: 36px;
-		padding: 4px 10px;
-		border: 0;
-		border-radius: 0;
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-weight: 400;
-		text-align: left;
-	}
-
-	.skill:not(:nth-child(9n + 1)) {
-		box-shadow: inset 0 1px 0 var(--color-border);
-	}
-
-	.prof {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		border: 1.5px solid var(--color-border-strong);
-	}
-
-	.prof.half {
-		background: linear-gradient(90deg, var(--color-accent) 50%, transparent 50%);
-		border-color: var(--color-accent);
-	}
-
-	.prof.proficient {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-	}
-
-	.prof.expertise {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-		box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 3.5px var(--color-accent);
-	}
-
-	.s-name {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 14px;
-		font-weight: 600;
-	}
-
-	.s-flag {
-		margin-left: 2px;
-		color: var(--color-effect-ink);
-		font-weight: 900;
-	}
-
-	.s-mod {
-		font-family: var(--font-display);
-		font-size: 16px;
-		font-weight: 900;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.sheet-title {
-		font-size: 22px;
-	}
-
-	.ability-list {
-		list-style: none;
-		margin-top: 8px;
-	}
-
-	.ability-list li {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 0 8px;
-		padding: 10px 0;
-	}
-
-	.ability-list li + li {
-		border-top: 1px solid var(--color-border);
-	}
-
-	.ability-list .name {
-		font-weight: 700;
-	}
-
-	.ability-list .total {
-		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted);
-		font-weight: 700;
-	}
-
-	.ability-list .total b {
-		font-size: 18px;
-		color: var(--color-text);
-	}
-
-	.ability-list .from {
-		grid-column: 1 / -1;
-		font-size: 13px;
-		color: var(--color-text-muted);
-	}
-
-	.edit-link {
-		display: block;
-		margin-top: 12px;
-		padding: 12px 0;
-		text-align: center;
-		color: var(--color-accent);
-		font-weight: 800;
-	}
-
 	.stats {
 		display: grid;
 		grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
@@ -937,40 +594,6 @@
 		line-height: 1.3;
 		text-align: center;
 		color: var(--color-text-muted);
-	}
-
-	.dice {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		width: 100%;
-		margin-top: 12px;
-		padding: 12px 16px;
-		color: var(--color-text);
-		font-weight: 400;
-		text-align: left;
-	}
-
-	.dice .label {
-		flex: 1;
-	}
-
-	.dice-num {
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--color-text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.dice-num b {
-		font-family: var(--font-display);
-		font-size: 20px;
-		font-weight: 900;
-		color: var(--color-text);
-	}
-
-	.dice .more {
-		color: var(--color-accent);
 	}
 
 	.attacks {
@@ -1062,63 +685,6 @@
 		font-size: 13px;
 		font-weight: 700;
 		color: var(--color-accent);
-	}
-
-	.xp {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		width: 100%;
-		margin-top: 12px;
-		padding: 12px 16px;
-		color: var(--color-text);
-		font-weight: 400;
-		text-align: left;
-	}
-
-	.xp-head {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		gap: 8px;
-	}
-
-	.xp-num {
-		font-size: 14px;
-		font-weight: 800;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.ready {
-		font-size: 13px;
-		font-weight: 900;
-		padding: 2px 10px;
-		border-radius: 999px;
-		background: var(--color-ready-bg);
-		color: var(--color-ready-ink);
-	}
-
-	.xp-bar {
-		display: block;
-		height: 8px;
-		border-radius: 999px;
-		background: var(--color-chip);
-		overflow: hidden;
-	}
-
-	.xp-fill {
-		display: block;
-		height: 100%;
-		background: var(--color-accent);
-	}
-
-	.xp-fill.ready {
-		background: var(--color-heal);
-	}
-
-	.xp-next {
-		font-size: 12px;
-		color: var(--color-text-muted);
 	}
 
 	.spellcasting {

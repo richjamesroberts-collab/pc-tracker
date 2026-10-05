@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import SpellDetails from '$lib/components/SpellDetails.svelte';
+	import SpellNav from '$lib/components/SpellNav.svelte';
 	import CustomSpellSheet from '$lib/components/CustomSpellSheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { cacheSpell, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
@@ -76,12 +77,14 @@
 </script>
 
 <div class="top">
-	<h1>Spellbook</h1>
+	<h1>Spells</h1>
 	<p class="counts">
 		{#if cantripLimit}Cantrips <b>{myCantrips}/{cantripLimit}</b> · {/if}
 		{#if knownLimit !== null}Known <b>{myLevelled}/{knownLimit}</b>{:else}{style === 'spellbook' ? 'In book' : 'On list'} <b>{myLevelled}</b>{/if}
 	</p>
 </div>
+
+<SpellNav id={c.id} />
 
 <label class="search">
 	<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
@@ -161,6 +164,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		flex-wrap: wrap;
+		margin-bottom: 12px;
 	}
 
 	h1 {
@@ -183,7 +187,6 @@
 		align-items: center;
 		gap: 8px;
 		height: 48px;
-		margin-top: 12px;
 		padding: 0 14px;
 		border-radius: 14px;
 		border: 1.5px solid var(--color-border-strong);
