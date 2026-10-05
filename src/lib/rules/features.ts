@@ -1,16 +1,22 @@
-import type { Character } from '$lib/types';
+import type { Ability, Character } from '$lib/types';
+import { abilityMod } from './abilities';
 import { proficiencyBonus } from './spellcasting';
+import { abilityScores } from './stats';
 
 export { proficiencyBonus };
 
 export interface ResourceDef {
 	key: string;
 	name: string;
-	/** Subclass owners use '<classKey>/<subclassKey>', subrace owners '<raceKey>/<subraceKey>'. */
-	owner: { kind: 'class' | 'subclass' | 'race' | 'subrace'; key: string };
+	/**
+	 * Subclass owners use '<classKey>/<subclassKey>', subrace owners '<raceKey>/<subraceKey>', class option
+	 * owners the option's ref (a Rune Knight's rune).
+	 */
+	owner: { kind: 'class' | 'subclass' | 'race' | 'subrace' | 'option'; key: string };
 	/** 0 = hidden. */
 	max(c: Character): number;
-	reset(c: Character): 'short' | 'long';
+	/** 'none': not on a rest; the player gives uses back (Divine Intervention's 7 days, Limited Wish). */
+	reset(c: Character): 'short' | 'long' | 'none';
 	die?(c: Character): string;
 	/** Spent in amounts and shown as a number (Lay on Hands). */
 	pool?: true;
@@ -38,13 +44,32 @@ const short = () => 'short' as const;
 const one = () => 1;
 const at3 = (c: Character) => byLevel(c.level, [[3, 1]]);
 const at5 = (c: Character) => byLevel(c.level, [[5, 1]]);
-const psiDie =(c: Character) => dieByLevel(c.level, [[1, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
+const psiDie = (c: Character) => dieByLevel(c.level, [[1, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
+const never = () => 'none' as const;
+/** An ability modifier, at least 1 ("a number of times equal to your Strength modifier (minimum of once)"). */
+const abilityMod1 = (a: Ability) => (c: Character) => Math.max(1, abilityMod(abilityScores(c)[a]));
+/** One use from `level`. */
+const oneAt = (level: number) => (c: Character) => byLevel(c.level, [[level, 1]]);
+/** Proficiency bonus uses from `level`. */
+const profAt = (level: number) => (c: Character) => (c.level >= level ? prof(c) : 0);
+/** Ability modifier uses (minimum 1) from `level`. */
+const modAt = (level: number, a: Ability) => (c: Character) => (c.level >= level ? abilityMod1(a)(c) : 0);
 
 type Def = Omit<ResourceDef, 'owner'>;
 const cls = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'class', key } });
 const sub = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'subclass', key } });
 const race = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'race', key } });
 const subrace = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'subrace', key } });
+const option = (key: string, d: Def): ResourceDef => ({ ...d, owner: { kind: 'option', key } });
+
+/** Each rune a Rune Knight knows: once per short rest, twice from 15th level (Master of Runes). */
+const rune = (name: string) =>
+	option(`${name.toLowerCase()}|tce`, {
+		key: `${name.toLowerCase().replace(' ', '-')}`,
+		name,
+		max: (c) => (c.subclassKey === 'rune-knight' ? byLevel(c.level, [[3, 1], [15, 2]]) : 0),
+		reset: short
+	});
 
 export const RESOURCES: ResourceDef[] = [
 	cls('barbarian', { key: 'rage', name: 'Rage', max: (c) => byLevel(c.level, [[1, 2], [3, 3], [6, 4], [12, 5], [17, 6], [20, 0]]), reset: long }),
@@ -74,6 +99,17 @@ export const RESOURCES: ResourceDef[] = [
 	}),
 	cls('wizard', { key: 'arcane-recovery', name: 'Arcane Recovery', max: () => 1, reset: long }),
 	cls('artificer', { key: 'flash-of-genius', name: 'Flash of Genius', max: (c) => (c.level >= 7 ? mod1(c) : 0), reset: long }),
+	// Twice the INT modifier (minimum twice), for the item's holder.
+	cls('artificer', { key: 'spell-storing-item', name: 'Spell-Storing Item', max: (c) => (c.level >= 11 ? 2 * abilityMod1('int')(c) : 0), reset: long }),
+	// 7 days before it can be tried again after it works; the player gives the use back.
+	cls('cleric', { key: 'divine-intervention', name: 'Divine Intervention', max: oneAt(10), reset: never }),
+	// TCE: spend Channel Divinity to regain a slot (up to half the proficiency bonus, rounded up, in level).
+	cls('cleric', { key: 'harness-divine-power', name: 'Harness Divine Power', max: (c) => byLevel(c.level, [[2, 1], [6, 2], [18, 3]]), reset: long }),
+	cls('paladin', { key: 'cleansing-touch', name: 'Cleansing Touch', max: modAt(14, 'cha'), reset: long }),
+	cls('paladin', { key: 'paladin-harness-divine-power', name: 'Harness Divine Power', max: oneAt(3), reset: long }),
+	cls('ranger', { key: 'natures-veil', name: "Nature's Veil", max: profAt(10), reset: long }),
+	cls('rogue', { key: 'stroke-of-luck', name: 'Stroke of Luck', max: oneAt(20), reset: short }),
+	cls('warlock', { key: 'eldritch-master', name: 'Eldritch Master', max: oneAt(20), reset: long }),
 
 	sub('fighter/battle-master', {
 		key: 'superiority-dice',
@@ -102,6 +138,90 @@ export const RESOURCES: ResourceDef[] = [
 	sub('sorcerer/clockwork-soul', { key: 'restore-balance', name: 'Restore Balance', max: prof, reset: long }),
 	sub('warlock/hexblade', { key: 'hexblades-curse', name: "Hexblade's Curse", max: () => 1, reset: short }),
 	sub('warlock/genie', { key: 'bottled-respite', name: 'Bottled Respite', max: () => 1, reset: long }),
+
+	sub('artificer/alchemist', { key: 'experimental-elixir', name: 'Experimental Elixir', max: (c) => byLevel(c.level, [[3, 1], [6, 2], [15, 3]]), reset: long }),
+	sub('artificer/armorer', { key: 'defensive-field', name: 'Defensive Field (Guardian)', max: profAt(3), reset: long }),
+	sub('artificer/artillerist', { key: 'eldritch-cannon', name: 'Eldritch Cannon', max: oneAt(3), reset: long }),
+	sub('artificer/battle-smith', { key: 'arcane-jolt', name: 'Arcane Jolt', max: modAt(9, 'int'), reset: long }),
+	sub('barbarian/beast', { key: 'infectious-fury', name: 'Infectious Fury', max: profAt(10), reset: long }),
+	sub('barbarian/wild-magic', { key: 'magic-awareness', name: 'Magic Awareness', max: profAt(3), reset: long }),
+	sub('bard/creation', { key: 'performance-of-creation', name: 'Performance of Creation', max: oneAt(3), reset: long }),
+	sub('bard/creation', { key: 'animating-performance', name: 'Animating Performance', max: oneAt(6), reset: long }),
+	sub('bard/eloquence', { key: 'universal-speech', name: 'Universal Speech', max: oneAt(6), reset: long }),
+	sub('bard/eloquence', { key: 'infectious-inspiration', name: 'Infectious Inspiration', max: modAt(14, 'cha'), reset: long }),
+	sub('bard/glamour', { key: 'mantle-of-majesty', name: 'Mantle of Majesty', max: oneAt(6), reset: long }),
+	sub('bard/glamour', { key: 'unbreakable-majesty', name: 'Unbreakable Majesty', max: oneAt(14), reset: short }),
+	sub('bard/whispers', { key: 'mantle-of-whispers', name: 'Mantle of Whispers', max: oneAt(6), reset: short }),
+	sub('bard/whispers', { key: 'shadow-lore', name: 'Shadow Lore', max: oneAt(14), reset: long }),
+	sub('cleric/forge', { key: 'blessing-of-the-forge', name: 'Blessing of the Forge', max: one, reset: long }),
+	sub('cleric/grave', { key: 'eyes-of-the-grave', name: 'Eyes of the Grave', max: abilityMod1('wis'), reset: long }),
+	sub('cleric/grave', { key: 'sentinel-at-deaths-door', name: "Sentinel at Death's Door", max: modAt(6, 'wis'), reset: long }),
+	sub('cleric/order', { key: 'embodiment-of-the-law', name: 'Embodiment of the Law', max: modAt(6, 'wis'), reset: long }),
+	sub('cleric/twilight', { key: 'eyes-of-night', name: 'Eyes of Night', max: one, reset: long }),
+	sub('cleric/twilight', { key: 'steps-of-night', name: 'Steps of Night', max: profAt(6), reset: long }),
+	// Slots back on a short rest, up to half the druid level (rounded up) in total levels.
+	sub('druid/land', { key: 'natural-recovery', name: 'Natural Recovery', max: oneAt(2), reset: long, die: (c) => `${Math.ceil(c.level / 2)} slot levels` }),
+	sub('druid/dreams', { key: 'balm-of-the-summer-court', name: 'Balm of the Summer Court', max: (c) => (c.level >= 2 ? c.level : 0), reset: long, die: () => 'd6', pool: true }),
+	sub('druid/dreams', { key: 'hidden-paths', name: 'Hidden Paths', max: modAt(10, 'wis'), reset: long }),
+	sub('druid/dreams', { key: 'walker-in-dreams', name: 'Walker in Dreams', max: oneAt(14), reset: long }),
+	sub('druid/shepherd', { key: 'spirit-totem', name: 'Spirit Totem', max: oneAt(2), reset: short }),
+	sub('druid/stars', { key: 'cosmic-omen', name: 'Cosmic Omen', max: profAt(6), reset: long }),
+	sub('druid/wildfire', { key: 'cauterizing-flames', name: 'Cauterizing Flames', max: profAt(10), reset: long }),
+	sub('fighter/cavalier', { key: 'unwavering-mark', name: 'Unwavering Mark', max: modAt(3, 'str'), reset: long }),
+	sub('fighter/cavalier', { key: 'warding-maneuver', name: 'Warding Maneuver', max: modAt(7, 'con'), reset: long }),
+	sub('fighter/rune-knight', { key: 'runic-shield', name: 'Runic Shield', max: profAt(7), reset: long }),
+	sub('fighter/samurai', { key: 'fighting-spirit', name: 'Fighting Spirit', max: (c) => byLevel(c.level, [[3, 3]]), reset: long }),
+	sub('fighter/samurai', { key: 'strength-before-death', name: 'Strength before Death', max: oneAt(18), reset: long }),
+	sub('monk/open-hand', { key: 'wholeness-of-body', name: 'Wholeness of Body', max: oneAt(6), reset: long }),
+	sub('monk/mercy', { key: 'hand-of-ultimate-mercy', name: 'Hand of Ultimate Mercy', max: oneAt(17), reset: long }),
+	sub('paladin/ancients', { key: 'undying-sentinel', name: 'Undying Sentinel', max: oneAt(15), reset: long }),
+	sub('paladin/ancients', { key: 'elder-champion', name: 'Elder Champion', max: oneAt(20), reset: long }),
+	sub('paladin/conquest', { key: 'invincible-conqueror', name: 'Invincible Conqueror', max: oneAt(20), reset: long }),
+	sub('paladin/devotion', { key: 'holy-nimbus', name: 'Holy Nimbus', max: oneAt(20), reset: long }),
+	sub('paladin/glory', { key: 'glorious-defense', name: 'Glorious Defense', max: modAt(15, 'cha'), reset: long }),
+	sub('paladin/glory', { key: 'living-legend', name: 'Living Legend', max: oneAt(20), reset: long }),
+	sub('paladin/oathbreaker', { key: 'dread-lord', name: 'Dread Lord', max: oneAt(20), reset: long }),
+	sub('paladin/vengeance', { key: 'avenging-angel', name: 'Avenging Angel', max: oneAt(20), reset: long }),
+	sub('paladin/watchers', { key: 'mortal-bulwark', name: 'Mortal Bulwark', max: oneAt(20), reset: long }),
+	sub('ranger/horizon-walker', { key: 'detect-portal', name: 'Detect Portal', max: oneAt(3), reset: short }),
+	sub('ranger/monster-slayer', { key: 'hunters-sense', name: "Hunter's Sense", max: modAt(3, 'wis'), reset: long }),
+	sub('rogue/phantom', { key: 'wails-from-the-grave', name: 'Wails from the Grave', max: profAt(3), reset: long }),
+	sub('sorcerer/aberrant-mind', { key: 'warping-implosion', name: 'Warping Implosion', max: oneAt(18), reset: long }),
+	sub('sorcerer/clockwork-soul', { key: 'trance-of-order', name: 'Trance of Order', max: oneAt(14), reset: long }),
+	sub('sorcerer/clockwork-soul', { key: 'clockwork-cavalcade', name: 'Clockwork Cavalcade', max: oneAt(18), reset: long }),
+	sub('sorcerer/divine-soul', { key: 'unearthly-recovery', name: 'Unearthly Recovery', max: oneAt(18), reset: long }),
+	sub('sorcerer/shadow', { key: 'strength-of-the-grave', name: 'Strength of the Grave', max: one, reset: long }),
+	sub('warlock/archfey', { key: 'fey-presence', name: 'Fey Presence', max: one, reset: short }),
+	sub('warlock/archfey', { key: 'misty-escape', name: 'Misty Escape', max: oneAt(6), reset: short }),
+	sub('warlock/archfey', { key: 'dark-delirium', name: 'Dark Delirium', max: oneAt(14), reset: short }),
+	sub('warlock/celestial', { key: 'healing-light', name: 'Healing Light', max: (c) => 1 + c.level, reset: long, die: () => 'd6', pool: true }),
+	sub('warlock/celestial', { key: 'searing-vengeance', name: 'Searing Vengeance', max: oneAt(14), reset: long }),
+	sub('warlock/fathomless', { key: 'tentacle-of-the-deeps', name: 'Tentacle of the Deeps', max: prof, reset: long }),
+	sub('warlock/fathomless', { key: 'fathomless-plunge', name: 'Fathomless Plunge', max: oneAt(14), reset: short }),
+	sub('warlock/fiend', { key: 'dark-ones-own-luck', name: "Dark One's Own Luck", max: oneAt(6), reset: short }),
+	sub('warlock/fiend', { key: 'hurl-through-hell', name: 'Hurl Through Hell', max: oneAt(14), reset: long }),
+	// Flight from Elemental Gift; Limited Wish comes back after 1d4 long rests, so the player gives it back.
+	sub('warlock/genie', { key: 'elemental-gift', name: 'Elemental Gift (flight)', max: profAt(6), reset: long }),
+	sub('warlock/genie', { key: 'limited-wish', name: 'Limited Wish', max: oneAt(14), reset: never }),
+	sub('warlock/great-old-one', { key: 'entropic-ward', name: 'Entropic Ward', max: oneAt(6), reset: short }),
+	sub('warlock/hexblade', { key: 'accursed-specter', name: 'Accursed Specter', max: oneAt(6), reset: long }),
+	sub('warlock/undead', { key: 'form-of-dread', name: 'Form of Dread', max: prof, reset: long }),
+	// Necrotic Husk's revival comes back after 1d4 long rests.
+	sub('warlock/undead', { key: 'necrotic-husk', name: 'Necrotic Husk', max: oneAt(10), reset: never }),
+	sub('warlock/undead', { key: 'spirit-projection', name: 'Spirit Projection', max: oneAt(14), reset: long }),
+	sub('wizard/abjuration', {
+		key: 'arcane-ward',
+		name: 'Arcane Ward',
+		max: (c) => (c.level >= 2 ? 2 * c.level + abilityMod(abilityScores(c).int) : 0),
+		reset: long,
+		pool: true
+	}),
+	sub('wizard/conjuration', { key: 'benign-transposition', name: 'Benign Transposition', max: oneAt(6), reset: long }),
+	sub('wizard/illusion', { key: 'illusory-self', name: 'Illusory Self', max: oneAt(10), reset: short }),
+	sub('wizard/scribes', { key: 'manifest-mind', name: 'Manifest Mind', max: profAt(6), reset: long }),
+	sub('wizard/scribes', { key: 'one-with-the-word', name: 'One with the Word', max: oneAt(14), reset: long }),
+	sub('wizard/transmutation', { key: 'shapechanger', name: 'Shapechanger', max: oneAt(10), reset: short }),
+	...['Cloud', 'Fire', 'Frost', 'Hill', 'Stone', 'Storm'].map((n) => rune(`${n} Rune`)),
 
 	race('dragonborn', {
 		key: 'breath-weapon',
@@ -190,6 +310,8 @@ function owns(c: Character, def: ResourceDef): boolean {
 			return c.raceKey === key;
 		case 'subrace':
 			return !!c.raceKey && !!c.subraceKey && `${c.raceKey}/${c.subraceKey}` === key;
+		case 'option':
+			return c.classOptions.some((o) => o.ref === key);
 	}
 }
 
@@ -221,12 +343,14 @@ export function restoreResource(c: Character, key: string, n = 1): void {
 }
 
 /**
- * A long rest resets everything; a short rest only what resets on short. Unknown keys wait for a long rest.
- * Custom counters that never come back ('none') are only refilled by hand.
+ * A long rest resets everything but counters that don't come back on a rest ('none': Divine Intervention);
+ * a short rest only what resets on short. Unknown keys wait for a long rest. Custom counters that never
+ * come back ('none') are only refilled by hand too.
  */
 export function resetResources(c: Character, kind: 'short' | 'long'): void {
 	if (kind === 'long') {
-		c.resourcesUsed = {};
+		const kept = resourcesFor(c).filter((def) => def.reset(c) === 'none' && c.resourcesUsed[def.key]);
+		c.resourcesUsed = Object.fromEntries(kept.map((def) => [def.key, c.resourcesUsed[def.key]]));
 	} else {
 		for (const def of resourcesFor(c)) if (def.reset(c) === 'short') delete c.resourcesUsed[def.key];
 	}

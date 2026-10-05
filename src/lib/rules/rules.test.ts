@@ -1102,3 +1102,37 @@ describe('resistances and immunities', () => {
 		]);
 	});
 });
+
+describe('class and subclass counters', () => {
+	const max = (c: Character, key: string) => resourcesFor(c).find((r) => r.key === key)?.max(c) ?? 0;
+
+	it('keeps counters that don’t come back on a rest through a long rest', () => {
+		const c = pc({ classKey: 'cleric', level: 10 });
+		expect(spendResource(c, 'divine-intervention')).toBe(true);
+		expect(spendResource(c, 'channel-divinity')).toBe(true);
+		longRest(c);
+		expect(c.resourcesUsed).toEqual({ 'divine-intervention': 1 });
+		restoreResource(c, 'divine-intervention');
+		expect(c.resourcesUsed).toEqual({});
+	});
+
+	it('works out uses from ability modifiers, minimum one', () => {
+		const strong = pc({ classKey: 'fighter', subclassKey: 'cavalier', level: 3, abilities: { str: 16, dex: 10, con: 8, int: 10, wis: 10, cha: 10 } });
+		expect(max(strong, 'unwavering-mark')).toBe(3);
+		expect(max({ ...strong, level: 7 }, 'warding-maneuver')).toBe(1);
+		expect(max(pc({ classKey: 'paladin', level: 13 }), 'cleansing-touch')).toBe(0);
+	});
+
+	it('counts pools like Healing Light and Arcane Ward', () => {
+		expect(max(pc({ classKey: 'warlock', subclassKey: 'celestial', level: 5 }), 'healing-light')).toBe(6);
+		const ward = pc({ classKey: 'wizard', subclassKey: 'abjuration', level: 6, abilities: { str: 8, dex: 14, con: 14, int: 18, wis: 12, cha: 10 } });
+		expect(max(ward, 'arcane-ward')).toBe(16);
+	});
+
+	it('gives each rune a Rune Knight knows its own uses', () => {
+		const fire = { ref: 'fire rune|tce', name: 'Fire Rune', kind: 'rune' as const };
+		const c = pc({ classKey: 'fighter', subclassKey: 'rune-knight', level: 3, classOptions: [fire] });
+		expect(resourcesFor(c).filter((r) => r.key.endsWith('-rune')).map((r) => [r.key, r.max(c), r.reset(c)])).toEqual([['fire-rune', 1, 'short']]);
+		expect(max({ ...c, level: 15 }, 'fire-rune')).toBe(2);
+	});
+});

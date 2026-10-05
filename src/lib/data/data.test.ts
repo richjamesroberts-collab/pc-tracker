@@ -125,6 +125,7 @@ describe('resource owners', () => {
 			if (kind === 'class') expect(CLASSES.some((c) => c.key === key), label).toBe(true);
 			else if (kind === 'subclass') expect(CLASSES.find((c) => c.key === a)?.subclasses.some((x) => x.key === b), label).toBe(true);
 			else if (kind === 'race') expect(RACES.some((r) => r.key === key), label).toBe(true);
+			else if (kind === 'option') expect(optionsJson.some((o) => o.id === key), label).toBe(true);
 			else expect(RACES.find((r) => r.key === a)?.subraces.some((x) => x.key === b), label).toBe(true);
 		}
 	});
