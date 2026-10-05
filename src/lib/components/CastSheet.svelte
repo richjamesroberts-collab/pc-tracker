@@ -29,17 +29,16 @@
 
 	const options = $derived.by((): Option[] => {
 		if (!spell || spell.level === 0) return [];
-		// A granted spell's own ways: free ones first, points (ki, sorcery) after the slots.
+		// A granted spell's own ways first (free, then points like ki and sorcery), then the slots.
 		const own = grantCastOptions(c, spell).map((o): Option => ({ ...o, kind: 'grant' }));
 		const granted = grantedSpells(c).find((g) => g.id === spell.id);
 		const slots = !granted || slotsAllowed(c, granted);
-		const out: Option[] = own.filter((o) => o.spend?.kind !== 'points');
+		const out: Option[] = [...own.filter((o) => o.spend?.kind !== 'points'), ...own.filter((o) => o.spend?.kind === 'points')];
 		if (slots) addSlots(spell, out);
 		// An innate spell is only a ritual when its grant says so (Pact of the Chain), not for a Shadow monk's Silence.
 		if (spell.ritual && (slots || granted?.cast.some((x) => x.kind === 'ritual'))) {
 			out.push({ key: 'ritual', label: 'As a ritual', detail: '+10 minutes, no slot', left: 1, level: spell.level, kind: 'ritual' });
 		}
-		out.push(...own.filter((o) => o.spend?.kind === 'points'));
 		return out;
 	});
 
@@ -60,14 +59,23 @@
 		}
 	}
 
-	// Pick the cheapest usable option whenever a new spell opens.
+	// Pick the cheapest usable option whenever a new spell opens: a slot before points, a ritual last.
 	$effect(() => {
 		if (!spell) return;
 		untrack(() => {
 			meta = [];
-			choice = options.find((o) => o.left > 0 && o.kind !== 'ritual')?.key ?? options.find((o) => o.left > 0)?.key ?? null;
+			const usable = options.filter((o) => o.left > 0);
+			choice = (usable.find((o) => o.kind !== 'ritual' && o.spend?.kind !== 'points') ?? usable.find((o) => o.kind !== 'ritual') ?? usable[0])?.key ?? null;
 		});
 	});
+
+	/** A circle for a spell slot, a diamond for sorcery points, as on the Spells tab. */
+	function icon(o: Option): 'circle' | 'diamond' | null {
+		if (o.kind === 'slot' || o.kind === 'pact' || o.spend?.kind === 'pact') return 'circle';
+		if (o.spend?.kind === 'points' && o.spend.points === 'sorcery') return 'diamond';
+		return null;
+	}
+	const icons = $derived(options.some((o) => icon(o)));
 
 	const selected = $derived(options.find((o) => o.key === choice));
 	/** A granted spell cast with its own ability (a tiefling fighter's Charisma), and what features add. */
@@ -148,6 +156,12 @@
 						disabled={o.left <= 0}
 						onclick={() => (choice = o.key)}
 					>
+						{#if icons}
+							{@const shape = icon(o)}
+							<span class="icon" aria-hidden="true">
+								{#if shape}<span class="pip {shape}" class:filled={o.left > 0}></span>{/if}
+							</span>
+						{/if}
 						<b>{o.label}</b>
 						<span class="detail">{o.detail}</span>
 						<span class="left">{o.kind === 'ritual' || (o.kind === 'grant' && o.spend?.kind !== 'counter') ? '' : `${o.left} left`}</span>
@@ -234,6 +248,38 @@
 	.options b {
 		font-size: 16px;
 		min-width: 44px;
+	}
+
+	.icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		flex: none;
+	}
+
+	.pip {
+		display: block;
+		width: 14px;
+		height: 14px;
+		box-sizing: border-box;
+		border: 2px solid var(--color-text-faint);
+		border-radius: 50%;
+	}
+
+	.pip.filled {
+		background: var(--color-spell-ink);
+		border-color: var(--color-spell-ink);
+	}
+
+	.pip.diamond {
+		border-radius: 3px;
+		transform: rotate(45deg) scale(0.72);
+	}
+
+	.pip.diamond.filled {
+		background: var(--color-warning);
+		border-color: var(--color-warning);
 	}
 
 	.detail {
