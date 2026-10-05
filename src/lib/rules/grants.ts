@@ -1,7 +1,9 @@
 import grantsJson from '$lib/data/spell-grants.json';
-import type { Character, Spell } from '$lib/types';
+import type { Ability, Character, Spell } from '$lib/types';
+import { abilityMod } from './abilities';
 import { resourceLeft, resourcesFor, spendResource, type ResourceDef } from './features';
-import { ordinal, pactSlots } from './spellcasting';
+import { ordinal, pactSlots, spellAbility, spellAttack, spellSaveDC } from './spellcasting';
+import { abilityScores } from './stats';
 
 /**
  * Spells a class, subclass, pact boon or fighting style gives on top of the ones the class picks normally
@@ -57,6 +59,11 @@ export interface SpellGrant {
 	mode: 'prepared' | 'known' | 'innate' | 'expanded';
 	/** An innate grant's spells can also be cast with the character's slots (TCE feats, MPMM races). */
 	slots?: boolean;
+	/**
+	 * The ability its spells are cast with: an ability, 'feat' (the one the feat raised: Fey Touched) or a
+	 * list to choose from (MPMM races; the highest is used). Absent: the class's spellcasting ability.
+	 */
+	ability?: Ability | 'feat' | Ability[];
 	/** Ways to cast every spell of this grant besides its own (Psionic Sorcery). */
 	cast?: SpellCast[];
 	/** Doesn't count against cantrips known, spells known or prepared (all but expanded lists and Magical Secrets). */
@@ -479,4 +486,35 @@ export function castSummary(c: Character, g: GrantedSpell): string {
 		}
 	};
 	return g.cast.map(one).join(' · ');
+}
+
+// ---- Spellcasting ability ---------------------------------------------------------------------
+
+const ABILITY_NAMES: Record<Ability, string> = {
+	str: 'Strength',
+	dex: 'Dexterity',
+	con: 'Constitution',
+	int: 'Intelligence',
+	wis: 'Wisdom',
+	cha: 'Charisma'
+};
+
+/**
+ * Spell attack and save DC for a granted spell cast with another ability than the class's (a tiefling
+ * fighter's Hellish Rebuke with Charisma, a Shadow monk's Darkness with Wisdom). Null when it's the class's.
+ */
+export function grantCasting(c: Character, g: GrantedSpell): { ability: Ability; name: string; attack: number; dc: number } | null {
+	const scores = abilityScores(c);
+	const own = g.grant.ability;
+	let ability: Ability | undefined;
+	if (own === 'feat') {
+		const ref = g.grant.owner.replace(/^feat:/, '');
+		ability = c.feats.find((f) => f.ref === ref)?.abilities?.[0];
+	} else if (Array.isArray(own)) {
+		// MPMM races let the player choose; most pick their best, so that's what's used.
+		ability = [...own].sort((a, b) => scores[b] - scores[a])[0];
+	} else ability = own;
+	if (!ability || ability === spellAbility(c.classKey)) return null;
+	const spellMod = abilityMod(scores[ability]);
+	return { ability, name: ABILITY_NAMES[ability], attack: spellAttack({ ...c, spellMod }), dc: spellSaveDC({ ...c, spellMod }) };
 }
