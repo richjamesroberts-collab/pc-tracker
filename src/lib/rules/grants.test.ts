@@ -3,11 +3,17 @@ import { newCharacter } from '$lib/character';
 import spells from '$lib/data/spells.json';
 import grantsJson from '$lib/data/spell-grants.json';
 import { CLASSES } from '$lib/data/classes';
+import { RACES } from '$lib/data/races';
+import optionsJson from '$lib/data/options.json';
+import featsJson from '$lib/data/feats.json';
+import { FIGHTING_STYLE_MAP } from './attacks';
 import type { Character } from '$lib/types';
 import {
 	canSwapTo,
 	expandedBy,
+	castSummary,
 	filterLabel,
+	grantCastOptions,
 	grantChoices,
 	grantedIds,
 	grantedSpells,
@@ -16,6 +22,9 @@ import {
 	newGrants,
 	pickedSpells,
 	schoolLimit,
+	shortRestCasts,
+	slotsAllowed,
+	spendCast,
 	swappable,
 	variantPicks,
 	type SpellGrant
@@ -37,13 +46,24 @@ describe('spell grant data', () => {
 		for (const list of Object.values(grants)) for (const g of list) for (const s of g.spells) expect(ids, `${g.name}: ${s.id}`).toContain(s.id);
 	});
 
-	it('is keyed by our class and subclass keys', () => {
+	it('is keyed by our class, subclass, option, fighting style, feat and race keys', () => {
+		const optionIds = new Set(optionsJson.map((o) => o.id));
+		const featIds = new Set(featsJson.map((f) => f.id));
 		for (const owner of Object.keys(grants)) {
-			if (owner.startsWith('option:') || owner.startsWith('style:')) continue;
-			const [classKey, subKey] = owner.split('/');
-			const cls = CLASSES.find((c) => c.key === classKey);
-			expect(cls, owner).toBeTruthy();
-			if (subKey) expect(cls!.subclasses.some((s) => s.key === subKey), owner).toBe(true);
+			const [kind, key] = owner.includes(':') ? owner.split(/:(.*)/) : ['class', owner];
+			if (kind === 'option') expect(optionIds, owner).toContain(key);
+			else if (kind === 'style') expect(FIGHTING_STYLE_MAP.has(key), owner).toBe(true);
+			else if (kind === 'feat') expect(featIds, owner).toContain(key);
+			else if (kind === 'race') expect(RACES.some((r) => r.key === key), owner).toBe(true);
+			else if (kind === 'subrace') {
+				const [race, sub] = key.split('/');
+				expect(RACES.find((r) => r.key === race)?.subraces?.some((s) => s.key === sub), owner).toBe(true);
+			} else {
+				const [classKey, subKey] = key.split('/');
+				const cls = CLASSES.find((c) => c.key === classKey);
+				expect(cls, owner).toBeTruthy();
+				if (subKey) expect(cls!.subclasses.some((s) => s.key === subKey), owner).toBe(true);
+			}
 		}
 	});
 
@@ -218,5 +238,113 @@ describe('school limits', () => {
 		expect(schoolLimit(pc({ classKey: 'fighter', subclassKey: 'eldritch-knight', level: 8 }))).toEqual({ schools: ['Abjuration', 'Evocation'], anyMax: 2 });
 		expect(schoolLimit(pc({ classKey: 'rogue', subclassKey: 'arcane-trickster', level: 20 }))?.anyMax).toBe(4);
 		expect(schoolLimit(pc({ classKey: 'wizard', level: 20 }))).toBeNull();
+	});
+});
+
+describe('casting granted spells', () => {
+	const options = (c: Character, id: string) => grantCastOptions(c, spell(id)).map((o) => [o.label, o.detail, o.left, o.level]);
+	const find = (c: Character, id: string) => grantedSpells(c).find((g) => g.id === id)!;
+
+	it('casts psionic spells for sorcery points from 6th level', () => {
+		expect(options(pc({ subclassKey: 'aberrant-mind', level: 5 }), 'arms of hadar|phb')).toEqual([]);
+		const c = pc({ subclassKey: 'aberrant-mind', level: 6 });
+		expect(options(c, 'hunger of hadar|phb')).toEqual([['3 sorcery points', 'No verbal or somatic components', 1, 3]]);
+		const [o] = grantCastOptions(c, spell('hunger of hadar|phb'));
+		expect(spendCast(c, o.spend)).toBe(true);
+		expect(c.sorceryPointsUsed).toBe(3);
+		expect(slotsAllowed(c, find(c, 'hunger of hadar|phb'))).toBe(true);
+	});
+
+	it('casts a Shadow sorcerer’s Darkness for 2 sorcery points', () => {
+		expect(options(pc({ subclassKey: 'shadow', level: 3 }), 'darkness|phb')).toEqual([['2 sorcery points', 'You can see through it', 1, 2]]);
+	});
+
+	it('casts invocations at will or once a day with a pact slot', () => {
+		const armor = { ref: 'armor of shadows|phb', name: 'Armor of Shadows', kind: 'invocation' as const };
+		const whispers = { ref: 'bewitching whispers|phb', name: 'Bewitching Whispers', kind: 'invocation' as const };
+		const c = pc({ classKey: 'warlock', level: 7, classOptions: [armor, whispers] });
+		expect(options(c, 'mage armor|phb')).toEqual([['At will', '', 1, 1]]);
+		expect(slotsAllowed(c, find(c, 'mage armor|phb'))).toBe(false);
+		const [pact] = grantCastOptions(c, spell('compulsion|phb'));
+		expect([pact.label, pact.left, pact.level]).toEqual(['Pact slot (4th)', 1, 4]);
+		expect(spendCast(c, pact.spend)).toBe(true);
+		expect(c.pactSlotsUsed).toBe(1);
+		expect(grantCastOptions(c, spell('compulsion|phb'))[0].left).toBe(0);
+		expect(spendCast(c, pact.spend)).toBe(false);
+	});
+
+	it('uses the race’s own counter for racial spells', () => {
+		const c = pc({ classKey: 'fighter', raceKey: 'tiefling', level: 5 });
+		expect(names(c)).toEqual(['Thaumaturgy', 'Hellish Rebuke', 'Darkness']);
+		expect(options(c, 'hellish rebuke|phb')).toEqual([['Free', '1 / long rest', 1, 2]]);
+		const [o] = grantCastOptions(c, spell('hellish rebuke|phb'));
+		expect(spendCast(c, o.spend)).toBe(true);
+		expect(c.resourcesUsed['hellish-rebuke']).toBe(1);
+		expect(grantCastOptions(c, spell('hellish rebuke|phb'))[0].left).toBe(0);
+		// MPMM races: 5etools says at will, the race's counter says once per long rest.
+		const genasi = pc({ classKey: 'fighter', raceKey: 'genasi', subraceKey: 'earth', level: 5 });
+		expect(options(genasi, 'pass without trace|phb')[0]).toEqual(['Free', '1 / long rest', 1, 2]);
+		expect(castSummary(genasi, find(genasi, 'pass without trace|phb'))).toBe('1 / long rest');
+	});
+
+	it('casts ki spells, at a higher level for more ki', () => {
+		const shadow = pc({ classKey: 'monk', subclassKey: 'shadow', level: 5 });
+		expect(options(shadow, 'darkness|phb')).toEqual([['2 ki', '', 1, 2]]);
+		const thunders = { ref: 'fist of four thunders|phb', name: 'Fist of Four Thunders', kind: 'discipline' as const };
+		const monk = pc({ classKey: 'monk', subclassKey: 'four-elements', level: 9, classOptions: [thunders] });
+		expect(options(monk, 'thunderwave|phb')).toEqual([
+			['2 ki', '', 1, 1],
+			['3 ki', '2nd level', 1, 2],
+			['4 ki', '3rd level', 1, 3]
+		]);
+		const [, , four] = grantCastOptions(monk, spell('thunderwave|phb'));
+		expect(spendCast(monk, four.spend)).toBe(true);
+		expect(monk.resourcesUsed.ki).toBe(4);
+	});
+
+	it('gives free casts that come back on a short rest, shared where the feature says', () => {
+		const c = pc({ classKey: 'barbarian', subclassKey: 'ancestral', level: 10 });
+		const [augury] = grantCastOptions(c, spell('augury|phb'));
+		expect(spendCast(c, augury.spend)).toBe(true);
+		expect(grantCastOptions(c, spell('clairvoyance|phb'))[0].left).toBe(0);
+		shortRestCasts(c);
+		expect(grantCastOptions(c, spell('clairvoyance|phb'))[0].left).toBe(1);
+	});
+
+	it('gives Primal Awareness spells a free cast and slots too', () => {
+		const c = pc({ classKey: 'ranger', level: 5 });
+		expect(options(c, 'beast sense|phb')).toEqual([['Free', '1 / long rest', 1, 2]]);
+		expect(slotsAllowed(c, find(c, 'beast sense|phb'))).toBe(true);
+		expect(castSummary(c, find(c, 'beast sense|phb'))).toBe('1 / long rest');
+	});
+
+	it('lets TCE feat spells use slots, and counts a feat spell also picked normally', () => {
+		const fey = { id: 'f', ref: 'fey touched|tce', name: 'Fey Touched' };
+		const c = pc({ level: 4, feats: [fey], spells: [{ id: 'misty step|phb', prepared: true }] });
+		expect(options(c, 'misty step|phb')).toEqual([['Free', '1 / long rest', 1, 2]]);
+		expect(slotsAllowed(c, find(c, 'misty step|phb'))).toBe(true);
+		expect(grantedIds(c).has('misty step|phb')).toBe(false);
+		expect(grantChoices(c).map((ch) => ch.filter)).toEqual([{ levels: [1], schools: ['Enchantment', 'Divination'] }]);
+	});
+
+	it('asks which class a Magic Initiate feat draws from', () => {
+		const mi = { id: 'f', ref: 'magic initiate|phb', name: 'Magic Initiate' };
+		const c = pc({ classKey: 'fighter', level: 4, feats: [mi] });
+		expect(variantPicks(c)[0]).toMatchObject({ owner: 'feat:magic initiate|phb', label: 'Magic Initiate class' });
+		const wizard = { ...c, grantVariants: { 'feat:magic initiate|phb': 'Wizard Spells' } };
+		expect(grantChoices(wizard).map((ch) => [ch.count, ch.filter, ch.cast])).toEqual([
+			[2, { levels: [0], classes: ['wizard'] }, undefined],
+			[1, { levels: [1], classes: ['wizard'] }, [{ kind: 'rest', per: 'long', uses: 1 }]]
+		]);
+	});
+
+	it('gives a wizard Spell Mastery and Signature Spells to pick', () => {
+		expect(grantChoices(pc({ classKey: 'wizard', level: 17 }))).toEqual([]);
+		const c = pc({ classKey: 'wizard', level: 20 });
+		expect(grantChoices(c).map((ch) => [ch.grant.name, ch.count, ch.filter.levels])).toEqual([
+			['Spell Mastery', 1, [1]],
+			['Spell Mastery', 1, [2]],
+			['Signature Spells', 2, [3]]
+		]);
 	});
 });

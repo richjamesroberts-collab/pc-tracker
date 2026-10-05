@@ -479,206 +479,6 @@ writeFileSync(classesPath, JSON.stringify(classesOut));
 const subclassCount = Object.values(classesOut).reduce((n, c) => n + Object.keys(c.subclasses).length, 0);
 console.log(`Wrote ${classCount} classes (${subclassCount} subclass keys) to ${classesPath}`);
 
-// ---------------------------------------------------------------------------------------------
-// Spell grants: spells a class, subclass, pact boon or fighting style gives on top of the class's own picks.
-//   prepared  Always prepared (domain, oath, circle and specialist spells)
-//   known     Always known (Aberrant Mind's psionic spells, ranger subclass magic, bonus cantrips)
-//   expanded  Added to the list the class picks from (warlock patrons, Divine Soul's cleric list)
-// Each grant has fixed `spells` and/or `choices` (pick N matching a filter: Magical Secrets, Pact of the Tome).
-// Spells from a grant are `free` (don't count against cantrips known, spells known or prepared) unless it's
-// expanded or Bard Magical Secrets. Innate casting (invocations, ki, at will) isn't read here.
-
-/** What the spells are called on the character's sheet, by owner, or by class for subclass owners. */
-const GRANT_LABELS = {
-	artificer: (sub) => [`${sub} Spells`, 'Specialist'],
-	cleric: () => ['Domain Spells', 'Domain'],
-	druid: () => ['Circle Spells', 'Circle'],
-	paladin: () => ['Oath Spells', 'Oath'],
-	warlock: () => ['Patron Spells', 'Patron'],
-	bard: () => ['Magical Secrets', 'Secrets'],
-	'bard/lore': () => ['Additional Magical Secrets', 'Secrets'],
-	'fighter/arcane-archer': () => ['Arcane Archer Lore', 'Arcane Archer'],
-	'sorcerer/aberrant-mind': () => ['Psionic Spells', 'Psionic'],
-	'sorcerer/clockwork-soul': () => ['Clockwork Magic', 'Clockwork'],
-	'sorcerer/divine-soul': () => ['Divine Magic', 'Divine'],
-	'sorcerer/shadow': () => ['Eyes of the Dark', 'Shadow'],
-	'monk/shadow': () => ['Shadow Arts', 'Shadow Arts'],
-	'rogue/arcane-trickster': () => ['Mage Hand Legerdemain', 'Trickster'],
-	'wizard/illusion': () => ['Improved Minor Illusion', 'Illusion'],
-	'option:pact of the tome|phb': () => ['Book of Shadows', 'Tome'],
-	'style:blessed-warrior': () => ['Blessed Warrior', 'Blessed'],
-	'style:druidic-warrior': () => ['Druidic Warrior', 'Druidic']
-};
-
-/** Subclass spells the player can trade at each level up for one of the same level matching this filter. */
-const GRANT_SWAPS = {
-	'sorcerer/aberrant-mind': { schools: ['Divination', 'Enchantment'], classes: ['sorcerer', 'warlock', 'wizard'] },
-	'sorcerer/clockwork-soul': { schools: ['Abjuration', 'Transmutation'], classes: ['sorcerer', 'warlock', 'wizard'] }
-};
-
-/** Grants whose spells count against spells known (the bard table already includes Magical Secrets). */
-const COUNTED_OWNERS = new Set(['bard']);
-
-const spellByName = new Map();
-for (const s of all) spellByName.set(s.name.toLowerCase(), [...(spellByName.get(s.name.toLowerCase()) ?? []), s]);
-
-/** "summon aberration|TCE", "mind sliver|tce#c" or "bless" → the bundled spell. */
-function grantSpell(ref, owner) {
-	const [name, src] = ref.split('#')[0].split('|');
-	const matches = spellByName.get(name.toLowerCase()) ?? [];
-	const spell = src ? matches.find((s) => s.source.toLowerCase() === src.toLowerCase()) : matches.length === 1 ? matches[0] : undefined;
-	if (!spell) fail(`${owner}: spell ${ref} is not in spells.json (or is ambiguous)`);
-	return spell;
-}
-
-/** "level=0;1|class=Druid|school=N" → { levels: [0, 1], classes: ['druid'], schools: ['Necromancy'] }; "" is any spell. */
-function grantFilter(text, owner) {
-	const filter = {};
-	for (const part of text.split('|').filter(Boolean)) {
-		const [k, v] = part.split('=');
-		const values = v.split(';');
-		if (k === 'level') filter.levels = values.map(Number);
-		else if (k === 'class') filter.classes = values.map((x) => x.toLowerCase());
-		else if (k === 'school') filter.schools = values.map((x) => SCHOOLS[x] ?? fail(`${owner}: unknown school ${x}`));
-		else fail(`${owner}: unknown spell filter ${part}`);
-	}
-	return filter;
-}
-
-/** Class level a block key means: "3" is class level 3, "s2" a 2nd-level spell (a warlock's 3rd level), "_" when gained. */
-const grantLevel = (key) => (key === '_' ? 0 : key.startsWith('s') ? Number(key.slice(1)) * 2 - 1 : Number(key));
-
-/** One `prepared`, `known` or `expanded` block → fixed spells, choices and whole lists, by class level. */
-function grantBlock(block, owner) {
-	const spells = [];
-	const choices = [];
-	const lists = [];
-	for (const [key, value] of Object.entries(block ?? {})) {
-		const level = grantLevel(key);
-		// An object holds choices (`_`) or spells also cast once a day (`daily`, `rest`; Fathomless's tentacles).
-		const entries = Array.isArray(value)
-			? value
-			: [...(value._ ?? []), ...[...Object.values(value.daily ?? {}), ...Object.values(value.rest ?? {})].flat()];
-		for (const e of entries) {
-			if (typeof e === 'string') {
-				const s = grantSpell(e, owner);
-				spells.push({ level, id: s.id, name: s.name });
-			} else if (e.choose !== undefined) {
-				const same = choices.find((c) => c.level === level && c.text === e.choose);
-				if (same) same.count += e.count ?? 1;
-				else choices.push({ level, count: e.count ?? 1, text: e.choose });
-			} else if (e.all) {
-				lists.push({ level, filter: grantFilter(e.all, owner) });
-			} else fail(`${owner}: unknown spell grant ${JSON.stringify(e)}`);
-		}
-	}
-	spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-	return { spells, choices: choices.map(({ text, ...c }) => ({ ...c, filter: grantFilter(text, owner) })), lists };
-}
-
-const spellGrants = {};
-/** Add the grants from one owner's 5etools `additionalSpells`. */
-function addGrants(owner, sets, shortName = '') {
-	const [classKey] = owner.split('/');
-	const [name, tag] = (GRANT_LABELS[owner] ?? GRANT_LABELS[classKey] ?? ((sub) => [`${sub} Magic`, sub]))(shortName);
-	// Unnamed alternatives of one spell each (Arcane Archer: prestidigitation or druidcraft) are a choice of one.
-	if (sets.length > 1 && !sets.some((s) => s.name)) {
-		const ids = sets.map((s) => {
-			const { spells } = grantBlock(s.known, owner);
-			if (spells.length !== 1 || s.prepared || s.expanded) fail(`${owner}: can't read its spell alternatives`);
-			return spells[0];
-		});
-		sets = [{ known: {} }];
-		const level = ids[0].level;
-		(spellGrants[owner] ??= []).push({
-			key: `${owner}#0`,
-			owner,
-			name,
-			tag,
-			mode: 'known',
-			free: true,
-			spells: [],
-			choices: [{ level, count: 1, filter: { ids: ids.map((s) => s.id) } }]
-		});
-		return;
-	}
-	for (const set of sets) {
-		const variant = sets.length > 1 ? set.name : undefined;
-		for (const mode of ['prepared', 'known', 'expanded']) {
-			// Eldritch Knights and Arcane Tricksters already pick from the wizard list; their expansion only lifts
-			// the school limit at some levels (rules/grants.ts `schoolLimit`).
-			if (mode === 'expanded' && (classKey === 'fighter' || classKey === 'rogue')) continue;
-			const { spells, choices, lists } = grantBlock(set[mode], owner);
-			if (!spells.length && !choices.length && !lists.length) continue;
-			const list = (spellGrants[owner] ??= []);
-			list.push({
-				key: `${owner}#${list.length}`,
-				owner,
-				name,
-				tag,
-				mode,
-				free: mode !== 'expanded' && !COUNTED_OWNERS.has(owner),
-				...(variant ? { variant } : {}),
-				spells,
-				...(choices.length ? { choices } : {}),
-				...(lists.length ? { lists } : {}),
-				...(GRANT_SWAPS[owner] && mode === 'known' ? { swap: GRANT_SWAPS[owner] } : {})
-			});
-		}
-	}
-}
-
-for (const [key, source] of Object.entries(CLASS_SOURCES)) {
-	const file = classFiles[key];
-	const cls = file.class.find((c) => c.source === source);
-	if (cls.additionalSpells) addGrants(key, cls.additionalSpells);
-	const table = SUBCLASS_KEYS[cls.name];
-	for (const sc of file.subclass) {
-		if (sc.className !== cls.name || sc.classSource !== cls.source || !sc.additionalSpells) continue;
-		const keys = table[`${sc.shortName}|${sc.source}`];
-		if (!keys) continue;
-		for (const subKey of [keys].flat()) addGrants(`${key}/${subKey}`, sc.additionalSpells, sc.shortName);
-	}
-}
-
-// Pact boons and fighting styles that teach cantrips. Options are keyed by their options.json id, styles by
-// their key in rules/attacks.ts FIGHTING_STYLES.
-for (const [id, owner] of [
-	['pact of the tome|phb', 'option:pact of the tome|phb'],
-	['blessed warrior|tce', 'style:blessed-warrior'],
-	['druidic warrior|tce', 'style:druidic-warrior']
-]) {
-	const rec = optionalFeatureIndex.get(id) ?? fail(`No optional feature ${id}`);
-	addGrants(owner, rec.additionalSpells ?? fail(`${id} has no spells`));
-}
-
-// TCE's Primal Awareness (replacing Primeval Awareness) isn't in 5etools' spell data; every ranger gets it,
-// like Favored Foe. The spells don't count against spells known (and can each be cast once a day for free).
-(spellGrants.ranger ??= []).push({
-	key: 'ranger#primal-awareness',
-	owner: 'ranger',
-	name: 'Primal Awareness',
-	tag: 'Primal',
-	mode: 'known',
-	free: true,
-	spells: [
-		[3, 'speak with animals'],
-		[5, 'beast sense'],
-		[9, 'speak with plants'],
-		[13, 'locate creature'],
-		[17, 'commune with nature']
-	].map(([level, ref]) => {
-		const s = grantSpell(ref, 'ranger');
-		return { level, id: s.id, name: s.name };
-	})
-});
-
-const MIN_GRANT_OWNERS = 57;
-const grantOwners = Object.keys(spellGrants).length;
-if (grantOwners < MIN_GRANT_OWNERS) fail(`Expected spell grants for at least ${MIN_GRANT_OWNERS} owners, found ${grantOwners}.`);
-const grantsPath = join(root, 'src/lib/data/spell-grants.json');
-writeFileSync(grantsPath, JSON.stringify(spellGrants));
-console.log(`Wrote spell grants for ${grantOwners} classes, subclasses, pact boons and fighting styles to ${grantsPath}`);
 
 // ---------------------------------------------------------------------------------------------
 // Races
@@ -1350,3 +1150,351 @@ if (optionsOut.length < MIN_OPTIONS) fail(`Expected at least ${MIN_OPTIONS} clas
 const optionsPath = join(root, 'src/lib/data/options.json');
 writeFileSync(optionsPath, JSON.stringify(optionsOut));
 console.log(`Wrote ${optionsOut.length} class options to ${optionsPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Spell grants: spells a class, subclass, class option (pact boon, invocation, discipline), fighting style,
+// feat, race or subrace gives on top of the class's own picks.
+//   prepared  Always prepared (domain, oath, circle and specialist spells)
+//   known     Always known (Aberrant Mind's psionic spells, ranger subclass magic, bonus cantrips)
+//   innate    Cast without being known or prepared, in its own ways (invocations, ki, racial spells, feats)
+//   expanded  Added to the list the class picks from (warlock patrons, Divine Soul's cleric list)
+// Each grant has fixed `spells` and/or `choices` (pick N matching a filter: Magical Secrets, Magic Initiate).
+// Spells and choices can carry `cast`: other ways to cast them than a spell slot (at will, once per rest,
+// ki or sorcery points, a pact slot once a day, ritual only). A grant's own `cast` applies to all its spells.
+// Spells from a grant are `free` (don't count against cantrips known, spells known or prepared) unless it's
+// expanded or Bard Magical Secrets.
+
+/** What the spells are called on the character's sheet, by owner, or by class for subclass owners. */
+const GRANT_LABELS = {
+	artificer: (sub) => [`${sub} Spells`, 'Specialist'],
+	cleric: () => ['Domain Spells', 'Domain'],
+	druid: () => ['Circle Spells', 'Circle'],
+	paladin: () => ['Oath Spells', 'Oath'],
+	warlock: () => ['Patron Spells', 'Patron'],
+	bard: () => ['Magical Secrets', 'Secrets'],
+	'bard/lore': () => ['Additional Magical Secrets', 'Secrets'],
+	'barbarian/ancestral': () => ['Consult the Spirits', 'Spirits'],
+	'fighter/arcane-archer': () => ['Arcane Archer Lore', 'Arcane Archer'],
+	'fighter/psi-warrior': () => ['Telekinetic Master', 'Psionic'],
+	'monk/sun-soul': () => ['Searing Arc Strike', 'Sun Soul'],
+	'sorcerer/aberrant-mind': () => ['Psionic Spells', 'Psionic'],
+	'sorcerer/clockwork-soul': () => ['Clockwork Magic', 'Clockwork'],
+	'sorcerer/divine-soul': () => ['Divine Magic', 'Divine'],
+	'sorcerer/shadow': () => ['Eyes of the Dark', 'Shadow'],
+	'monk/shadow': () => ['Shadow Arts', 'Shadow Arts'],
+	'rogue/arcane-trickster': () => ['Mage Hand Legerdemain', 'Trickster'],
+	'wizard/illusion': () => ['Improved Minor Illusion', 'Illusion'],
+	'option:pact of the tome|phb': () => ['Book of Shadows', 'Tome'],
+	'option:pact of the chain|phb': () => ['Pact of the Chain', 'Chain'],
+	'style:blessed-warrior': () => ['Blessed Warrior', 'Blessed'],
+	'style:druidic-warrior': () => ['Druidic Warrior', 'Druidic']
+};
+
+/** Subclass spells the player can trade at each level up for one of the same level matching this filter. */
+const GRANT_SWAPS = {
+	'sorcerer/aberrant-mind': { schools: ['Divination', 'Enchantment'], classes: ['sorcerer', 'warlock', 'wizard'] },
+	'sorcerer/clockwork-soul': { schools: ['Abjuration', 'Transmutation'], classes: ['sorcerer', 'warlock', 'wizard'] }
+};
+
+/** Grants whose spells count against spells known (the bard table already includes Magical Secrets). */
+const COUNTED_OWNERS = new Set(['bard']);
+
+/**
+ * Owners whose 5etools spell data is left out: Glamour's Mantle of Majesty and Open Hand's Tranquility are
+ * features with uses, not spells the player casts (counted in rules/features.ts if at all).
+ */
+const SKIPPED_OWNERS = new Set(['bard/glamour', 'monk/open-hand']);
+
+/**
+ * Ways to cast that 5etools doesn't say, by owner, replacing what it gives for those spells (by name).
+ * `grantCast` applies to every spell of the owner's known grant instead.
+ */
+const CAST_OVERRIDES = {
+	// Psionic Sorcery (6th level): psionic spells for sorcery points equal to their level, without components.
+	'sorcerer/aberrant-mind': { grantCast: [{ kind: 'points', points: 'sorcery', cost: 'level', from: 6, note: 'No verbal or somatic components' }] },
+	// Eyes of the Dark: Darkness for 2 sorcery points, and you can see through it.
+	'sorcerer/shadow': { spells: { darkness: [{ kind: 'points', points: 'sorcery', cost: 2, note: 'You can see through it' }] } },
+	// Thousand Forms: alter self at will.
+	'druid/moon': { spells: { 'alter self': [{ kind: 'will' }] } },
+	// Telekinetic Master: telekinesis once per long rest, or again for a psionic energy die.
+	'fighter/psi-warrior': { spells: { telekinesis: [{ kind: 'rest', per: 'long', uses: 1 }, { kind: 'points', points: 'psionic', cost: 1 }] } },
+	// Consult the Spirits: augury or clairvoyance, one use between them per short rest.
+	'barbarian/ancestral': {
+		spells: {
+			augury: [{ kind: 'rest', per: 'short', uses: 1, pool: 'consult-the-spirits' }],
+			clairvoyance: [{ kind: 'rest', per: 'short', uses: 1, pool: 'consult-the-spirits' }]
+		}
+	},
+	// Searing Arc Strike: burning hands for 2 ki, +1 ki per level up to half the monk level in total.
+	'monk/sun-soul': { spells: { 'burning hands': [{ kind: 'points', points: 'ki', cost: 2, upcast: 'half-level' }] } }
+};
+
+/** TCE feats and MPMM races whose spells can also be cast with the character's spell slots. */
+const SLOT_OWNERS = (owner, source) => (owner.startsWith('feat:') && source === 'TCE') || (/^(sub)?race:/.test(owner) && source === 'MPMM');
+
+const spellByName = new Map();
+for (const s of all) spellByName.set(s.name.toLowerCase(), [...(spellByName.get(s.name.toLowerCase()) ?? []), s]);
+
+/** "summon aberration|TCE", "mind sliver|tce#c" or "hellish rebuke#2" (cast at 2nd level) → the bundled spell. */
+function grantSpell(ref, owner) {
+	const [name, src] = ref.split('#')[0].split('|');
+	const matches = spellByName.get(name.toLowerCase()) ?? [];
+	const spell = src ? matches.find((s) => s.source.toLowerCase() === src.toLowerCase()) : matches.length === 1 ? matches[0] : undefined;
+	if (!spell) fail(`${owner}: spell ${ref} is not in spells.json (or is ambiguous)`);
+	const at = /#(\d)$/.exec(ref)?.[1];
+	return { spell, castLevel: at ? Number(at) : undefined };
+}
+
+/** "level=0;1|class=Druid|school=N" → { levels: [0, 1], classes: ['druid'], schools: ['Necromancy'] }; "" is any spell. */
+function grantFilter(text, owner) {
+	const filter = {};
+	for (const part of text.split('|').filter(Boolean)) {
+		const [k, v] = part.split('=');
+		const values = v.split(';');
+		const key = k.toLowerCase();
+		if (key === 'level') filter.levels = values.map(Number);
+		else if (key === 'class') filter.classes = values.map((x) => x.toLowerCase());
+		else if (key === 'school') filter.schools = values.map((x) => SCHOOLS[x] ?? fail(`${owner}: unknown school ${x}`));
+		else if (key === 'components & miscellaneous' && v === 'ritual') filter.ritual = true;
+		// Spell Sniper's "has an attack roll" isn't in our spell data; any cantrip of the class is offered.
+		else if (key === 'spell attack') continue;
+		else fail(`${owner}: unknown spell filter ${part}`);
+	}
+	return filter;
+}
+
+/** Class (or character) level a block key means: "3" is level 3, "s2" a 2nd-level spell (a warlock's 3rd level), "_" when gained. */
+const grantLevel = (key) => (key === '_' ? 0 : key.startsWith('s') ? Number(key.slice(1)) * 2 - 1 : Number(key));
+
+/**
+ * The entries in one level's value with how each is cast. A value is a list (known/prepared: just known;
+ * innate: at will) or an object: `_` (choices or names), `will`, `daily`/`rest` ({ "1": [...], "1e": [...] }:
+ * that many times per long/short rest), `resource` ({ "2": [...] }: costs that many ki), `ritual`.
+ */
+function levelEntries(value, mode, resourceName) {
+	const will = mode === 'innate' ? [{ kind: 'will' }] : undefined;
+	if (Array.isArray(value)) return value.map((e) => ({ e, cast: will }));
+	const out = (value._ ?? []).map((e) => ({ e, cast: will }));
+	for (const e of value.will ?? []) out.push({ e, cast: [{ kind: 'will' }] });
+	for (const [per, key] of [['long', 'daily'], ['short', 'rest']]) {
+		for (const [n, list] of Object.entries(value[key] ?? {})) {
+			for (const e of list) out.push({ e, cast: [{ kind: 'rest', per, uses: parseInt(n, 10) }] });
+		}
+	}
+	for (const [n, list] of Object.entries(value.resource ?? {})) {
+		const points = resourceName === 'Ki' ? 'ki' : fail(`Unknown spell resource ${resourceName}`);
+		for (const e of list) out.push({ e, cast: [{ kind: 'points', points, cost: Number(n) }] });
+	}
+	for (const e of value.ritual ?? []) out.push({ e, cast: [{ kind: 'ritual' }] });
+	return out;
+}
+
+/** One block (`prepared`, `known`, `innate` or `expanded`) → fixed spells, choices and whole lists, by level. */
+function grantBlock(block, owner, mode, resourceName) {
+	const spells = [];
+	const choices = [];
+	const lists = [];
+	for (const [key, value] of Object.entries(block ?? {})) {
+		const level = grantLevel(key);
+		for (const { e, cast } of levelEntries(value, mode, resourceName)) {
+			const extra = cast ? { cast } : {};
+			if (typeof e === 'string') {
+				const { spell, castLevel } = grantSpell(e, owner);
+				spells.push({ level, id: spell.id, name: spell.name, ...(castLevel ? { castLevel } : {}), ...extra });
+			} else if (e.choose !== undefined) {
+				const same = choices.find((c) => c.level === level && c.text === e.choose && JSON.stringify(c.cast) === JSON.stringify(cast));
+				if (same) same.count += e.count ?? 1;
+				else choices.push({ level, count: e.count ?? 1, text: e.choose, ...extra });
+			} else if (e.all) {
+				lists.push({ level, filter: grantFilter(e.all, owner) });
+			} else fail(`${owner}: unknown spell grant ${JSON.stringify(e)}`);
+		}
+	}
+	spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+	return { spells, choices: choices.map(({ text, ...c }) => ({ ...c, filter: grantFilter(text, owner) })), lists };
+}
+
+/** A known spell that's also cast some other way (Fathomless's tentacles once a day) keeps both, slots included. */
+function applyOverrides(owner, spells) {
+	const byName = CAST_OVERRIDES[owner]?.spells ?? {};
+	for (const s of spells) {
+		const cast = byName[s.name.toLowerCase()];
+		if (cast) s.cast = cast;
+	}
+}
+
+const spellGrants = {};
+/**
+ * Add the grants from one owner's 5etools `additionalSpells`. `labels` gives [name, tag] when there's no
+ * entry in GRANT_LABELS; `source` is the owner's book (for SLOT_OWNERS); `castFor` changes the cast of
+ * innate spells (an invocation's "once using a warlock spell slot").
+ */
+function addGrants(owner, sets, { shortName = '', labels, source, castFor } = {}) {
+	if (SKIPPED_OWNERS.has(owner)) return;
+	const [classKey] = owner.split('/');
+	const [name, tag] = labels ?? (GRANT_LABELS[owner] ?? GRANT_LABELS[classKey] ?? ((sub) => [`${sub} Magic`, sub]))(shortName);
+	const list = (spellGrants[owner] ??= []);
+	// Unnamed alternatives of one spell each (Arcane Archer: prestidigitation or druidcraft) are a choice of one.
+	if (sets.length > 1 && !sets.some((s) => s.name)) {
+		const ids = sets.map((s) => {
+			const { spells } = grantBlock(s.known, owner, 'known');
+			if (spells.length !== 1 || s.prepared || s.expanded || s.innate) fail(`${owner}: can't read its spell alternatives`);
+			return spells[0];
+		});
+		list.push({
+			key: `${owner}#0`,
+			owner,
+			name,
+			tag,
+			mode: 'known',
+			free: true,
+			spells: [],
+			choices: [{ level: ids[0].level, count: 1, filter: { ids: ids.map((s) => s.id) } }]
+		});
+		return;
+	}
+	for (const set of sets) {
+		const variant = sets.length > 1 ? set.name : undefined;
+		for (const mode of ['prepared', 'known', 'innate', 'expanded']) {
+			// Eldritch Knights and Arcane Tricksters already pick from the wizard list; their expansion only lifts
+			// the school limit at some levels (rules/grants.ts `schoolLimit`).
+			if (mode === 'expanded' && (classKey === 'fighter' || classKey === 'rogue')) continue;
+			// Races' expanded lists are Dragonmarks (Eberron), which we don't have.
+			if (mode === 'expanded' && owner.startsWith('race')) continue;
+			const { spells, choices, lists } = grantBlock(set[mode], owner, mode, set.resourceName);
+			if (!spells.length && !choices.length && !lists.length) continue;
+			applyOverrides(owner, spells);
+			if (castFor) for (const x of [...spells, ...choices]) if (mode === 'innate') x.cast = castFor(x.cast);
+			const grantCast = mode === 'known' ? CAST_OVERRIDES[owner]?.grantCast : undefined;
+			list.push({
+				key: `${owner}#${list.length}`,
+				owner,
+				name,
+				tag,
+				mode,
+				free: mode !== 'expanded' && !COUNTED_OWNERS.has(owner),
+				...(variant ? { variant } : {}),
+				...(mode === 'innate' && SLOT_OWNERS(owner, source) ? { slots: true } : {}),
+				...(grantCast ? { cast: grantCast } : {}),
+				spells,
+				...(choices.length ? { choices } : {}),
+				...(lists.length ? { lists } : {}),
+				...(GRANT_SWAPS[owner] && mode === 'known' ? { swap: GRANT_SWAPS[owner] } : {})
+			});
+		}
+	}
+	if (!list.length) delete spellGrants[owner];
+}
+
+// Classes and subclasses.
+for (const [key, source] of Object.entries(CLASS_SOURCES)) {
+	const file = classFiles[key];
+	const cls = file.class.find((c) => c.source === source);
+	if (cls.additionalSpells) addGrants(key, cls.additionalSpells);
+	const table = SUBCLASS_KEYS[cls.name];
+	for (const sc of file.subclass) {
+		if (sc.className !== cls.name || sc.classSource !== cls.source || !sc.additionalSpells) continue;
+		const keys = table[`${sc.shortName}|${sc.source}`];
+		if (!keys) continue;
+		for (const subKey of [keys].flat()) addGrants(`${key}/${subKey}`, sc.additionalSpells, { shortName: sc.shortName });
+	}
+}
+
+// Class options (by their options.json id) and fighting styles (by their key in rules/attacks.ts FIGHTING_STYLES).
+const OPTION_TAGS = { invocation: 'Invocation', discipline: 'Discipline', 'pact-boon': 'Pact' };
+for (const f of optionalFeatureIndex.values()) {
+	if (!f.additionalSpells) continue;
+	const kind = f.featureType.map((t) => OPTION_KINDS[t]).find(Boolean);
+	const style = f.featureType.some((t) => t.startsWith('FS'));
+	if (!kind && !style) continue;
+	const owner = style ? `style:${slug(f.name)}` : `option:${f.name}|${f.source}`.toLowerCase();
+	const text = flatten(f.entries).join(' ');
+	// Invocations say how their "once a day" works: with a warlock slot, or free; "at will" ones are at will.
+	// Elemental disciplines can spend more ki to cast at a higher level, up to a cap by monk level.
+	const castFor = (cast) =>
+		/using a warlock spell slot/i.test(text)
+			? [{ kind: 'pact' }]
+			: /at will/i.test(text) && cast?.[0]?.kind === 'rest'
+				? [{ kind: 'will' }]
+				: kind === 'discipline'
+					? cast?.map((c) => (c.points === 'ki' ? { ...c, upcast: 'elemental' } : c))
+					: cast;
+	addGrants(owner, f.additionalSpells, { labels: GRANT_LABELS[owner]?.() ?? [f.name, OPTION_TAGS[kind] ?? f.name], source: f.source, castFor });
+}
+
+// Feats, by their feats.json id. Magic Initiate, Ritual Caster and Spell Sniper have one list per class (variants).
+for (const f of readJson('feats.json').feat) {
+	if (!SOURCES.includes(f.source) || !f.additionalSpells) continue;
+	const owner = `feat:${f.name}|${f.source}`.toLowerCase();
+	// Ritual Caster's book holds rituals cast only as rituals; 5etools gives them as once a day.
+	const castFor = f.name === 'Ritual Caster' ? () => [{ kind: 'ritual' }] : undefined;
+	addGrants(owner, f.additionalSpells, { labels: [f.name, f.name], source: f.source, castFor });
+}
+
+// Races and subraces, by our race keys (spells by character level). Racial spells with uses are tracked by the
+// race's counters in rules/features.ts when there's one of the same name.
+for (const r of raceList) {
+	const raceName = r.name;
+	if (r.additionalSpells) addGrants(`race:${raceKey(r)}`, r.additionalSpells, { labels: [`${raceName} Spells`, 'Racial'], source: r.source });
+	for (const s of subracesOf(r)) {
+		if (s.name && s.additionalSpells)
+			addGrants(`subrace:${raceKey(r)}/${subraceKey(s)}`, s.additionalSpells, { labels: [`${s.name} ${raceName} Spells`, 'Racial'], source: r.source });
+	}
+}
+
+// TCE's Primal Awareness (replacing Primeval Awareness) isn't in 5etools' spell data; every ranger gets it,
+// like Favored Foe. The spells don't count against spells known, and each can be cast once a day for free.
+const grantSpellRecord = (level, ref, owner, cast) => {
+	const { spell } = grantSpell(ref, owner);
+	return { level, id: spell.id, name: spell.name, ...(cast ? { cast } : {}) };
+};
+(spellGrants.ranger ??= []).push({
+	key: 'ranger#primal-awareness',
+	owner: 'ranger',
+	name: 'Primal Awareness',
+	tag: 'Primal',
+	mode: 'known',
+	free: true,
+	spells: [
+		[3, 'speak with animals'],
+		[5, 'beast sense'],
+		[9, 'speak with plants'],
+		[13, 'locate creature'],
+		[17, 'commune with nature']
+	].map(([level, ref]) => grantSpellRecord(level, ref, 'ranger', [{ kind: 'rest', per: 'long', uses: 1 }]))
+});
+
+// Wizard capstones aren't in 5etools' spell data either. Spell Mastery (18th): a 1st- and a 2nd-level wizard
+// spell cast at their lowest level at will. Signature Spells (20th): two 3rd-level ones, each once per short rest.
+(spellGrants.wizard ??= []).push(
+	{
+		key: 'wizard#spell-mastery',
+		owner: 'wizard',
+		name: 'Spell Mastery',
+		tag: 'Mastery',
+		mode: 'prepared',
+		free: true,
+		spells: [],
+		choices: [
+			{ level: 18, count: 1, filter: { levels: [1], classes: ['wizard'] }, cast: [{ kind: 'will' }] },
+			{ level: 18, count: 1, filter: { levels: [2], classes: ['wizard'] }, cast: [{ kind: 'will' }] }
+		]
+	},
+	{
+		key: 'wizard#signature-spells',
+		owner: 'wizard',
+		name: 'Signature Spells',
+		tag: 'Signature',
+		mode: 'prepared',
+		free: true,
+		spells: [],
+		choices: [{ level: 20, count: 2, filter: { levels: [3], classes: ['wizard'] }, cast: [{ kind: 'rest', per: 'short', uses: 1 }] }]
+	}
+);
+
+const MIN_GRANT_OWNERS = 130;
+const grantOwners = Object.keys(spellGrants).length;
+if (grantOwners < MIN_GRANT_OWNERS) fail(`Expected spell grants for at least ${MIN_GRANT_OWNERS} owners, found ${grantOwners}.`);
+const grantsPath = join(root, 'src/lib/data/spell-grants.json');
+writeFileSync(grantsPath, JSON.stringify(spellGrants));
+console.log(`Wrote spell grants for ${grantOwners} classes, subclasses, options, feats and races to ${grantsPath}`);

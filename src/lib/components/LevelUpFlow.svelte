@@ -189,6 +189,8 @@
 		});
 
 	// Granted spells: what this level's subclass, pact boon, fighting styles and list picks bring.
+	/** A feat taken at this level (Magic Initiate brings spells to pick). */
+	const featNow = $derived(((needs.asi && picks.improvementKind === 'feat') || featOnly) && picks.feat[0] ? picks.feat[0] : undefined);
 	/** Class options after this level's picks (a new pact boon brings its cantrips). */
 	const optionsNow = $derived([
 		...start.classOptions.filter((o) => !needs.options.some((n) => n.kind === o.kind)),
@@ -201,6 +203,9 @@
 		level,
 		classOptions: optionsNow,
 		fightingStyles: needs.fightingStyles ? picks.styles : start.fightingStyles,
+		feats: [...start.feats, ...(featNow ? [{ id: '', ref: featNow, name: '' }] : [])],
+		raceKey: start.raceKey,
+		subraceKey: start.subraceKey,
 		grantVariants: { ...start.grantVariants, ...picks.variants },
 		spells: start.spells
 	});

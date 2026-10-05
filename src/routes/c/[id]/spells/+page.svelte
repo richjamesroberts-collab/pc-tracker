@@ -18,6 +18,7 @@
 		spellLimit,
 		spellSaveDC
 	} from '$lib/rules/spellcasting';
+	import { castSummary, grantedSpells } from '$lib/rules/grants';
 	import type { Character, Spell } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -33,6 +34,10 @@
 	// Free granted spells (domain, oath, circle) are always prepared and don't count.
 	const preparedCount = $derived(levelled.filter((x) => x.prepared && !x.grant?.free).length);
 	const limit = $derived(spellLimit(c));
+	/** How each granted spell is cast besides a slot: "At will", "1 / long rest", "2 ki". */
+	const castWays = $derived(new Map(grantedSpells(c).map((g) => [g.id, castSummary(c, g)])));
+	/** Non-casters with granted spells (Shadow monk, tiefling fighter) have no slots to show. */
+	const hasSlots = $derived(slotMax(c).length > 0 || !!pact || arcanum.length > 0 || spMax > 0);
 
 	let preparing = $state(false);
 	let casting = $state<Spell | null>(null);
@@ -63,75 +68,77 @@
 
 <SpellNav id={c.id} />
 
-<section class="card slots">
-	<div class="head">
-		<h2 class="label">Spell slots</h2>
-		<span class="label">+{spellAttack(c)} to hit · DC {spellSaveDC(c)}</span>
-	</div>
-
-	{#each slotMax(c) as max, i (i)}
-		{@const level = i + 1}
-		{@const total = max + (c.bonusSlots[level] ?? 0)}
-		<div class="row">
-			<b>{ordinal(level)}</b>
-			<Pips
-				label="{ordinal(level)}-level slot"
-				max={total}
-				left={slotsLeft(c, level)}
-				onspend={() => session.mutate(`Used a ${ordinal(level)}-level slot`, (ch) => spendSlot(ch, level))}
-				onrestore={() => session.mutate(`Got a ${ordinal(level)}-level slot back`, (ch) => restoreSlot(ch, level))}
-			/>
-			<span class="count">{slotsLeft(c, level)} left</span>
+{#if hasSlots}
+	<section class="card slots">
+		<div class="head">
+			<h2 class="label">Spell slots</h2>
+			<span class="label">+{spellAttack(c)} to hit · DC {spellSaveDC(c)}</span>
 		</div>
-	{/each}
 
-	{#if pact}
-		<div class="row">
-			<b>Pact</b>
-			<Pips
-				label="pact slot"
-				max={pact.count}
-				left={pact.count - c.pactSlotsUsed}
-				onspend={() => session.mutate('Used a pact slot', (ch) => (ch.pactSlotsUsed += 1))}
-				onrestore={() => session.mutate('Got a pact slot back', (ch) => (ch.pactSlotsUsed = Math.max(0, ch.pactSlotsUsed - 1)))}
-			/>
-			<span class="count">{ordinal(pact.level)} level</span>
-		</div>
-	{/if}
-
-	{#each arcanum as level (level)}
-		{@const used = c.arcanumUsed.includes(level)}
-		<div class="row">
-			<b>{ordinal(level)}</b>
-			<Pips
-				label="{ordinal(level)}-level Mystic Arcanum"
-				max={1}
-				left={used ? 0 : 1}
-				onspend={() => session.mutate(`Used ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = [...ch.arcanumUsed, level]))}
-				onrestore={() => session.mutate(`Restored ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = ch.arcanumUsed.filter((l) => l !== level)))}
-			/>
-			<span class="count">Arcanum</span>
-		</div>
-	{/each}
-
-	{#if spMax}
-		<div class="sp">
-			<div class="head">
-				<h2 class="label">Sorcery points</h2>
-				<span class="sp-count">{sorceryPointsLeft(c)} / {spMax}</span>
+		{#each slotMax(c) as max, i (i)}
+			{@const level = i + 1}
+			{@const total = max + (c.bonusSlots[level] ?? 0)}
+			<div class="row">
+				<b>{ordinal(level)}</b>
+				<Pips
+					label="{ordinal(level)}-level slot"
+					max={total}
+					left={slotsLeft(c, level)}
+					onspend={() => session.mutate(`Used a ${ordinal(level)}-level slot`, (ch) => spendSlot(ch, level))}
+					onrestore={() => session.mutate(`Got a ${ordinal(level)}-level slot back`, (ch) => restoreSlot(ch, level))}
+				/>
+				<span class="count">{slotsLeft(c, level)} left</span>
 			</div>
-			<Pips
-				label="sorcery point"
-				shape="diamond"
-				max={spMax}
-				left={sorceryPointsLeft(c)}
-				onspend={() => session.mutate('Spent a sorcery point', (ch) => (ch.sorceryPointsUsed += 1))}
-				onrestore={() => session.mutate('Got a sorcery point back', (ch) => (ch.sorceryPointsUsed = Math.max(0, ch.sorceryPointsUsed - 1)))}
-			/>
-			<button type="button" class="font" onclick={() => (fontOpen = true)}>Font of Magic: convert slots and points</button>
-		</div>
-	{/if}
-</section>
+		{/each}
+
+		{#if pact}
+			<div class="row">
+				<b>Pact</b>
+				<Pips
+					label="pact slot"
+					max={pact.count}
+					left={pact.count - c.pactSlotsUsed}
+					onspend={() => session.mutate('Used a pact slot', (ch) => (ch.pactSlotsUsed += 1))}
+					onrestore={() => session.mutate('Got a pact slot back', (ch) => (ch.pactSlotsUsed = Math.max(0, ch.pactSlotsUsed - 1)))}
+				/>
+				<span class="count">{ordinal(pact.level)} level</span>
+			</div>
+		{/if}
+
+		{#each arcanum as level (level)}
+			{@const used = c.arcanumUsed.includes(level)}
+			<div class="row">
+				<b>{ordinal(level)}</b>
+				<Pips
+					label="{ordinal(level)}-level Mystic Arcanum"
+					max={1}
+					left={used ? 0 : 1}
+					onspend={() => session.mutate(`Used ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = [...ch.arcanumUsed, level]))}
+					onrestore={() => session.mutate(`Restored ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = ch.arcanumUsed.filter((l) => l !== level)))}
+				/>
+				<span class="count">Arcanum</span>
+			</div>
+		{/each}
+
+		{#if spMax}
+			<div class="sp">
+				<div class="head">
+					<h2 class="label">Sorcery points</h2>
+					<span class="sp-count">{sorceryPointsLeft(c)} / {spMax}</span>
+				</div>
+				<Pips
+					label="sorcery point"
+					shape="diamond"
+					max={spMax}
+					left={sorceryPointsLeft(c)}
+					onspend={() => session.mutate('Spent a sorcery point', (ch) => (ch.sorceryPointsUsed += 1))}
+					onrestore={() => session.mutate('Got a sorcery point back', (ch) => (ch.sorceryPointsUsed = Math.max(0, ch.sorceryPointsUsed - 1)))}
+				/>
+				<button type="button" class="font" onclick={() => (fontOpen = true)}>Font of Magic: convert slots and points</button>
+			</div>
+		{/if}
+	</section>
+{/if}
 
 {#if c.concentration}
 	<div class="conc">
@@ -205,7 +212,7 @@
 									{#if spell.concentration}<span class="tag">Conc</span>{/if}
 									{#if spell.ritual}<span class="tag">Ritual</span>{/if}
 								</span>
-								<span class="meta">{spellMeta(spell)}</span>
+								<span class="meta">{[spellMeta(spell), castWays.get(spell.id)].filter(Boolean).join(' · ')}</span>
 							</span>
 							<span class="cast">Cast</span>
 						</button>

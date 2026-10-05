@@ -18,7 +18,7 @@
 		variantPicks,
 		type GrantChoice
 	} from '$lib/rules/grants';
-	import { cantripsKnown, ordinal, prepStyle, spellLimit } from '$lib/rules/spellcasting';
+	import { cantripsKnown, isCaster, ordinal, prepStyle, spellLimit } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
 	/** `grant:<tag>` shows one grant list (Psionic, Domain), every level of it. */
@@ -30,7 +30,9 @@
 	const style = $derived(prepStyle(c));
 
 	let query = $state('');
-	let filter = $state<Filter>('class');
+	const caster = $derived(isCaster(c));
+	// Non-casters (a Shadow monk, a fighter with Magic Initiate) only have granted spells.
+	let filter = $state<Filter>(isCaster(session.character as Character) ? 'class' : 'mine');
 	let level = $state<number | null>(null);
 	let source = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
@@ -171,7 +173,9 @@
 </label>
 
 <div class="filters" role="radiogroup" aria-label="Which spells">
-	<button type="button" role="radio" aria-checked={filter === 'class'} onclick={() => (filter = 'class')}>{listName} list</button>
+	{#if caster}
+		<button type="button" role="radio" aria-checked={filter === 'class'} onclick={() => (filter = 'class')}>{listName} list</button>
+	{/if}
 	<button type="button" role="radio" aria-checked={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 	<button type="button" role="radio" aria-checked={filter === 'mine'} onclick={() => (filter = 'mine')}>My spells</button>
 	{#each [...grantLists.keys()] as tag (tag)}

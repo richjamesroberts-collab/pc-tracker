@@ -5,6 +5,7 @@
 	import TabBar from '$lib/components/TabBar.svelte';
 	import { session } from '$lib/session.svelte';
 	import { isCaster } from '$lib/rules/spellcasting';
+	import { grantedSpells } from '$lib/rules/grants';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { fillItemData, fillItemDetails, loadGear, loadItems, needsItemData } from '$lib/data/content';
 
@@ -95,7 +96,8 @@
 		{@render children()}
 	</div>
 	{#if showTabs}
-		<TabBar {id} caster={isCaster(session.character)} />
+		<!-- Non-casters with granted spells (Shadow monk, tiefling fighter) get the Spells tab too. -->
+		<TabBar {id} caster={isCaster(session.character) || grantedSpells(session.character).length > 0} />
 	{/if}
 {/if}
 
