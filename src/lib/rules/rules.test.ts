@@ -12,7 +12,18 @@ import {
 	spellLimit,
 	spellSaveDC
 } from './spellcasting';
-import { longRest, metamagicCost, pointsToSlot, shortRest, slotToPoints, sorceryPointsLeft, spendSlot } from './resources';
+import {
+	hitDiceLeft,
+	hitDieHealing,
+	longRest,
+	metamagicCost,
+	pointsToSlot,
+	shortRest,
+	slotToPoints,
+	sorceryPointsLeft,
+	spendHitDie,
+	spendSlot
+} from './resources';
 import {
 	RESOURCES,
 	proficiencyBonus,
@@ -167,6 +178,35 @@ describe('resources', () => {
 		expect(c.tempHp).toBe(0);
 		expect(sorceryPointsLeft(c)).toBe(7);
 	});
+	it('hit dice heal by the roll plus CON and refuse when spent or off the die', () => {
+		// Sorcerer 7: seven d6s. CON 14 (+2).
+		const c = pc({ abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 10, cha: 16 }, hitDiceUsed: 5 });
+		expect(hitDiceLeft(c)).toBe(2);
+		expect(hitDieHealing(c, 4)).toBe(6);
+		expect(spendHitDie(c, 7)).toBe(false);
+		expect(spendHitDie(c, 4)).toBe(true);
+		expect([c.hpCurrent, c.hitDiceUsed]).toEqual([44, 6]);
+		c.hpCurrent = 50;
+		expect(spendHitDie(c, 6)).toBe(true);
+		expect(c.hpCurrent).toBe(52);
+		expect(spendHitDie(c, 1)).toBe(false);
+		// A low roll with a CON penalty heals nothing rather than hurting.
+		expect(hitDieHealing(pc({ abilities: { str: 10, dex: 10, con: 6, int: 10, wis: 10, cha: 16 } }), 1)).toBe(0);
+	});
+	it('long rest gives back half the hit dice (at least one); short rest none', () => {
+		const c = pc({ hitDiceUsed: 7 });
+		shortRest(c);
+		expect(c.hitDiceUsed).toBe(7);
+		longRest(c);
+		expect(c.hitDiceUsed).toBe(4);
+		longRest(c);
+		expect(c.hitDiceUsed).toBe(1);
+		longRest(c);
+		expect(c.hitDiceUsed).toBe(0);
+		const one = pc({ level: 1, hitDiceUsed: 1 });
+		longRest(one);
+		expect(one.hitDiceUsed).toBe(0);
+	});
 	it('Twinned costs the spell level', () => {
 		expect(metamagicCost('twinned', 0)).toBe(1);
 		expect(metamagicCost('twinned', 3)).toBe(3);
@@ -250,15 +290,16 @@ describe('limited-use features', () => {
 			resourcesUsed: { 'action-surge': 1, indomitable: 1, stale: 3 },
 			customResources: [
 				{ id: 'a', name: 'A', max: 2, reset: 'short', used: 2 },
-				{ id: 'b', name: 'B', max: 1, reset: 'long', used: 1 }
+				{ id: 'b', name: 'B', max: 1, reset: 'long', used: 1 },
+				{ id: 'c', name: 'C', max: 3, reset: 'none', used: 2 }
 			]
 		});
 		shortRest(c);
 		expect(c.resourcesUsed).toEqual({ indomitable: 1, stale: 3 });
-		expect(c.customResources.map((r) => r.used)).toEqual([0, 1]);
+		expect(c.customResources.map((r) => r.used)).toEqual([0, 1, 2]);
 		longRest(c);
 		expect(c.resourcesUsed).toEqual({});
-		expect(c.customResources.map((r) => r.used)).toEqual([0, 0]);
+		expect(c.customResources.map((r) => r.used)).toEqual([0, 0, 2]);
 	});
 	it('custom counters stay within 0..max and act on the first matching id', () => {
 		const c = pc({

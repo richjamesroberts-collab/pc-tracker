@@ -125,6 +125,35 @@ export interface MagicItem {
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact'] as const;
 
+/** Types offered for custom items, matching the bundled items' own (items.json without the bracketed detail, gear.json). */
+export const ITEM_TYPES: Record<InventoryItem['kind'], readonly string[]> = {
+	magic: ['Wondrous item', 'Armor', 'Weapon', 'Ammunition', 'Potion', 'Ring', 'Rod', 'Scroll', 'Staff', 'Wand'],
+	gear: [
+		'Adventuring gear',
+		'Ammunition',
+		'Arcane focus',
+		'Druidic focus',
+		'Holy symbol',
+		'Light armor',
+		'Medium armor',
+		'Heavy armor',
+		'Shield',
+		'Simple melee weapon',
+		'Simple ranged weapon',
+		'Martial melee weapon',
+		'Martial ranged weapon',
+		"Artisan's tools",
+		'Tool',
+		'Gaming set',
+		'Musical instrument',
+		'Food and drink',
+		'Gemstone',
+		'Art object',
+		'Poison',
+		'Tack and harness'
+	]
+};
+
 export const rarityLabel = (r: string) => (r ? r[0].toUpperCase() + r.slice(1) : '');
 
 let itemCache: Promise<MagicItem[]> | undefined;

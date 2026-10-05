@@ -1,6 +1,10 @@
 import type { Character } from '$lib/types';
+import { abilityMod } from './abilities';
 import { resetResources } from './features';
+import { applyHealing } from './hp';
 import { pactSlots, slotMax, slotsLeft } from './spellcasting';
+import { abilityScores } from './stats';
+import { hitDie } from './xp';
 
 export const METAMAGIC: { key: string; name: string; cost: number | 'level' }[] = [
 	{ key: 'careful', name: 'Careful Spell', cost: 1 },
@@ -75,6 +79,30 @@ export function pointsToSlot(c: Character, level: number): boolean {
 	return true;
 }
 
+/** One hit die per level (PHB p.186). */
+export const hitDiceMax = (c: Pick<Character, 'level'>) => c.level;
+
+export function hitDiceLeft(c: Pick<Character, 'level' | 'hitDiceUsed'>): number {
+	return Math.max(0, hitDiceMax(c) - c.hitDiceUsed);
+}
+
+/** Hit points from spending a hit die: the roll plus the CON modifier (magic items included), at least 0. */
+export function hitDieHealing(c: Character, roll: number): number {
+	return Math.max(0, Math.floor(roll) + abilityMod(abilityScores(c).con));
+}
+
+/** Spend a hit die on a short rest, healing by the roll plus CON. Returns false with none left or a roll off the die. */
+export function spendHitDie(c: Character, roll: number): boolean {
+	if (hitDiceLeft(c) <= 0 || !Number.isInteger(roll) || roll < 1 || roll > hitDie(c.classKey)) return false;
+	c.hitDiceUsed += 1;
+	applyHealing(c, hitDieHealing(c, roll));
+	return true;
+}
+
+/** Spent hit dice a long rest gives back: half the character's total, at least one. */
+export const hitDiceRegained = (c: Pick<Character, 'level' | 'hitDiceUsed'>) =>
+	Math.min(c.hitDiceUsed, Math.max(1, Math.floor(hitDiceMax(c) / 2)));
+
 export function shortRest(c: Character): void {
 	c.pactSlotsUsed = 0;
 	resetResources(c, 'short');
@@ -91,5 +119,6 @@ export function longRest(c: Character): void {
 	c.arcanumUsed = [];
 	c.sorceryPointsUsed = 0;
 	c.concentration = undefined;
+	c.hitDiceUsed -= hitDiceRegained(c);
 	resetResources(c, 'long');
 }

@@ -220,14 +220,17 @@ export function restoreResource(c: Character, key: string, n = 1): void {
 	else delete c.resourcesUsed[key];
 }
 
-/** A long rest resets everything; a short rest only what resets on short. Unknown keys wait for a long rest. */
+/**
+ * A long rest resets everything; a short rest only what resets on short. Unknown keys wait for a long rest.
+ * Custom counters that never come back ('none') are only refilled by hand.
+ */
 export function resetResources(c: Character, kind: 'short' | 'long'): void {
 	if (kind === 'long') {
 		c.resourcesUsed = {};
 	} else {
 		for (const def of resourcesFor(c)) if (def.reset(c) === 'short') delete c.resourcesUsed[def.key];
 	}
-	for (const r of c.customResources) if (kind === 'long' || r.reset === 'short') r.used = 0;
+	for (const r of c.customResources) if (r.reset === 'short' || (kind === 'long' && r.reset === 'long')) r.used = 0;
 }
 
 export function spendCustom(c: Character, id: string): boolean {

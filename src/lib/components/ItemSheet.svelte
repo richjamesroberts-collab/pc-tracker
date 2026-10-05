@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
-	import { RARITIES, copyWeapon, loadGear, rarityLabel, type GearItem } from '$lib/data/content';
+	import { ITEM_TYPES, RARITIES, copyWeapon, loadGear, rarityLabel, type GearItem } from '$lib/data/content';
 	import { parseRegain } from '$lib/rules/items';
 	import { WEAPONS, proficiencyLabel } from '$lib/rules/proficiency';
 	import type { ArmorType, InventoryItem, ItemEffects, ItemWeapon } from '$lib/types';
@@ -55,7 +55,7 @@
 			custom = !item?.ref;
 			gear = (item?.kind ?? kind) === 'gear';
 			name = item?.name ?? '';
-			type = item?.type ?? '';
+			type = item?.type ?? ITEM_TYPES[gear ? 'gear' : 'magic'][0];
 			rarity = item?.rarity ?? '';
 			attunement = item?.attunement ?? false;
 			quantity = item?.quantity ?? 1;
@@ -69,6 +69,12 @@
 			regain = item?.charges?.regain ?? '';
 			notes = item?.notes ?? '';
 		});
+	});
+
+	/** The dropdown's choices, keeping a type typed before it was a dropdown. */
+	const typeOptions = $derived.by(() => {
+		const list = ITEM_TYPES[gear ? 'gear' : 'magic'];
+		return type && !list.includes(type) ? [type, ...list] : list;
 	});
 
 	// Custom items and magic weapons can say which PHB weapon they are; bundled gear weapons already know.
@@ -155,6 +161,15 @@
 	}
 </script>
 
+{#snippet typeSelect()}
+	<select bind:value={type}>
+		{#each typeOptions as t (t)}
+			<option value={t}>{t}</option>
+		{/each}
+		<option value="">Other</option>
+	</select>
+{/snippet}
+
 <Sheet {open} {onclose} label={editing ? 'Edit item' : 'Add a custom item'}>
 	<h2>{editing ? 'Edit item' : 'Custom item'}</h2>
 	{#if custom && !editing}
@@ -168,13 +183,13 @@
 		{#if custom && gear}
 			<label class="field">
 				<span>Type</span>
-				<input bind:value={type} autocapitalize="sentences" placeholder="Adventuring gear" />
+				{@render typeSelect()}
 			</label>
 		{:else if custom}
 			<div class="two">
 				<label class="field">
 					<span>Type</span>
-					<input bind:value={type} autocapitalize="sentences" placeholder="Wondrous item" />
+					{@render typeSelect()}
 				</label>
 				<label class="field">
 					<span>Rarity</span>

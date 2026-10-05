@@ -144,6 +144,14 @@ describe('race and resource fields', () => {
 		expect(c.resourcesUsed).toEqual({});
 		expect(c.customResources).toEqual([]);
 		expect(c.raceKey).toBeUndefined();
+		expect(c.hitDiceUsed).toBe(0);
+	});
+
+	it('keeps spent hit dice, up to the level', () => {
+		const read = (hitDiceUsed: unknown) =>
+			readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'fighter', level: 3, hitDiceUsed } })
+				.hitDiceUsed;
+		expect([read(2), read(9), read(-1), read('x')]).toEqual([2, 3, 0, 0]);
 	});
 
 	it('keeps race, counters and custom counters, dropping junk', () => {
@@ -159,6 +167,7 @@ describe('race and resource fields', () => {
 				resourcesUsed: { rage: 2, bad: 'x' },
 				customResources: [
 					{ id: 'c1', name: 'Luck', max: 3, reset: 'long', used: 1 },
+					{ id: 'c3', name: 'Wish', max: 1, reset: 'none', used: 1 },
 					{ name: 'no id' },
 					{ id: 'c2', name: 'Bad', max: 2, reset: 'weekly', used: 0 }
 				]
@@ -167,7 +176,10 @@ describe('race and resource fields', () => {
 		expect(c.raceKey).toBe('half-orc');
 		expect(c.subraceKey).toBeUndefined();
 		expect(c.resourcesUsed).toEqual({ rage: 2 });
-		expect(c.customResources).toEqual([{ id: 'c1', name: 'Luck', max: 3, reset: 'long', used: 1 }]);
+		expect(c.customResources).toEqual([
+			{ id: 'c1', name: 'Luck', max: 3, reset: 'long', used: 1 },
+			{ id: 'c3', name: 'Wish', max: 1, reset: 'none', used: 1 }
+		]);
 	});
 
 	it('restore links carry race and counters', async () => {

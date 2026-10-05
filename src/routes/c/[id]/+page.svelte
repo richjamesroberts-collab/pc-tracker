@@ -10,20 +10,31 @@
 	import BackupSheet from '$lib/components/BackupSheet.svelte';
 	import AttackSheet from '$lib/components/AttackSheet.svelte';
 	import XpSheet from '$lib/components/XpSheet.svelte';
+	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { raceLabel } from '$lib/data/races';
 	import { isDead, isDown } from '$lib/rules/hp';
-	import { longRest, shortRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
-	import { isCaster, ordinal, pactSlots, slotMax, slotsLeft, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
+	import { hitDiceLeft, hitDiceMax, longRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
+	import {
+		isCaster,
+		ordinal,
+		pactSlots,
+		proficiencyBonus,
+		slotMax,
+		slotsLeft,
+		SPELL_ABILITY,
+		spellAttack,
+		spellSaveDC
+	} from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { ABILITIES, abilityMod, signedMod } from '$lib/rules/abilities';
 	import { abilityBreakdown } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
-	import { xpProgress } from '$lib/rules/xp';
+	import { hitDie, xpProgress } from '$lib/rules/xp';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -39,6 +50,7 @@
 
 	const stats = $derived(
 		[
+			{ k: 'Proficiency', v: signedMod(proficiencyBonus(c.level)) },
 			c.speed != null && { k: 'Speed', v: `${c.speed}` },
 			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
 			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
@@ -64,6 +76,7 @@
 	let attackId = $state<string | null>(null);
 	const openAttack = $derived(attacks.find((a) => a.id === attackId) ?? null);
 	let xpOpen = $state(false);
+	let restOpen = $state(false);
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
@@ -82,8 +95,8 @@
 
 	function rest(kind: 'short' | 'long') {
 		menuOpen = false;
-		if (kind === 'long') session.mutate('Long rest: HP, slots, points and features restored', longRest);
-		else session.mutate('Short rest taken', shortRest);
+		if (kind === 'long') session.mutate('Long rest: HP, slots, points, features and hit dice restored', longRest);
+		else restOpen = true;
 	}
 </script>
 
@@ -186,13 +199,17 @@
 	{/each}
 </button>
 
-{#if stats.length}
-	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
-		{#each stats as s (s.k)}
-			<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
-		{/each}
-	</div>
-{/if}
+<div class="stats" style:--cols={Math.min(stats.length, 4)}>
+	{#each stats as s (s.k)}
+		<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
+	{/each}
+</div>
+
+<button type="button" class="card dice" aria-label="Hit dice: {hitDiceLeft(c)} of {hitDiceMax(c)} d{hitDie(c.classKey)} left. Tap for a short rest." onclick={() => (restOpen = true)}>
+	<span class="label">Hit dice</span>
+	<span class="dice-num"><b>{hitDiceLeft(c)}</b> / {hitDiceMax(c)} d{hitDie(c.classKey)}</span>
+	<span class="more">Short rest ›</span>
+</button>
 
 <section class="attacks" aria-labelledby="attacks-title">
 	<div class="attacks-head">
@@ -262,6 +279,7 @@
 <HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
 <AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
+<ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 
 <Sheet open={abilitiesOpen} onclose={() => (abilitiesOpen = false)} label="Ability scores">
@@ -284,8 +302,8 @@
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
-		<button type="button" onclick={() => rest('short')}>Short rest <span>Short-rest features and pact slots back</span></button>
-		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, points and features</span></button>
+		<button type="button" onclick={() => rest('short')}>Short rest <span>Spend hit dice; short-rest features back</span></button>
+		<button type="button" onclick={() => rest('long')}>Long rest <span>Full HP, slots, features, half hit dice</span></button>
 		<button type="button" onclick={() => ((menuOpen = false), (xpOpen = true))}>
 			{c.milestone ? 'Level up' : 'Experience'} <span>{c.milestone ? `Now level ${c.level}` : `${c.xp.toLocaleString('en')} XP`}</span>
 		</button>
@@ -730,6 +748,40 @@
 		line-height: 1.3;
 		text-align: center;
 		color: var(--color-text-muted);
+	}
+
+	.dice {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		margin-top: 12px;
+		padding: 12px 16px;
+		color: var(--color-text);
+		font-weight: 400;
+		text-align: left;
+	}
+
+	.dice .label {
+		flex: 1;
+	}
+
+	.dice-num {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.dice-num b {
+		font-family: var(--font-display);
+		font-size: 20px;
+		font-weight: 900;
+		color: var(--color-text);
+	}
+
+	.dice .more {
+		color: var(--color-accent);
 	}
 
 	.attacks {

@@ -60,6 +60,13 @@ class PcTrackerDB extends Dexie {
 				.toCollection()
 				.modify((c: Character) => migrateToBaseStats(c))
 		);
+		// Hit dice.
+		this.version(8).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
+		);
 	}
 }
 

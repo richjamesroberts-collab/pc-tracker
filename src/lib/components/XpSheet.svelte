@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { signedMod } from '$lib/rules/abilities';
@@ -30,9 +31,20 @@
 		e.preventDefault();
 		if (!amountOk) return;
 		const n = amount!;
-		const before = c.xp;
-		session.mutate(`+${fmt(n)} XP (${fmt(before + n)} total)`, (d) => {
-			d.xp = Math.min(9999999, d.xp + n);
+		const total = Math.min(9999999, c.xp + n);
+		session.mutate(`+${fmt(n)} XP (${fmt(total)} total)`, (d) => {
+			d.xp = total;
+		});
+		amount = null;
+	}
+
+	/** Take back XP added by mistake. The level stays; change it in Edit if it needs to go down. */
+	function removeXp() {
+		if (!amountOk) return;
+		const n = Math.min(amount!, c.xp);
+		const total = c.xp - n;
+		session.mutate(`−${fmt(n)} XP (${fmt(total)} total)`, (d) => {
+			d.xp = total;
 		});
 		amount = null;
 	}
@@ -60,11 +72,15 @@
 	{#if !c.milestone}
 		<form class="add" onsubmit={addXp}>
 			<label class="field">
-				<span>XP earned</span>
+				<span>XP</span>
 				<input type="number" inputmode="numeric" min="1" step="1" bind:value={amount} placeholder="450" />
 			</label>
-			<button type="submit" class="primary" disabled={!amountOk}>Add XP</button>
+			<div class="actions">
+				<button type="button" class="secondary" disabled={!amountOk || c.xp === 0} onclick={removeXp}>Remove</button>
+				<button type="submit" class="primary" disabled={!amountOk}>Add XP</button>
+			</div>
 		</form>
+		<a class="edit-link" href={resolve('/c/[id]/edit', { id: c.id })}>Set or reset base XP from the Edit character page</a>
 	{/if}
 
 	{#if c.level < MAX_LEVEL && (progress.ready || c.milestone)}
@@ -114,11 +130,40 @@
 	}
 
 	.add {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: end;
+		display: flex;
+		flex-direction: column;
 		gap: 8px;
 		margin-top: 14px;
+	}
+
+	.actions {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: 8px;
+	}
+
+	.secondary {
+		height: 48px;
+		padding: 0 12px;
+		border-radius: 14px;
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-border-strong);
+		color: var(--color-text);
+		font-size: 16px;
+		font-weight: 800;
+	}
+
+	.secondary:disabled {
+		opacity: 0.45;
+	}
+
+	.edit-link {
+		display: block;
+		margin-top: 10px;
+		padding: 6px 0;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--color-accent);
 	}
 
 	.field {
