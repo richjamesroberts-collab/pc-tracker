@@ -480,6 +480,114 @@ const subclassCount = Object.values(classesOut).reduce((n, c) => n + Object.keys
 console.log(`Wrote ${classCount} classes (${subclassCount} subclass keys) to ${classesPath}`);
 
 // ---------------------------------------------------------------------------------------------
+// Spells from subclasses: domain, oath and circle spells (always prepared) and spells a subclass
+// teaches on top of the class count (Aberrant Mind's psionic spells, ranger subclass magic).
+// Every one listed here is free: it doesn't count against cantrips known, spells known or prepared.
+// Choices (Magical Secrets, Nature domain's druid cantrip, Arcane Archer's pick) and expanded lists
+// (warlock patrons) aren't read yet; 5etools gives those as objects, not spell names.
+
+/** What the spells are called on the character's sheet, by class, or by `class/subclass` where it differs. */
+const GRANT_LABELS = {
+	artificer: (sub) => [`${sub} Spells`, 'Specialist'],
+	cleric: () => ['Domain Spells', 'Domain'],
+	druid: () => ['Circle Spells', 'Circle'],
+	paladin: () => ['Oath Spells', 'Oath'],
+	warlock: () => ['Patron Spells', 'Patron'],
+	'sorcerer/aberrant-mind': () => ['Psionic Spells', 'Psionic'],
+	'sorcerer/clockwork-soul': () => ['Clockwork Magic', 'Clockwork'],
+	'sorcerer/divine-soul': () => ['Divine Magic', 'Affinity'],
+	'sorcerer/shadow': () => ['Eyes of the Dark', 'Shadow'],
+	'monk/shadow': () => ['Shadow Arts', 'Shadow Arts'],
+	'rogue/arcane-trickster': () => ['Mage Hand Legerdemain', 'Trickster'],
+	'wizard/illusion': () => ['Improved Minor Illusion', 'Illusion']
+};
+
+const spellByName = new Map();
+for (const s of all) spellByName.set(s.name.toLowerCase(), [...(spellByName.get(s.name.toLowerCase()) ?? []), s]);
+
+/** "summon aberration|TCE", "mind sliver|tce#c" or "bless" → the bundled spell. */
+function grantSpell(ref, owner) {
+	const [name, src] = ref.split('#')[0].split('|');
+	const matches = spellByName.get(name.toLowerCase()) ?? [];
+	const spell = src ? matches.find((s) => s.source.toLowerCase() === src.toLowerCase()) : matches.length === 1 ? matches[0] : undefined;
+	if (!spell) fail(`${owner}: spell ${ref} is not in spells.json (or is ambiguous)`);
+	return spell;
+}
+
+/**
+ * Spell names by class level from one `known` or `prepared` block. A level maps to names, or to an object:
+ * `_` (choices, skipped) or `daily`/`rest` (Fathomless's Evard's black tentacles, also castable once a day).
+ */
+function grantLevels(block, owner) {
+	const out = [];
+	for (const [lvl, value] of Object.entries(block ?? {})) {
+		const refs = Array.isArray(value)
+			? value
+			: [...Object.values(value.daily ?? {}), ...Object.values(value.rest ?? {})].flat();
+		for (const ref of refs) {
+			if (typeof ref !== 'string') continue;
+			const s = grantSpell(ref, owner);
+			out.push({ level: Number(lvl), id: s.id, name: s.name });
+		}
+	}
+	return out.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
+
+const spellGrants = {};
+for (const [key, source] of Object.entries(CLASS_SOURCES)) {
+	const file = classFiles[key];
+	const cls = file.class.find((c) => c.source === source);
+	const table = SUBCLASS_KEYS[cls.name];
+	for (const sc of file.subclass) {
+		if (sc.className !== cls.name || sc.classSource !== cls.source || !sc.additionalSpells) continue;
+		const keys = table[`${sc.shortName}|${sc.source}`];
+		if (!keys) continue;
+		// Unnamed alternatives (Arcane Archer: prestidigitation or druidcraft) are a choice, not a grant.
+		const named = sc.additionalSpells.length === 1 || sc.additionalSpells.every((a) => a.name);
+		if (!named) continue;
+		for (const subKey of [keys].flat()) {
+			const owner = `${key}/${subKey}`;
+			const [name, tag] = (GRANT_LABELS[owner] ?? GRANT_LABELS[key] ?? ((sub) => [`${sub} Magic`, sub]))(sc.shortName);
+			for (const set of sc.additionalSpells) {
+				const variant = sc.additionalSpells.length > 1 ? set.name : undefined;
+				for (const mode of ['prepared', 'known']) {
+					const spells = grantLevels(set[mode], owner);
+					if (!spells.length) continue;
+					(spellGrants[owner] ??= []).push({ name, tag, mode, ...(variant ? { variant } : {}), spells });
+				}
+			}
+		}
+	}
+}
+
+// TCE's Primal Awareness (replacing Primeval Awareness) isn't in 5etools' spell data; every ranger gets it,
+// like Favored Foe. The spells don't count against spells known (and can each be cast once a day for free).
+spellGrants.ranger = [
+	{
+		name: 'Primal Awareness',
+		tag: 'Primal',
+		mode: 'known',
+		spells: [
+			[3, 'speak with animals'],
+			[5, 'beast sense'],
+			[9, 'speak with plants'],
+			[13, 'locate creature'],
+			[17, 'commune with nature']
+		].map(([level, ref]) => {
+			const s = grantSpell(ref, 'ranger');
+			return { level, id: s.id, name: s.name };
+		})
+	}
+];
+
+const MIN_GRANT_OWNERS = 45;
+const grantOwners = Object.keys(spellGrants).length;
+if (grantOwners < MIN_GRANT_OWNERS) fail(`Expected spell grants for at least ${MIN_GRANT_OWNERS} classes and subclasses, found ${grantOwners}.`);
+const grantsPath = join(root, 'src/lib/data/spell-grants.json');
+writeFileSync(grantsPath, JSON.stringify(spellGrants));
+console.log(`Wrote spell grants for ${grantOwners} classes and subclasses to ${grantsPath}`);
+
+// ---------------------------------------------------------------------------------------------
 // Races
 
 const raceFile = readJson('races.json');

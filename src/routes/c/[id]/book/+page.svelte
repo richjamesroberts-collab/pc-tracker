@@ -6,10 +6,12 @@
 	import { session } from '$lib/session.svelte';
 	import { cacheSpell, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
 	import { CLASSES } from '$lib/data/classes';
+	import { grantedIds, grantsFor } from '$lib/rules/grants';
 	import { cantripsKnown, ordinal, prepStyle, spellLimit } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
-	type Filter = 'class' | 'all' | 'mine';
+	/** `grant:<tag>` shows one grant list (Psionic, Domain), every level of it. */
+	type Filter = 'class' | 'all' | 'mine' | `grant:${string}`;
 
 	const c = $derived(session.character as Character);
 	const listClass = $derived(spellListClass(c));
@@ -23,12 +25,32 @@
 	let expanded = $state<string | null>(null);
 	let customOpen = $state(false);
 
-	const mine = $derived(new Set(c.spells.map((s) => s.id)));
+	const granted = $derived(grantedIds(c));
+	const mine = $derived(new Set([...c.spells.map((s) => s.id), ...granted]));
+	/** Grant lists by tag: spell id → the class level it arrives at. */
+	const grantLists = $derived.by(() => {
+		const map = new Map<string, { name: string; at: Map<string, number> }>();
+		for (const g of grantsFor(c)) {
+			const entry = map.get(g.tag) ?? { name: g.name, at: new Map() };
+			for (const s of g.spells) if (!entry.at.has(s.id)) entry.at.set(s.id, s.level);
+			map.set(g.tag, entry);
+		}
+		return map;
+	});
+	/** Granted spells the character has now, counted by tag: "+4 Psionic". */
+	const grantCounts = $derived.by(() =>
+		[...grantLists.entries()]
+			.map(([tag, g]) => ({ tag, n: [...g.at.values()].filter((l) => l <= c.level).length }))
+			.filter((g) => g.n > 0)
+	);
+	const grantTag = (id: string) => [...grantLists.entries()].find(([, g]) => g.at.has(id))?.[0];
 	const pool = $derived(spellPool(c));
 	/** Source chips, only worth showing once there's more than the bundled spells. */
 	const sources = $derived([...new Set(pool.map((s) => s.pack ?? 'builtin'))]);
-	const myCantrips = $derived(pool.filter((s) => s.level === 0 && mine.has(s.id)).length);
-	const myLevelled = $derived(pool.filter((s) => s.level > 0 && mine.has(s.id)).length);
+	// Granted spells don't count against what the character can know.
+	const counted = (s: Spell) => mine.has(s.id) && !granted.has(s.id);
+	const myCantrips = $derived(pool.filter((s) => s.level === 0 && counted(s)).length);
+	const myLevelled = $derived(pool.filter((s) => s.level > 0 && counted(s)).length);
 	const cantripLimit = $derived(cantripsKnown(c));
 	const knownLimit = $derived(style === 'known' ? spellLimit(c) : null);
 
@@ -38,7 +60,8 @@
 			(s) =>
 				(filter === 'all' ||
 					(filter === 'mine' && mine.has(s.id)) ||
-					(filter === 'class' && (s.classes.includes(listClass) || s.pack === 'custom'))) &&
+					(filter === 'class' && (s.classes.includes(listClass) || s.pack === 'custom')) ||
+					(filter.startsWith('grant:') && !!grantLists.get(filter.slice(6))?.at.has(s.id))) &&
 				(level === null || s.level === level) &&
 				(source === null || s.pack === source) &&
 				(!q || s.name.toLowerCase().includes(q))
@@ -81,6 +104,7 @@
 	<p class="counts">
 		{#if cantripLimit}Cantrips <b>{myCantrips}/{cantripLimit}</b> · {/if}
 		{#if knownLimit !== null}Known <b>{myLevelled}/{knownLimit}</b>{:else}{style === 'spellbook' ? 'In book' : 'On list'} <b>{myLevelled}</b>{/if}
+		{#each grantCounts as g (g.tag)} · <b>+{g.n}</b> {g.tag}{/each}
 	</p>
 </div>
 
@@ -95,6 +119,9 @@
 	<button type="button" role="radio" aria-checked={filter === 'class'} onclick={() => (filter = 'class')}>{listName} list</button>
 	<button type="button" role="radio" aria-checked={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 	<button type="button" role="radio" aria-checked={filter === 'mine'} onclick={() => (filter = 'mine')}>My spells</button>
+	{#each [...grantLists.keys()] as tag (tag)}
+		<button type="button" role="radio" aria-checked={filter === `grant:${tag}`} onclick={() => (filter = `grant:${tag}`)}>{tag} spells</button>
+	{/each}
 	<button type="button" class="custom" onclick={() => (customOpen = true)}>+ Custom</button>
 </div>
 
@@ -130,6 +157,8 @@
 	<ul class="card list">
 		{#each spells as s (s.id)}
 			{@const added = mine.has(s.id)}
+			{@const tag = grantTag(s.id)}
+			{@const arrives = tag ? grantLists.get(tag)?.at.get(s.id) : undefined}
 			<li>
 				<div class="row">
 					<button type="button" class="info" aria-expanded={expanded === s.id} onclick={() => (expanded = expanded === s.id ? null : s.id)}>
@@ -138,9 +167,16 @@
 							{s.school || 'Custom'} · {s.time}{s.concentration ? ' · Conc' : ''}{s.ritual ? ' · Ritual' : ''}{s.source !== 'PHB' && s.source !== 'SRD' ? ` · ${s.source}` : ''}
 						</span>
 					</button>
-					<button type="button" class="add" class:added aria-label="{added ? 'Remove' : 'Add'} {s.name}" onclick={() => toggle(s)}>
-						{added ? '✓ Added' : '+ Add'}
-					</button>
+					{#if tag && arrives !== undefined}
+						<!-- Granted spells come with the class or subclass; they can't be added or removed. -->
+						<span class="granted" class:later={arrives > c.level}>
+							{arrives > c.level ? `${tag} · Lv ${arrives}` : `✓ ${tag}`}
+						</span>
+					{:else}
+						<button type="button" class="add" class:added aria-label="{added ? 'Remove' : 'Add'} {s.name}" onclick={() => toggle(s)}>
+							{added ? '✓ Added' : '+ Add'}
+						</button>
+					{/if}
 				</div>
 				{#if expanded === s.id}
 					<div class="details">
@@ -347,6 +383,29 @@
 	.add.added {
 		background: var(--color-spell-ink);
 		color: var(--color-bg);
+	}
+
+	.granted {
+		flex-shrink: 0;
+		min-width: 84px;
+		padding: 0 10px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 40px;
+		border-radius: var(--radius-pill);
+		background: var(--color-spell-bg);
+		border: 1px solid var(--color-spell-edge);
+		color: var(--color-spell-ink);
+		font-size: 13px;
+		font-weight: 800;
+		white-space: nowrap;
+	}
+
+	.granted.later {
+		background: transparent;
+		border-style: dashed;
+		color: var(--color-text-muted);
 	}
 
 	.details {

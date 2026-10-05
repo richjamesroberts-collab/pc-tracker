@@ -154,9 +154,9 @@ export function slotsLeft(c: Character, level: number): number {
 export function cantripsKnown(c: Pick<Character, 'classKey' | 'subclassKey' | 'level'>): number {
 	const p = progression(c);
 	if (p === 'third') {
+		// An Arcane Trickster's Mage Hand comes on top, as a granted spell (rules/grants.ts).
 		if (c.level < 3) return 0;
-		// Arcane Tricksters get Mage Hand on top of the table's count.
-		return (c.level >= 10 ? 3 : 2) + (c.subclassKey === 'arcane-trickster' ? 1 : 0);
+		return c.level >= 10 ? 3 : 2;
 	}
 	if (c.classKey === 'artificer') return c.level >= 14 ? 4 : c.level >= 10 ? 3 : 2;
 	const row = CANTRIPS[c.classKey];

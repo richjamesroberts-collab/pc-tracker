@@ -1,5 +1,6 @@
 import spellData from '$lib/data/spells.json';
 import { db } from '$lib/db';
+import { grantedSpells, type SpellGrant } from '$lib/rules/grants';
 import type { Character, Spell, SpellPack } from '$lib/types';
 
 const bySort = (a: Spell, b: Spell) => a.level - b.level || a.name.localeCompare(b.name);
@@ -61,12 +62,31 @@ function withPack(s: Spell | undefined, pack: string): Spell | undefined {
 	return s && { ...s, pack };
 }
 
-/** The character's spells resolved to full data, sorted by level then name. */
-export function characterSpells(c: Character): { spell: Spell; prepared: boolean }[] {
-	return c.spells
-		.map((cs) => ({ spell: findSpell(c, cs.id), prepared: cs.prepared }))
-		.filter((x): x is { spell: Spell; prepared: boolean } => !!x.spell)
-		.sort((a, b) => bySort(a.spell, b.spell));
+export interface CharacterSpellEntry {
+	spell: Spell;
+	prepared: boolean;
+	/** Set for a spell from a class or subclass grant: always prepared, and it doesn't count against limits. */
+	grant?: SpellGrant;
+}
+
+/**
+ * The character's spells resolved to full data, sorted by level then name: the ones they picked plus
+ * granted spells (domain spells, psionic spells). A picked spell that's also granted shows once, as granted.
+ */
+export function characterSpells(c: Character): CharacterSpellEntry[] {
+	const granted = grantedSpells(c);
+	const grantedSet = new Set(granted.map((g) => g.id));
+	const out: CharacterSpellEntry[] = [];
+	for (const g of granted) {
+		const spell = findSpell(c, g.id);
+		if (spell) out.push({ spell, prepared: true, grant: g.grant });
+	}
+	for (const cs of c.spells) {
+		if (grantedSet.has(cs.id)) continue;
+		const spell = findSpell(c, cs.id);
+		if (spell) out.push({ spell, prepared: cs.prepared });
+	}
+	return out.sort((a, b) => bySort(a.spell, b.spell));
 }
 
 /** Spell ids the character has but this device can't show (pack not installed and no saved copy). */

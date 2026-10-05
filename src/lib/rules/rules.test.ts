@@ -99,7 +99,8 @@ describe('spell counts', () => {
 		expect(cantripsKnown(pc())).toBe(5);
 		expect(spellLimit(pc({ classKey: 'cleric', level: 5, spellMod: 3 }))).toBe(8);
 		expect(spellLimit(pc({ classKey: 'paladin', level: 5, spellMod: 3 }))).toBe(5);
-		expect(cantripsKnown(pc({ classKey: 'rogue', subclassKey: 'arcane-trickster', level: 3 }))).toBe(3);
+		// Mage Hand comes on top as a granted spell (grants.test.ts).
+		expect(cantripsKnown(pc({ classKey: 'rogue', subclassKey: 'arcane-trickster', level: 3 }))).toBe(2);
 	});
 });
 
