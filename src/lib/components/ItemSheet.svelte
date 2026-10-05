@@ -279,7 +279,7 @@
 				</select>
 				<small>Which armor this is, for its AC. Its magic bonus is added on top.</small>
 			</label>
-		{:else if custom || item?.armor || type.startsWith('Armor')}
+		{:else if custom}
 			<div class="two">
 				<label class="field">
 					<span>Armor</span>

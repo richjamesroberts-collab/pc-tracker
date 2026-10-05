@@ -596,6 +596,16 @@ describe('armor class', () => {
 		expect(armorClass(pc({ classKey: 'sorcerer', subclassKey: 'draconic', abilities: scores({ dex: 14 }) })).total).toBe(15);
 	});
 
+	it('lists a worn magic shield and its bonus separately', () => {
+		const shield = armor('+1 Shield', 'shield', 2, { effects: { ac: 1 } });
+		const ac = armorClass(pc({ acAuto: true, abilities: scores({ dex: 20 }), items: [shield] }));
+		expect(ac.total).toBe(18);
+		expect(ac.parts.slice(-2)).toEqual([
+			{ label: '+1 Shield', value: '+2' },
+			{ label: '+1 Shield bonus', value: '+1' }
+		]);
+	});
+
 	it('loses monk Unarmored Defense with a shield, but barbarians keep theirs', () => {
 		const shield = armor('Shield', 'shield', 2);
 		expect(armorClass(pc({ classKey: 'monk', abilities: scores({ dex: 16, wis: 16 }), items: [shield] })).total).toBe(15);
