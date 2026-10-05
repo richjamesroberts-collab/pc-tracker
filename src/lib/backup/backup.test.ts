@@ -75,8 +75,21 @@ describe('backup files', () => {
 			charges: { max: 7, used: 3, regain: '1d6 + 1' },
 			notes: ''
 		};
-		const c = { ...lyra(), items: [wand] };
-		expect(parseBackupText(JSON.stringify(toBackup(c))).items).toEqual([wand]);
+		const mail = {
+			...wand,
+			id: 'a1',
+			ref: '+1 armor|dmg',
+			name: '+1 Chain Mail',
+			type: 'Armor (any)',
+			rarity: 'rare',
+			armor: { type: 'heavy' as const, ac: 16, base: 'chain mail' },
+			equipped: true,
+			effects: { ac: 1 },
+			charges: undefined
+		};
+		delete mail.charges;
+		const c = { ...lyra(), items: [wand, mail] };
+		expect(parseBackupText(JSON.stringify(toBackup(c))).items).toEqual([wand, mail]);
 
 		const raw = { ...toBackup(lyra()) };
 		const bad = [{ id: 'x', name: '' }, { id: 'y', name: 'Ring', attuned: true, quantity: -2, charges: { max: 3, used: 9 } }];

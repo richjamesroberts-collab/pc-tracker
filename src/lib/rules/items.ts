@@ -1,4 +1,4 @@
-import type { Character, InventoryItem } from '$lib/types';
+import type { Character, InventoryItem, ItemArmor, ItemWeapon } from '$lib/types';
 import { coinCount } from './coins';
 
 /** Three items, or more for artificers (Magic Item Adept, Savant and Master). */
@@ -150,3 +150,30 @@ export function setEquipped(c: Character, id: string, on: boolean): boolean {
 	item.equipped = on;
 	return true;
 }
+
+/**
+ * The name of a magic weapon or armor once the player picks what it is: "+1 Weapon" becomes "+1 Longsword",
+ * "Armor of Fire Resistance" becomes "Chain Mail of Fire Resistance", and named ones keep their name ("Flame Tongue (Scimitar)").
+ */
+export function specificName(generic: string, base: string): string {
+	const placeholder = /\b(Weapon|Armor)\b/;
+	return placeholder.test(generic) ? generic.replace(placeholder, base) : `${generic} (${base})`;
+}
+
+/** Whether a PHB weapon can be the magic weapon of this type: "Weapon (any)", "Weapon (any axe or sword)". */
+export function weaponFits(type: string, w: Pick<ItemWeapon, 'base' | 'damageType'>): boolean {
+	const kind = /^Weapon \(any (.+)\)/.exec(type)?.[1];
+	if (!kind) return true;
+	const sword = /\bsword\b/.test(kind) && /sword|scimitar|rapier/.test(w.base);
+	const axe = /\baxe\b/.test(kind) && /axe$/.test(w.base);
+	return (sword || axe) && (!/slashing/.test(kind) || w.damageType === 'slashing');
+}
+
+/** Whether PHB armor can be the magic armor of this type: "Armor (any)" is any but a shield, "Armor (medium or heavy)". */
+export function armorFits(type: string, a: Pick<ItemArmor, 'type'>): boolean {
+	if (a.type === 'shield') return false;
+	return !/medium or heavy/.test(type) || a.type !== 'light';
+}
+
+/** Magic armor the player says the kind of ("+1 Armor", "Mithral Armor"); the rest are a set armor or a shield already. */
+export const picksArmor = (type: string) => type.startsWith('Armor (any') || type.startsWith('Armor (medium or heavy');

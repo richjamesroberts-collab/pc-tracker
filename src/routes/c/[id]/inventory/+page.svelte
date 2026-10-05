@@ -29,6 +29,7 @@
 		dawn,
 		restoreCharges,
 		isActive,
+		picksArmor,
 		setAttuned,
 		setEquipped,
 		spendCharges,
@@ -205,6 +206,8 @@
 
 	/** A generic magic weapon (+1 Weapon) whose base weapon hasn't been picked yet. */
 	const needsWeapon = (i: InventoryItem) => !i.weapon && i.type.startsWith('Weapon');
+	/** A magic armor of any kind (+1 Armor) whose armor hasn't been picked yet. */
+	const needsArmor = (i: InventoryItem) => i.kind === 'magic' && !i.armor && picksArmor(i.type);
 
 	/** "1d8 slashing · Versatile (1d10) · Finesse", for the details. */
 	function weaponLine(i: InventoryItem): string {
@@ -312,6 +315,9 @@
 						<p class="effects"><b>{weaponLine(i)}</b></p>
 					{:else if needsWeapon(i)}
 						<p class="effects off"><span>Tap Edit to pick which weapon it is, then equip it for Attacks.</span></p>
+					{/if}
+					{#if needsArmor(i)}
+						<p class="effects off"><span>Tap Edit to pick which armor it is, then wear it for AC.</span></p>
 					{/if}
 
 					<div class="actions">
@@ -423,6 +429,7 @@
 <ItemSheet
 	open={sheetOpen}
 	item={editingItem}
+	bundledName={editingItem ? dataFor(editingItem)?.name : undefined}
 	kind={customKind}
 	onsave={saveItem}
 	ondelete={removeItem}

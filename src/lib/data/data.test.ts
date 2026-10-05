@@ -245,6 +245,15 @@ describe('item effects and armor', () => {
 		expect(c.itemDataVersion).toBe(ITEM_DATA_VERSION);
 		expect(needsItemData(c)).toBe(false);
 	});
+	it('names generic magic weapons already picked as a weapon for it, unless renamed', () => {
+		const longsword = gearById.get('longsword|phb')!.weapon!;
+		const plus1 = { ...inventoryItem(magicById.get('+1 weapon|dmg')!), weapon: { ...longsword } };
+		const named = { ...plus1, id: 'b', name: 'Dawnbringer' };
+		const unpicked = { ...inventoryItem(magicById.get('+2 weapon|dmg')!) };
+		const c = { ...newCharacter(), items: [plus1, named, unpicked], itemDataVersion: 3 };
+		fillItemData(c, magicById, gearById);
+		expect(c.items.map((i) => i.name)).toEqual(['+1 Longsword', 'Dawnbringer', '+2 Weapon']);
+	});
 	it('only counts a Rod of Alertness’s AC bonus once it’s planted, so it isn’t an effect', () => {
 		expect(magicById.get('rod of alertness|dmg')!.effects?.ac).toBeUndefined();
 		const rod = { ...inventoryItem(magicById.get('rod of alertness|dmg')!), attuned: true, effects: { ac: 1 } };

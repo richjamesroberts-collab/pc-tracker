@@ -129,7 +129,7 @@ const ITEM_SKILLS: Record<string, { skill?: Skill; bonus?: number; note?: string
 /** Worn armor that gives disadvantage on Stealth: all heavy armor, padded, scale mail and half plate, unless mithral. */
 function noisyArmor(i: InventoryItem): boolean {
 	if (!i.armor || !i.equipped || i.armor.type === 'shield' || /mithral/i.test(i.name)) return false;
-	return i.armor.type === 'heavy' || /\b(padded|scale mail|half plate)\b/i.test(i.name);
+	return i.armor.type === 'heavy' || /\b(padded|scale mail|half plate)\b/i.test(`${i.name} ${i.armor.base ?? ''}`);
 }
 
 export type SkillLevel = 'none' | 'half' | 'proficient' | 'expertise';

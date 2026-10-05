@@ -70,6 +70,8 @@ export type ArmorType = 'light' | 'medium' | 'heavy' | 'shield';
 export interface ItemArmor {
 	type: ArmorType;
 	ac: number;
+	/** The PHB armor a magic armor of any kind was picked as, lowercase ("chain mail"). */
+	base?: string;
 }
 
 /** What an item does to the character's numbers while in use (attuned if it needs it, worn if it's armor). */
