@@ -192,6 +192,14 @@ export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)
 			notes.push(`Brutal Critical: ${c.level >= 17 ? 3 : c.level >= 13 ? 2 : 1} extra weapon ${c.level >= 13 ? 'dice' : 'die'} on a critical hit`);
 		}
 		if (c.raceKey === 'half-orc' && melee) notes.push('Savage Attacks: one extra weapon die on a critical hit');
+		if (c.raceKey === 'bugbear' || c.raceKey === 'bugbear-vgm') {
+			if (melee) notes.push('Long-Limbed: 5 ft more reach on your turn');
+			notes.push(
+				c.raceKey === 'bugbear'
+					? 'Surprise Attack: +2d6 if the target hasn’t taken a turn yet this combat'
+					: 'Surprise Attack: +2d6 against a surprised creature on your first turn, once per combat'
+			);
+		}
 		if (c.classKey === 'rogue' && finesseOrRanged) notes.push(`Sneak Attack: ${Math.ceil(c.level / 2)}d6 once per turn`);
 		if (c.classKey === 'paladin' && melee && c.level >= 2) notes.push('Divine Smite: spend a slot for 2d8 radiant, +1d8 per slot level');
 		if (c.classKey === 'paladin' && melee && c.level >= 11) notes.push('Improved Divine Smite: +1d8 radiant on every hit');
@@ -279,11 +287,33 @@ export function attacks(c: AttackInput, scores: AbilityScores = abilityScores(c)
 		});
 	}
 
+	const natural = c.raceKey ? NATURAL_WEAPONS[c.raceKey] : undefined;
+	if (natural) out.push(unarmedStrike(c, scores, equipped.length > 0 || shield, featureNotes(true, false, 'str'), natural));
 	out.push(unarmedStrike(c, scores, equipped.length > 0 || shield, featureNotes(true, false, 'str')));
 	return out;
 }
 
-function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, notes: string[]): Attack {
+interface NaturalWeapon {
+	name: string;
+	die: string;
+	type: string;
+}
+
+/** Racial natural weapons, used to make unarmed strikes (VGM and MPMM). */
+const NATURAL_WEAPONS: Record<string, NaturalWeapon> = {
+	aarakocra: { name: 'Talons', die: '1d6', type: 'slashing' },
+	centaur: { name: 'Hooves', die: '1d6', type: 'bludgeoning' },
+	lizardfolk: { name: 'Bite', die: '1d6', type: 'slashing' },
+	'lizardfolk-vgm': { name: 'Bite', die: '1d6', type: 'piercing' },
+	minotaur: { name: 'Horns', die: '1d6', type: 'piercing' },
+	satyr: { name: 'Ram', die: '1d6', type: 'bludgeoning' },
+	tabaxi: { name: 'Claws', die: '1d6', type: 'slashing' },
+	'tabaxi-vgm': { name: 'Claws', die: '1d4', type: 'slashing' },
+	tortle: { name: 'Claws', die: '1d6', type: 'slashing' }
+};
+
+/** A plain unarmed strike, or one made with a racial natural weapon. */
+function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, notes: string[], natural?: NaturalWeapon): Attack {
 	const prof = proficiencyBonus(c.level);
 	const str = abilityMod(scores.str);
 	const dex = abilityMod(scores.dex);
@@ -291,26 +321,32 @@ function unarmedStrike(c: AttackInput, scores: AbilityScores, armed: boolean, no
 	const ability: Ability = monk && dex > str ? 'dex' : 'str';
 	const m = ability === 'dex' ? dex : str;
 
-	// Plain unarmed strikes do 1 + STR; Martial Arts and Unarmed Fighting give a die instead.
-	const dice: string[] = ['1'];
+	// Plain unarmed strikes do 1 + STR; Martial Arts and Unarmed Fighting give a die instead, as do natural weapons
+	// (which keep their own damage type).
+	const dice: string[] = [natural?.die ?? '1'];
 	if (monk) dice.push(`1${martialArtsDie(c.level)}`);
-	if (c.fightingStyles?.includes('unarmed')) dice.push(armed ? '1d6' : '1d8');
+	if (c.fightingStyles?.includes('unarmed') && !natural) dice.push(armed ? '1d6' : '1d8');
 	const die = dice.reduce((a, b) => (dieAverage(b) > dieAverage(a) ? b : a));
+	const dieLabel = die === natural?.die ? natural.name : monk ? 'Martial Arts die' : 'Unarmed Fighting';
 
 	const abilityPart = { label: monk && ability === 'dex' ? 'DEX (Martial Arts)' : ABILITY_SHORT[ability], value: signedMod(m) };
 	const extra = monk ? ['Martial Arts: an unarmed strike as a bonus action after attacking'] : [];
 	if (monk && c.level >= 6) extra.push('Ki-Empowered Strikes: counts as magical');
+	if (natural?.name === 'Bite') {
+		const temp = c.raceKey === 'lizardfolk' ? `${prof}` : `${Math.max(1, abilityMod(scores.con))}`;
+		extra.push(`Hungry Jaws: bite as a bonus action; on a hit gain ${temp} temporary HP`);
+	}
 	return {
-		id: 'unarmed',
-		name: 'Unarmed strike',
+		id: natural ? 'natural' : 'unarmed',
+		name: natural ? `${natural.name} (unarmed strike)` : 'Unarmed strike',
 		toHit: m + prof,
-		damage: damageText(die, m, 'bludgeoning'),
+		damage: damageText(die, m, natural?.type ?? 'bludgeoning'),
 		reach: 'Melee 5 ft',
 		properties: '',
 		proficient: true,
 		ability,
 		hitParts: [abilityPart, { label: 'Proficiency', value: signedMod(prof) }],
-		damageParts: die === '1' ? [{ label: 'Unarmed', value: '1' }, abilityPart] : [{ label: monk ? 'Martial Arts die' : 'Unarmed Fighting', value: die }, abilityPart],
+		damageParts: die === '1' ? [{ label: 'Unarmed', value: '1' }, abilityPart] : [{ label: dieLabel, value: die }, abilityPart],
 		// Extra weapon dice on a critical need a weapon.
 		notes: [...extra, ...notes.filter((n) => !n.startsWith('Brutal') && !n.startsWith('Savage'))]
 	};

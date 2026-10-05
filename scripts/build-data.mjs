@@ -1,10 +1,10 @@
 // Builds game data from a local 5etools (2014) checkout. All outputs are committed and bundled in the app:
 //   src/lib/data/spells.json    Every PHB/XGE/TCE spell
 //   src/lib/data/classes.json   Class and subclass features (PHB/XGE/TCE + three older subclasses)
-//   src/lib/data/races.json     PHB races and Custom Lineage
+//   src/lib/data/races.json     PHB, VGM and MPMM races, and Custom Lineage
 //   src/lib/data/items.json     DMG/XGE/TCE magic items, including generic variants (+1 Weapon, Flame Tongue)
 //   src/lib/data/gear.json      PHB weapons, armor, tools, adventuring gear and packs; DMG poisons, gems and art objects
-//   src/lib/data/race-abilities.json  Racial ability score increases, small enough to bundle with the app shell
+//   src/lib/data/race-abilities.json  Racial ability score increases and darkvision, small enough to bundle with the app shell
 // Usage: npm run data            (expects ../5etools-2014-src)
 //        FIVETOOLS_DIR=/path npm run data
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -78,7 +78,9 @@ function flatten(entries, out = []) {
 				if (typeof item === 'string') out.push(`• ${stripTags(item)}`);
 				else if (item.type === 'item') {
 					const body = item.entry ? stripTags(item.entry) : flatten(item.entries).join(' ');
-					out.push(`• ${item.name ? stripTags(item.name) + ' ' : ''}${body}`);
+					// Most item names end in a period already ("Fiend."); MPMM's don't ("Radiant Soul").
+					const name = item.name ? stripTags(item.name).replace(/([^.:!?])$/, '$1.') + ' ' : '';
+					out.push(`• ${name}${body}`);
 				} else out.push(...flatten([item]).map((t) => `• ${t}`));
 			}
 		} else if (e.type === 'table') {
@@ -509,10 +511,10 @@ function abilityText(ability) {
 const walkSpeed = (speed) => (typeof speed === 'number' ? speed : speed?.walk);
 
 /** Named entries, plus Ability Score Increase and Speed from structured fields when no entry covers them. */
-function traitsWithStats(entries, { ability, speed, speedText, abilityPrefix = '' }) {
+function traitsWithStats(entries, { ability, asiText, speed, speedText, abilityPrefix = '' }) {
 	const traits = traitsOf(entries);
 	const extra = [];
-	const asi = abilityText(ability);
+	const asi = asiText ?? abilityText(ability);
 	if (asi && !traits.some((t) => t.name === 'Ability Score Increase'))
 		extra.push({ name: 'Ability Score Increase', text: abilityPrefix ? abilityPrefix + asi[0].toLowerCase() + asi.slice(1) : asi });
 	const named = traits.find((t) => t.name === 'Speed');
@@ -544,47 +546,64 @@ function dragonAncestries(race) {
 	});
 }
 
-const racesOut = raceFile.race
-	.filter((r) => r.source === 'PHB' && !r._copy)
-	.sort((a, b) => a.name.localeCompare(b.name))
-	.concat(raceFile.race.filter((r) => r.name === 'Custom Lineage' && r.source === 'TCE'))
-	.map((r) => {
-		const subraces = raceFile.subrace.filter((s) => s.source === 'PHB' && s.raceName === r.name && s.raceSource === r.source);
-		// The unnamed PHB subrace holds the standard version's stats (e.g. Human's +1 to every score).
-		const standard = subraces.find((s) => !s.name);
-		const ability = r.ability ?? standard?.ability;
-		const speed = walkSpeed(r.speed);
-		const words = (text) => text.split('\n').join(' ').toLowerCase();
-		return {
-			key: slug(r.name),
-			name: r.name,
-			source: r.source,
-			traits: traitsWithStats(r.entries, { ability, speed, speedText: `Your base walking speed is ${speed} feet.` }),
-			subraces:
-				r.name === 'Dragonborn'
-					? dragonAncestries(r)
-					: subraces
-							.filter((s) => s.name)
-							.map((s) => {
-								const subSpeed = walkSpeed(s.speed);
-								// Wood Elf's Fleet of Foot already says it; only add a Speed trait when nothing mentions it.
-								const mentionsSpeed = traitsOf(s.entries).some((t) => words(t.text).includes('walking speed'));
-								return {
-									key: s.name.split(/[ ;]/)[0].toLowerCase(),
-									name: s.name,
-									traits: traitsWithStats(s.entries, {
-										ability: s.ability,
-										abilityPrefix: !r.ability && standard?.ability ? 'Instead of the standard increase, ' : '',
-										speed: subSpeed !== speed && !mentionsSpeed ? subSpeed : undefined,
-										speedText: `Your base walking speed is ${subSpeed} feet.`
-									})
-								};
-							})
-		};
-	});
+// PHB races, Custom Lineage (TCE), then Volo's and Monsters of the Multiverse. MPMM reprints every VGM race,
+// so the MPMM version takes the plain key and the VGM one gets a -vgm suffix. Keys are stored on characters.
+const RACE_BOOKS = ['PHB', 'TCE', 'VGM', 'MPMM'];
+const raceKey = (r) => slug(r.name) + (r.source === 'VGM' ? '-vgm' : '');
+const subraceKey = (s) => s.name.split(/[ ;]/)[0].toLowerCase();
+const raceList = raceFile.race
+	.filter((r) => (['PHB', 'VGM', 'MPMM'].includes(r.source) && !r._copy) || (r.name === 'Custom Lineage' && r.source === 'TCE'))
+	.sort((a, b) => RACE_BOOKS.indexOf(a.source) - RACE_BOOKS.indexOf(b.source) || a.name.localeCompare(b.name));
+const subracesOf = (r) => raceFile.subrace.filter((s) => s.source === r.source && s.raceName === r.name && s.raceSource === r.source);
 
-// Racial ability score increases, by race key then subrace key. `replaces` marks subraces whose increase
-// is instead of the race's (Variant Human), not on top of it.
+// MPMM races (lineage "VRGR") have no fixed increases: +2 and +1, or +1 to three different scores.
+const ALL_ABILITIES = Object.keys(ABILITIES);
+const LINEAGE_ASI = { fixed: {}, choose: { from: ALL_ABILITIES, count: 3, amount: 1, max: 2 } };
+const LINEAGE_TEXT = 'Increase one ability score by 2 and a different one by 1, or increase three different ability scores by 1.';
+const flexible = (r) => r.lineage === 'VRGR';
+
+const racesOut = raceList.map((r) => {
+	const subraces = subracesOf(r);
+	// The unnamed PHB subrace holds the standard version's stats (e.g. Human's +1 to every score).
+	const standard = subraces.find((s) => !s.name);
+	const ability = r.ability ?? standard?.ability;
+	const speed = walkSpeed(r.speed);
+	const words = (text) => text.split('\n').join(' ').toLowerCase();
+	return {
+		key: raceKey(r),
+		name: r.name,
+		source: r.source,
+		traits: traitsWithStats(r.entries, {
+			ability,
+			asiText: flexible(r) ? LINEAGE_TEXT : undefined,
+			speed,
+			speedText: `Your base walking speed is ${speed} feet.`
+		}),
+		subraces:
+			r.name === 'Dragonborn'
+				? dragonAncestries(r)
+				: subraces
+						.filter((s) => s.name)
+						.map((s) => {
+							const subSpeed = walkSpeed(s.speed);
+							// Wood Elf's Fleet of Foot already says it; only add a Speed trait when nothing mentions it.
+							const mentionsSpeed = traitsOf(s.entries).some((t) => words(t.text).includes('walking speed'));
+							return {
+								key: subraceKey(s),
+								name: s.name,
+								traits: traitsWithStats(s.entries, {
+									ability: s.ability,
+									abilityPrefix: !r.ability && standard?.ability ? 'Instead of the standard increase, ' : '',
+									speed: subSpeed !== speed && !mentionsSpeed ? subSpeed : undefined,
+									speedText: `Your base walking speed is ${subSpeed} feet.`
+								})
+							};
+						})
+	};
+});
+
+// Racial ability score increases and darkvision, by race key then subrace key. `replaces` marks subraces
+// whose increase is instead of the race's (Variant Human), not on top of it.
 function asiOf(ability) {
 	const set = ability?.[0];
 	if (!set) return undefined;
@@ -595,20 +614,26 @@ function asiOf(ability) {
 }
 
 const raceAbilities = {};
-for (const r of raceFile.race.filter((r) => (r.source === 'PHB' && !r._copy) || (r.name === 'Custom Lineage' && r.source === 'TCE'))) {
-	const subraces = raceFile.subrace.filter((s) => s.source === 'PHB' && s.raceName === r.name && s.raceSource === r.source);
+for (const r of raceList) {
+	const subraces = subracesOf(r);
 	const standard = subraces.find((s) => !s.name);
-	const entry = { asi: asiOf(r.ability ?? standard?.ability), subraces: {} };
-	for (const s of subraces.filter((s) => s.name && s.ability)) {
-		entry.subraces[s.name.split(/[ ;]/)[0].toLowerCase()] = { asi: asiOf(s.ability), ...(!r.ability && standard?.ability ? { replaces: true } : {}) };
+	const entry = { asi: flexible(r) ? LINEAGE_ASI : asiOf(r.ability ?? standard?.ability), subraces: {} };
+	// Custom Lineage's darkvision is one of two choices, so the player adds it themselves.
+	if (r.darkvision && r.name !== 'Custom Lineage') entry.darkvision = r.darkvision;
+	for (const s of subraces.filter((s) => s.name && (s.ability || s.darkvision))) {
+		entry.subraces[subraceKey(s)] = {
+			...(s.ability ? { asi: asiOf(s.ability) } : {}),
+			...(s.ability && !r.ability && standard?.ability ? { replaces: true } : {}),
+			...(s.darkvision ? { darkvision: s.darkvision } : {})
+		};
 	}
-	raceAbilities[slug(r.name)] = entry;
+	raceAbilities[raceKey(r)] = entry;
 }
 const raceAbilitiesPath = join(root, 'src/lib/data/race-abilities.json');
 writeFileSync(raceAbilitiesPath, JSON.stringify(raceAbilities));
-console.log(`Wrote racial ability increases to ${raceAbilitiesPath}`);
+console.log(`Wrote racial ability increases and darkvision to ${raceAbilitiesPath}`);
 
-const MIN_RACES = 10;
+const MIN_RACES = 53;
 if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, found ${racesOut.length}.`);
 const racesPath = join(root, 'src/lib/data/races.json');
 writeFileSync(racesPath, JSON.stringify(racesOut));

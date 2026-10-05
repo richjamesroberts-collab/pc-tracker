@@ -13,15 +13,21 @@ import { proficiencyBonus, spellAbility } from './spellcasting';
 
 export interface RaceAsi {
 	fixed: Partial<AbilityScores>;
-	choose?: { from: Ability[]; count: number; amount: number };
+	/**
+	 * `count` picks of `amount` each. With `max`, one ability can take up to that many picks (MPMM's +2 and
+	 * +1, or +1 to three); otherwise picks are different abilities.
+	 */
+	choose?: { from: Ability[]; count: number; amount: number; max?: number };
 }
 
 interface RaceAbilities {
 	asi?: RaceAsi;
-	subraces: Record<string, { asi?: RaceAsi; replaces?: true }>;
+	/** Feet; a subrace's own darkvision replaces it. */
+	darkvision?: number;
+	subraces: Record<string, { asi?: RaceAsi; replaces?: true; darkvision?: number }>;
 }
 
-const RACE_ABILITIES = raceAbilitiesJson as Record<string, RaceAbilities>;
+export const RACE_ABILITIES = raceAbilitiesJson as Record<string, RaceAbilities>;
 
 /** One line in a breakdown: where a change to a number came from. */
 export interface StatSource {
@@ -53,6 +59,16 @@ export function raceChoice(c: Pick<Character, 'raceKey' | 'subraceKey'>): RaceAs
 	return raceAsi(c).find((a) => a.choose)?.choose;
 }
 
+/** The player's picks the choice allows, in order: only listed abilities, each no more often than it may be. */
+export function validPicks(choice: NonNullable<RaceAsi['choose']>, picks: Ability[]): Ability[] {
+	const out: Ability[] = [];
+	for (const k of picks) {
+		if (out.length >= choice.count) break;
+		if (choice.from.includes(k) && out.filter((x) => x === k).length < (choice.max ?? 1)) out.push(k);
+	}
+	return out;
+}
+
 export function abilityBreakdown(
 	c: Pick<Character, 'abilities' | 'raceKey' | 'subraceKey' | 'raceAbilityChoices' | 'classKey' | 'level' | 'items'>
 ): AbilityBreakdown {
@@ -68,8 +84,8 @@ export function abilityBreakdown(
 	for (const asi of raceAsi(c)) {
 		for (const [k, n] of Object.entries(asi.fixed) as [Ability, number][]) add(k, n, 'Race');
 		if (asi.choose) {
-			const picks = [...new Set(c.raceAbilityChoices ?? [])].filter((k) => asi.choose!.from.includes(k)).slice(0, asi.choose.count);
-			for (const k of picks) add(k, asi.choose.amount, 'Race (your pick)');
+			const picks = validPicks(asi.choose, c.raceAbilityChoices ?? []);
+			for (const k of new Set(picks)) add(k, asi.choose.amount * picks.filter((x) => x === k).length, 'Race (your pick)');
 		}
 	}
 
@@ -195,6 +211,17 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 				]
 			});
 		}
+		// Natural armor without body armor. Lizardfolk can also use it over weaker armor: unequip the armor to see it.
+		if (c.raceKey === 'lizardfolk' || c.raceKey === 'lizardfolk-vgm') {
+			options.push({
+				total: 13 + dex,
+				parts: [
+					{ label: 'Natural Armor', value: '13' },
+					{ label: 'DEX', value: signedMod(dex) }
+				]
+			});
+		}
+		if (c.raceKey === 'tortle') options.push({ total: 17, parts: [{ label: 'Natural Armor (shell)', value: '17' }] });
 		const best = options.sort((a, b) => b.total - a.total)[0];
 		total = best.total;
 		parts.push(...best.parts);
@@ -238,6 +265,10 @@ export function initiative(c: StatInput, scores = abilityScores(c)): Breakdown {
 		const n = Math.ceil(prof / 2);
 		total += n;
 		parts.push({ label: 'Remarkable Athlete', value: signedMod(n) });
+	}
+	if (c.raceKey === 'harengon') {
+		total += prof;
+		parts.push({ label: 'Hare-Trigger', value: signedMod(prof) });
 	}
 	return { total, parts };
 }

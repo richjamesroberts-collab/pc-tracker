@@ -2,11 +2,11 @@
 	import { untrack } from 'svelte';
 	import Portrait from './Portrait.svelte';
 	import { CLASSES } from '$lib/data/classes';
-	import { RACES, RACE_MAP } from '$lib/data/races';
+	import { RACE_BOOKS, RACES, RACE_MAP } from '$lib/data/races';
 	import { portraitFromFile } from '$lib/image';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, armorClass, initiative, maxHp, raceChoice, spellcastingMod } from '$lib/rules/stats';
+	import { abilityBreakdown, armorClass, initiative, maxHp, raceChoice, spellcastingMod, validPicks } from '$lib/rules/stats';
 	import { isCaster, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
@@ -108,11 +108,21 @@
 		if (scoreOk(value)) c.abilities[key] = value;
 	}
 
+	const pickCount = (key: Ability) => c.raceAbilityChoices.filter((k) => k === key).length;
+
+	/** Tapping adds a pick while the ability can take one; otherwise it clears that ability's picks. */
 	function togglePick(key: Ability) {
+		if (!choice) return;
 		const picks = c.raceAbilityChoices;
-		if (picks.includes(key)) c.raceAbilityChoices = picks.filter((k) => k !== key);
-		else if (choice && picks.length < choice.count) c.raceAbilityChoices = [...picks, key];
+		if (picks.length < choice.count && pickCount(key) < (choice.max ?? 1)) c.raceAbilityChoices = [...picks, key];
+		else c.raceAbilityChoices = picks.filter((k) => k !== key);
 	}
+
+	/** "choose 2 abilities to raise by 1", or MPMM's "+2 and +1, or +1 to three". */
+	const choiceText = (ch: NonNullable<typeof choice>) =>
+		ch.max === 2 && ch.count === 3 && ch.amount === 1
+			? 'raise one ability by 2 and another by 1, or three abilities by 1'
+			: `choose ${ch.count === 1 ? 'one ability' : `${ch.count} abilities`} to raise by ${ch.amount}`;
 
 	async function pickPhoto(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
@@ -149,7 +159,7 @@
 		}
 		if (!whole(out.acBase)) out.acBase = preview.ac.total;
 		// Only picks the race still allows.
-		out.raceAbilityChoices = choice ? out.raceAbilityChoices.filter((k) => choice.from.includes(k)).slice(0, choice.count) : [];
+		out.raceAbilityChoices = choice ? validPicks(choice, out.raceAbilityChoices) : [];
 		if (!whole(out.hpCurrent) || isNew) out.hpCurrent = preview.hp.total;
 		// Starting at (or moving up to) a level gives at least the XP that level needs.
 		if (!whole(out.xp) || out.xp < 0) out.xp = 0;
@@ -182,8 +192,12 @@
 			<span>Race</span>
 			<select bind:value={c.raceKey} onchange={onRaceChange}>
 				<option value={undefined}>Choose…</option>
-				{#each RACES as r (r.key)}
-					<option value={r.key}>{r.name}</option>
+				{#each RACE_BOOKS as book (book.key)}
+					<optgroup label={book.name}>
+						{#each RACES.filter((r) => r.book === book.key) as r (r.key)}
+							<option value={r.key}>{r.name}</option>
+						{/each}
+					</optgroup>
 				{/each}
 			</select>
 		</label>
@@ -275,17 +289,18 @@
 		{#if choice}
 			<div class="picks">
 				<p class="sub">
-					{race?.name ?? 'Race'}: choose {choice.count === 1 ? 'one ability' : `${choice.count} abilities`} to raise by {choice.amount}
+					{race?.name ?? 'Race'}: {choiceText(choice)}
 					({c.raceAbilityChoices.length}/{choice.count})
 				</p>
 				<div class="chips">
 					{#each choice.from as k (k)}
-						{@const on = c.raceAbilityChoices.includes(k)}
+						{@const n = pickCount(k)}
 						<button
 							type="button"
-							aria-pressed={on}
-							disabled={!on && c.raceAbilityChoices.length >= choice.count}
-							onclick={() => togglePick(k)}>{ABILITY_SHORT[k]}</button
+							aria-pressed={n > 0}
+							disabled={!n && c.raceAbilityChoices.length >= choice.count}
+							onclick={() => togglePick(k)}
+							>{ABILITY_SHORT[k]}{#if choice.max && n}&nbsp;{signedMod(n * choice.amount)}{/if}</button
 						>
 					{/each}
 				</div>
@@ -368,7 +383,7 @@
 			</ul>
 		{/if}
 		{#if !givenProfs.includes('martial') || c.weaponProficiencies.length}
-			<p class="sub">Also proficient with (feats, multiclassing, Kensei or Bladesinger picks)</p>
+			<p class="sub">Also proficient with (feats, multiclassing, Kensei, Bladesinger or Hobgoblin picks)</p>
 		{/if}
 		<div class="chips">
 			{#each ['simple', 'martial'] as k (k)}

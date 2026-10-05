@@ -1,4 +1,5 @@
 import type { Character } from '$lib/types';
+import { RACE_ABILITIES } from './stats';
 
 export interface Sense {
 	/** "Darkvision", "Blindsight", "Blindsense". */
@@ -9,23 +10,13 @@ export interface Sense {
 	sources: string[];
 }
 
-/** Racial darkvision, keyed by race or '<race>/<subrace>' (Superior Darkvision). */
-const RACE_DARKVISION: Record<string, number> = {
-	dwarf: 60,
-	elf: 60,
-	'elf/drow': 120,
-	gnome: 60,
-	'half-elf': 60,
-	'half-orc': 60,
-	tiefling: 60
-};
-
 type SenseInput = Pick<Character, 'raceKey' | 'subraceKey' | 'classKey' | 'subclassKey' | 'level' | 'fightingStyles' | 'senses'>;
 
-/** The darkvision a character's race gives, or 0. */
+/** The darkvision a character's race or subrace gives (from the bundled race data), or 0. */
 export function raceDarkvision(c: Pick<Character, 'raceKey' | 'subraceKey'>): number {
-	if (!c.raceKey) return 0;
-	return RACE_DARKVISION[`${c.raceKey}/${c.subraceKey}`] ?? RACE_DARKVISION[c.raceKey] ?? 0;
+	const race = c.raceKey ? RACE_ABILITIES[c.raceKey] : undefined;
+	if (!race) return 0;
+	return (c.subraceKey ? race.subraces[c.subraceKey]?.darkvision : undefined) ?? race.darkvision ?? 0;
 }
 
 /**

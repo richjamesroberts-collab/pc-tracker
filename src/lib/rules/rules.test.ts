@@ -817,3 +817,82 @@ describe('attacks', () => {
 		expect(setEquipped({ ...c, items: [ring] }, ring.id, true)).toBe(false);
 	});
 });
+
+describe("Volo's and Monsters of the Multiverse races", () => {
+	it('gives MPMM races +2 and +1, or +1 to three abilities', () => {
+		const twoOne = abilityBreakdown(pc({ raceKey: 'tabaxi', raceAbilityChoices: ['dex', 'dex', 'cha'], abilities: scores() }));
+		expect(twoOne.scores).toMatchObject({ dex: 12, cha: 11, str: 10 });
+		expect(twoOne.sources.dex).toEqual([{ label: 'Race (your pick)', value: '+2' }]);
+		const three = abilityBreakdown(pc({ raceKey: 'tabaxi', raceAbilityChoices: ['str', 'dex', 'con'], abilities: scores() }));
+		expect(three.scores).toMatchObject({ str: 11, dex: 11, con: 11 });
+		// No +3 on one ability, and no more than three picks.
+		const greedy = abilityBreakdown(pc({ raceKey: 'goliath', raceAbilityChoices: ['str', 'str', 'str', 'con', 'wis'], abilities: scores() }));
+		expect(greedy.scores).toMatchObject({ str: 12, con: 11, wis: 10 });
+	});
+
+	it('keeps fixed increases for Volo’s races, with subraces on top', () => {
+		const protector = abilityBreakdown(pc({ raceKey: 'aasimar-vgm', subraceKey: 'protector', abilities: scores() }));
+		expect(protector.scores).toMatchObject({ cha: 12, wis: 11 });
+		// Picks don't apply to a race without a choice.
+		expect(abilityBreakdown(pc({ raceKey: 'goliath-vgm', raceAbilityChoices: ['dex'], abilities: scores() })).scores).toMatchObject({ str: 12, con: 11, dex: 10 });
+	});
+
+	it('takes darkvision from the race data', () => {
+		const names = (c: Character) => senses(c).map((s) => `${s.name} ${s.range}`);
+		expect(names(pc({ raceKey: 'duergar' }))).toEqual(['Darkvision 120']);
+		expect(names(pc({ raceKey: 'aasimar-vgm', subraceKey: 'fallen' }))).toEqual(['Darkvision 60']);
+		expect(names(pc({ raceKey: 'genasi', subraceKey: 'air' }))).toEqual(['Darkvision 60']);
+		expect(names(pc({ raceKey: 'fairy' }))).toEqual([]);
+		expect(names(pc({ raceKey: 'custom-lineage' }))).toEqual([]);
+	});
+
+	it('works out natural armor', () => {
+		const shield = item({ name: 'Shield', armor: { type: 'shield', ac: 2 }, equipped: true, attunement: false });
+		const lizard = armorClass(pc({ raceKey: 'lizardfolk', abilities: scores({ dex: 14 }) }));
+		expect(lizard.total).toBe(15);
+		expect(lizard.parts[0]).toEqual({ label: 'Natural Armor', value: '13' });
+		expect(armorClass(pc({ raceKey: 'lizardfolk-vgm', abilities: scores({ dex: 14 }), items: [shield] })).total).toBe(17);
+		expect(armorClass(pc({ raceKey: 'tortle', abilities: scores({ dex: 18 }), items: [shield] })).total).toBe(19);
+		// A barbarian's Unarmored Defense still wins when it's higher.
+		expect(armorClass(pc({ raceKey: 'tortle', classKey: 'barbarian', abilities: scores({ dex: 18, con: 18 }) })).total).toBe(18);
+	});
+
+	it('adds Hare-Trigger to a harengon’s initiative', () => {
+		const init = initiative(pc({ raceKey: 'harengon', classKey: 'wizard', level: 5, abilities: scores({ dex: 14 }) }));
+		expect(init.total).toBe(5);
+		expect(init.parts).toContainEqual({ label: 'Hare-Trigger', value: '+3' });
+	});
+
+	it('adds an attack for natural weapons', () => {
+		const tabaxi = attacks(pc({ raceKey: 'tabaxi', classKey: 'rogue', level: 1, abilities: scores({ str: 14 }) }));
+		expect(tabaxi.map((a) => a.name)).toEqual(['Claws (unarmed strike)', 'Unarmed strike']);
+		expect(tabaxi[0]).toMatchObject({ id: 'natural', toHit: 4, damage: '1d6 + 2 slashing' });
+		expect(tabaxi[0].damageParts[0]).toEqual({ label: 'Claws', value: '1d6' });
+		expect(attacks(pc({ raceKey: 'tabaxi-vgm', abilities: scores({ str: 14 }) }))[0].damage).toBe('1d4 + 2 slashing');
+		const bite = attacks(pc({ raceKey: 'lizardfolk', level: 5, abilities: scores({ str: 14 }) }))[0];
+		expect(bite.notes).toContain('Hungry Jaws: bite as a bonus action; on a hit gain 3 temporary HP');
+		// A monk uses their Martial Arts die when it's bigger, but keeps the natural weapon's damage type.
+		const monk = attacks(pc({ raceKey: 'minotaur', classKey: 'monk', level: 11, abilities: scores({ dex: 16 }) }))[0];
+		expect(monk).toMatchObject({ ability: 'dex', damage: '1d8 + 3 piercing' });
+		expect(attacks(pc({ raceKey: 'human' })).map((a) => a.id)).toEqual(['unarmed']);
+	});
+
+	it('notes Long-Limbed and Surprise Attack for bugbears', () => {
+		const [fist] = attacks(pc({ raceKey: 'bugbear' }));
+		expect(fist.notes).toEqual(expect.arrayContaining(['Long-Limbed: 5 ft more reach on your turn', expect.stringMatching(/^Surprise Attack: \+2d6 if/)]));
+		expect(attacks(pc({ raceKey: 'bugbear-vgm' }))[0].notes).toContainEqual(expect.stringMatching(/once per combat$/));
+	});
+
+	it('tracks racial uses: proficiency bonus per long rest, and spells from 3rd and 5th level', () => {
+		const keys = (c: Character) => resourcesFor(c).map((r) => r.key);
+		expect(keys(pc({ raceKey: 'githyanki', level: 2 }))).toEqual([]);
+		expect(keys(pc({ raceKey: 'githyanki', level: 3 }))).toEqual(['githyanki-jump']);
+		expect(keys(pc({ raceKey: 'githyanki', level: 5 }))).toEqual(['githyanki-jump', 'githyanki-misty-step']);
+		const goliath = pc({ raceKey: 'goliath', level: 9 });
+		expect(resourceLeft(goliath, resourcesFor(goliath)[0])).toBe(4);
+		expect(resourcesFor(pc({ raceKey: 'goliath-vgm', level: 9 }))[0].reset(goliath)).toBe('short');
+		expect(keys(pc({ raceKey: 'genasi', subraceKey: 'earth', level: 5 }))).toEqual(['merge-with-stone', 'genasi-pass-without-trace']);
+		expect(keys(pc({ raceKey: 'aasimar-vgm', subraceKey: 'scourge', level: 3 }))).toEqual(['healing-hands-vgm', 'radiant-consumption']);
+		expect(resourcesFor(pc({ raceKey: 'aasimar', level: 5 }))[0].die!(pc({ level: 5 }))).toBe('3d4');
+	});
+});
