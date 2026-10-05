@@ -497,18 +497,21 @@
 				<li><b>{src}</b> {ABILITIES.filter((a) => givenSave(a.key) === src).map((a) => a.name).join(', ')}</li>
 			{/each}
 		</ul>
-		<p class="sub">Also proficient in (Resilient feat)</p>
-		<div class="chips saves">
-			{#each ABILITIES as a (a.key)}
-				{@const given = !!givenSave(a.key)}
-				<button
-					type="button"
-					aria-pressed={given || c.saveProficiencies.includes(a.key)}
-					disabled={given}
-					onclick={() => toggleSave(a.key)}
-				>{a.short}</button>
-			{/each}
-		</div>
+		<!-- A new character's Resilient feat adds its save in the level steps. -->
+		{#if !isNew}
+			<p class="sub">Also proficient in (Resilient feat)</p>
+			<div class="chips saves">
+				{#each ABILITIES as a (a.key)}
+					{@const given = !!givenSave(a.key)}
+					<button
+						type="button"
+						aria-pressed={given || c.saveProficiencies.includes(a.key)}
+						disabled={given}
+						onclick={() => toggleSave(a.key)}
+					>{a.short}</button>
+				{/each}
+			</div>
+		{/if}
 	</fieldset>
 
 	<fieldset>
