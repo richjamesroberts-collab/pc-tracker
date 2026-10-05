@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import CharacterForm from '$lib/components/CharacterForm.svelte';
+	import CharacterForm, { type FormSection } from '$lib/components/CharacterForm.svelte';
 	import LevelUpFlow, { newPicks, type FlowPicks } from '$lib/components/LevelUpFlow.svelte';
 	import { newCharacter } from '$lib/character';
 	import { CLASS_MAP } from '$lib/data/classes';
@@ -13,10 +13,17 @@
 	import { db, requestPersistentStorage } from '$lib/db';
 	import type { Character, Spell } from '$lib/types';
 
-	/** What the form gave, at the level the player is starting at. */
-	let base = $state.raw<Character | null>(null);
-	/** The level being stepped through; 0 for the form, `target + 1` for hit points. */
-	let current = $state(0);
+	/**
+	 * The screens in order: the required basics, ability scores, skills, each level from 1st up to the
+	 * starting level that asks for something, the remaining details, then hit points.
+	 */
+	type Stage = FormSection | 'level' | 'hp';
+
+	let stage = $state<Stage>('basics');
+	/** The character as entered on the form screens, at 1st-level values (no level choices applied). */
+	let base = $state.raw<Character>(newCharacter());
+	/** The level being stepped through while `stage` is 'level'. */
+	let current = $state(1);
 	/** Choices made and spells learned for each level, filled in as each level is finished. */
 	let done = $state.raw<Record<number, LevelUpChoices>>({});
 	let learned = $state.raw<Record<number, Spell[]>>({});
@@ -26,11 +33,54 @@
 	/** Each finished level's choices as last made, to tell whether going back changed anything. */
 	let lastChoices: Record<number, string> = {};
 
-	const target = $derived(base?.level ?? 1);
+	const target = $derived(base.level);
+	const className = $derived(CLASS_MAP.get(base.classKey)?.name ?? base.classKey);
+
+	/** What the level steps depend on; when any of it changes, the levels start over. */
+	const levelKey = (c: Character) =>
+		JSON.stringify([c.classKey, c.raceKey, c.subraceKey, c.level, c.abilities, c.raceAbilityChoices, c.skillProficiencies, c.skillExpertise]);
+
+	/** Details entered after the levels, copied back onto `base`. */
+	const DETAIL_FIELDS = [
+		'image',
+		'xp',
+		'milestone',
+		'acAuto',
+		'acBase',
+		'acAdjust',
+		'speed',
+		'initiativeOverride',
+		'passivePerception',
+		'senses',
+		'defenses',
+		'spellModOverride'
+	] as const;
+
+	function keep(c: Character) {
+		if (levelKey(c) !== levelKey(base)) {
+			done = {};
+			learned = {};
+			picks = [];
+			lastChoices = {};
+		}
+		base = c;
+	}
+
+	function keepDetails(c: Character) {
+		const next = { ...base } as Record<string, unknown>;
+		for (const k of DETAIL_FIELDS) next[k] = c[k];
+		base = next as unknown as Character;
+	}
+
+	function show(next: Stage, level = current) {
+		stage = next;
+		current = level;
+		window.scrollTo({ top: 0 });
+	}
 
 	/** The character before `level`'s choices: 1st level for level 1, otherwise levelled up through `level - 1`. */
 	function before(level: number): Character {
-		const d = structuredClone({ ...base!, level: 1 });
+		const d = structuredClone({ ...base, level: 1 });
 		d.hpBase = hitDie(d.classKey);
 		for (let l = 1; l < level; l++) {
 			const ch = done[l] ?? { hp: 0 };
@@ -46,7 +96,7 @@
 		return hasChoices(levelUpNeeds(start, first ? start : { ...start, level: start.level + 1 }, first));
 	}
 
-	/** Move on from `level` to the next level with choices, filling in the ones without; past the last, hit points. */
+	/** On from `from` to the next level with choices, filling in the ones without; past the last, the details. */
 	function advance(from: number) {
 		let l = from + 1;
 		while (l <= target && !asksSomething(l)) {
@@ -54,32 +104,20 @@
 			learned = { ...learned, [l]: [] };
 			l++;
 		}
-		if (l <= target) picks[l] ??= newPicks(before(l));
-		current = l;
-		window.scrollTo({ top: 0 });
+		if (l > target) return show('details');
+		picks[l] ??= newPicks(before(l));
+		show('level', l);
 	}
 
-	/** Back to the previous level with choices, or the form. Picks are kept until an earlier level changes. */
+	/** Back to the previous level with choices, or the skills. Picks are kept until an earlier level changes. */
 	function retreat(from: number) {
 		let l = from - 1;
 		while (l >= 1 && !asksSomething(l)) l--;
-		const keep = <T,>(r: Record<number, T>) => Object.fromEntries(Object.entries(r).filter(([k]) => +k < l));
-		done = keep(done);
-		learned = keep(learned);
-		current = Math.max(l, 0);
-		window.scrollTo({ top: 0 });
-	}
-
-	function formDone(c: Character) {
-		// Back on the details and Next with nothing changed: carry on with the picks made so far.
-		if (base && JSON.stringify(c) === JSON.stringify(base)) return advance(0);
-		base = c;
-		done = {};
-		learned = {};
-		picks = [];
-		lastChoices = {};
-		hpOverride = null;
-		advance(0);
+		const below = <T,>(r: Record<number, T>) => Object.fromEntries(Object.entries(r).filter(([k]) => +k < Math.max(l, 1)));
+		done = below(done);
+		learned = below(learned);
+		if (l < 1) show('skills');
+		else show('level', l);
 	}
 
 	function levelDone(level: number, choices: LevelUpChoices, spells: Spell[]) {
@@ -91,9 +129,10 @@
 		advance(level);
 	}
 
-	// ---- Hit points ----------------------------------------------------------------------------
+	// ---- Details and hit points ----------------------------------------------------------------
 
-	const final = $derived(base && current > target ? before(target + 1) : null);
+	/** The character with every level's choices, once the levels are done. */
+	const final = $derived(stage === 'details' || stage === 'hp' ? before(target + 1) : null);
 	const gain = $derived(final ? hpGain(final) : null);
 	const hpAuto = $derived(final ? startingHp(final) : 0);
 	const hpOk = $derived(hpOverride === null || (Number.isInteger(hpOverride) && hpOverride >= 1));
@@ -109,50 +148,90 @@
 		void requestPersistentStorage();
 		goto(resolve('/c/[id]', { id: c.id }), { replaceState: true });
 	}
+
+	const TITLE: Record<Stage, string> = {
+		basics: 'New character',
+		abilities: 'Ability scores',
+		skills: 'Skills',
+		level: '',
+		details: 'Details',
+		hp: 'Hit points'
+	};
 </script>
 
 <main>
-	{#if !base || current === 0}
-		<h1>New character</h1>
-		<CharacterForm initial={base ?? newCharacter()} isNew onsave={formDone} oncancel={() => history.back()} />
-	{:else}
-		<header class="top">
-			<button type="button" class="cancel" onclick={() => (current = 0)}>Character details</button>
-			<p class="label">
-				{CLASS_MAP.get(base.classKey)?.name ?? base.classKey}{current <= target ? ` · level ${current} of ${target}` : ''}
-			</p>
-		</header>
+	{#if stage !== 'basics'}
+		<p class="label top">
+			{base.name} · {className} {target}{stage === 'level' ? ` · level ${current} of ${target}` : ''}
+		</p>
+	{/if}
+	{#if TITLE[stage]}<h1>{TITLE[stage]}</h1>{/if}
 
-		{#if current <= target}
-			{#key current}
-				<LevelUpFlow
-					start={before(current)}
-					first={current === 1}
-					mode="create"
-					bind:picks={picks[current]}
-					finishLabel={current < target ? 'Next level' : 'Hit points'}
-					onfinish={(choices, spells) => levelDone(current, choices, spells)}
-					onback={() => retreat(current)}
-				/>
-			{/key}
-		{:else if final && gain}
-			<h1>Hit points</h1>
-			<p class="lead">
-				A d{hitDie(final.classKey)} at 1st level{target > 1 ? `, then the average of ${gain.average} for each level after` : ''}, plus
-				{gain.parts.map((p) => `${p.label} ${signedMod(p.value)}`).join(', ')} per level.
-			</p>
-			<p class="big">{hpAuto} max HP</p>
-			<label class="field">
-				<span>Rolled for hit points? Your max HP</span>
-				<input type="number" inputmode="numeric" min="1" step="1" bind:value={hpOverride} placeholder={String(hpAuto)} aria-invalid={!hpOk} />
-			</label>
-			{#if !hpOk}<p class="error">Max HP is a whole number, at least 1.</p>{/if}
+	{#if stage === 'basics'}
+		<p class="lead">Who you're playing. The next screens follow from these: your scores and skills, then each level's choices up to the level you start at.</p>
+		<CharacterForm
+			initial={base}
+			isNew
+			sections={['basics']}
+			onsave={(c) => (keep(c), show('abilities'))}
+			oncancel={() => history.back()}
+		/>
+	{:else if stage === 'abilities'}
+		<CharacterForm
+			initial={base}
+			isNew
+			sections={['abilities']}
+			cancelLabel="Back"
+			onsave={(c) => (keep(c), show('skills'))}
+			oncancel={(c) => (keep(c), show('basics'))}
+		/>
+	{:else if stage === 'skills'}
+		<CharacterForm
+			initial={base}
+			isNew
+			sections={['skills']}
+			cancelLabel="Back"
+			onsave={(c) => (keep(c), advance(0))}
+			oncancel={(c) => (keep(c), show('abilities'))}
+		/>
+	{:else if stage === 'level'}
+		{#key current}
+			<LevelUpFlow
+				start={before(current)}
+				first={current === 1}
+				mode="create"
+				bind:picks={picks[current]}
+				finishLabel="Next"
+				onfinish={(choices, spells) => levelDone(current, choices, spells)}
+				onback={() => retreat(current)}
+			/>
+		{/key}
+	{:else if stage === 'details' && final}
+		<p class="lead">All optional: a portrait, XP, armor class and the rest. Change any of it later in Edit.</p>
+		<CharacterForm
+			initial={final}
+			isNew
+			sections={['details']}
+			cancelLabel="Back"
+			onsave={(c) => (keepDetails(c), show('hp'))}
+			oncancel={(c) => (keepDetails(c), retreat(target + 1))}
+		/>
+	{:else if stage === 'hp' && final && gain}
+		<p class="lead">
+			A d{hitDie(final.classKey)} at 1st level{target > 1 ? `, then the average of ${gain.average} for each level after` : ''}, plus
+			{gain.parts.map((p) => `${p.label} ${signedMod(p.value)}`).join(', ')} per level.
+		</p>
+		<p class="big">{hpAuto} max HP</p>
+		<label class="field">
+			<span>Rolled for hit points? Your max HP</span>
+			<input type="number" inputmode="numeric" min="1" step="1" bind:value={hpOverride} placeholder={String(hpAuto)} aria-invalid={!hpOk} />
+		</label>
+		{#if !hpOk}<p class="error">Max HP is a whole number, at least 1.</p>{/if}
 
-			<nav class="footer">
-				<button type="button" class="secondary" onclick={() => retreat(current)}>Back</button>
-				<button type="button" class="primary" disabled={!hpOk} onclick={create}>Create character</button>
-			</nav>
-		{/if}
+		<nav class="footer">
+			<button type="button" class="secondary" onclick={() => show('details')}>Back</button>
+			<button type="button" class="primary" disabled={!hpOk} onclick={create}>Create character</button>
+		</nav>
 	{/if}
 </main>
 
@@ -165,32 +244,15 @@
 
 	h1 {
 		font-size: 26px;
-		margin-bottom: 16px;
+		margin-bottom: 12px;
 	}
 
 	.top {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		margin-bottom: 10px;
-	}
-
-	.cancel {
-		min-height: 40px;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: var(--color-accent);
-		font-weight: 700;
-	}
-
-	.top .label {
-		text-align: right;
+		margin-bottom: 6px;
 	}
 
 	.lead {
-		margin-bottom: 12px;
+		margin-bottom: 14px;
 		color: var(--color-text-muted);
 	}
 
