@@ -1,3 +1,8 @@
+<script lang="ts" module>
+	/** Parts of the form; a new character fills them in on separate screens, Edit shows them all. */
+	export type FormSection = 'basics' | 'abilities' | 'skills' | 'details';
+</script>
+
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Portrait from './Portrait.svelte';
@@ -22,9 +27,24 @@
 	let {
 		initial,
 		isNew,
+		sections,
+		submitLabel,
+		cancelLabel = 'Cancel',
 		onsave,
 		oncancel
-	}: { initial: Character; isNew: boolean; onsave: (c: Character) => void; oncancel: () => void } = $props();
+	}: {
+		initial: Character;
+		isNew: boolean;
+		/** Only these parts; all of them when left out. */
+		sections?: FormSection[];
+		submitLabel?: string;
+		cancelLabel?: string;
+		onsave: (c: Character) => void;
+		/** Gets the form as it stands, so a stepped new character keeps what was typed when going back. */
+		oncancel: (draft: Character) => void;
+	} = $props();
+
+	const show = (section: FormSection) => !sections || sections.includes(section);
 
 	// Edit a local copy; nothing is saved until the player taps Save.
 	let c = $state(untrack(() => structuredClone($state.snapshot(initial)) as Character));
@@ -39,8 +59,13 @@
 	const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
 	const scoreOk = (n: number | null): n is number => whole(n) && n >= 1 && n <= 30;
 	const scoresValid = $derived(ABILITIES.every((a) => scoreOk(scores[a.key])));
+	/** A new character needs a race, and a subrace where the race has them (a human can stay standard). */
+	const raceOk = $derived(
+		!isNew || (!!c.raceKey && (!race?.subraces.length || race.key === 'human' || !!c.subraceKey))
+	);
 	const valid = $derived(
 		c.name.trim().length > 0 &&
+			raceOk &&
 			whole(c.level) &&
 			c.level >= 1 &&
 			c.level <= 20 &&
@@ -237,81 +262,87 @@
 </script>
 
 <form onsubmit={submit}>
-	<div class="photo">
-		<label class="photo-pick">
-			<Portrait name={c.name || '?'} image={c.image} size={96} />
-			<span class="link">{c.image ? 'Change photo' : 'Add photo'}</span>
-			<input class="sr-only" type="file" accept="image/*" onchange={pickPhoto} />
-		</label>
-		{#if c.image}
-			<button type="button" class="text-btn" onclick={() => (c.image = undefined)}>Remove photo</button>
-		{/if}
-		{#if photoError}<p class="error">{photoError}</p>{/if}
-	</div>
+	{#if show('details')}
+		<div class="photo">
+			<label class="photo-pick">
+				<Portrait name={c.name || '?'} image={c.image} size={96} />
+				<span class="link">{c.image ? 'Change photo' : 'Add photo'}</span>
+				<input class="sr-only" type="file" accept="image/*" onchange={pickPhoto} />
+			</label>
+			{#if c.image}
+				<button type="button" class="text-btn" onclick={() => (c.image = undefined)}>Remove photo</button>
+			{/if}
+			{#if photoError}<p class="error">{photoError}</p>{/if}
+		</div>
+	{/if}
 
-	<label class="field">
-		<span>Character name</span>
-		<input bind:value={c.name} required autocomplete="off" autocapitalize="words" placeholder="Lyra Ashwood" />
-	</label>
-
-	<div class="two even">
+	{#if show('basics')}
 		<label class="field">
-			<span>Race</span>
-			<select bind:value={c.raceKey} onchange={onRaceChange}>
-				<option value={undefined}>Choose…</option>
-				{#each RACE_BOOKS as book (book.key)}
-					<optgroup label={book.name}>
-						{#each RACES.filter((r) => r.book === book.key) as r (r.key)}
-							<option value={r.key}>{r.name}</option>
-						{/each}
-					</optgroup>
-				{/each}
-			</select>
+			<span>Character name</span>
+			<input bind:value={c.name} required autocomplete="off" autocapitalize="words" placeholder="Lyra Ashwood" />
 		</label>
-		{#if race && race.subraces.length}
+
+		<div class="two even">
 			<label class="field">
-				<span>{race.key === 'dragonborn' ? 'Ancestry' : 'Subrace'}</span>
-				<select bind:value={c.subraceKey} onchange={() => (c.raceAbilityChoices = [])}>
+				<span>Race</span>
+				<select bind:value={c.raceKey} onchange={onRaceChange}>
 					<option value={undefined}>Choose…</option>
-					{#each race.subraces as s (s.key)}
-						<option value={s.key}>{s.name}</option>
+					{#each RACE_BOOKS as book (book.key)}
+						<optgroup label={book.name}>
+							{#each RACES.filter((r) => r.book === book.key) as r (r.key)}
+								<option value={r.key}>{r.name}</option>
+							{/each}
+						</optgroup>
 					{/each}
 				</select>
 			</label>
+			{#if race && race.subraces.length}
+				<label class="field">
+					<span>{race.key === 'dragonborn' ? 'Ancestry' : 'Subrace'}</span>
+					<select bind:value={c.subraceKey} onchange={() => (c.raceAbilityChoices = [])}>
+						<option value={undefined}>{race.key === 'human' ? 'Standard' : 'Choose…'}</option>
+						{#each race.subraces as s (s.key)}
+							<option value={s.key}>{s.name}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+		</div>
+
+		<div class="two">
+			<label class="field">
+				<span>Class</span>
+				<select bind:value={c.classKey} onchange={onClassChange}>
+					{#each CLASSES as k (k.key)}
+						<option value={k.key}>{k.name}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="field">
+				<span>Level</span>
+				<input type="number" inputmode="numeric" min="1" max="20" bind:value={c.level} required />
+			</label>
+		</div>
+	{/if}
+
+	{#if show('details')}
+		<div class="two even">
+			<label class="field">
+				<span>Experience points</span>
+				<input type="number" inputmode="numeric" min="0" step="1" bind:value={c.xp} disabled={c.milestone} placeholder="0" />
+			</label>
+			<label class="check boxed">
+				<input type="checkbox" bind:checked={c.milestone} />
+				Milestone levelling
+			</label>
+		</div>
+		{#if !c.milestone && xpLevel && xpLevel !== c.level}
+			<p class="hint">
+				{xpLevel > c.level
+					? `${c.xp.toLocaleString('en')} XP is enough for level ${xpLevel}. Level up from Experience on Vitals.`
+					: `Level ${c.level} starts at ${xpForLevel(c.level).toLocaleString('en')} XP; saving sets XP to at least that.`}
+			</p>
 		{/if}
-	</div>
-
-	<div class="two">
-		<label class="field">
-			<span>Class</span>
-			<select bind:value={c.classKey} onchange={onClassChange}>
-				{#each CLASSES as k (k.key)}
-					<option value={k.key}>{k.name}</option>
-				{/each}
-			</select>
-		</label>
-		<label class="field">
-			<span>Level</span>
-			<input type="number" inputmode="numeric" min="1" max="20" bind:value={c.level} required />
-		</label>
-	</div>
-
-	<div class="two even">
-		<label class="field">
-			<span>Experience points</span>
-			<input type="number" inputmode="numeric" min="0" step="1" bind:value={c.xp} disabled={c.milestone} placeholder="0" />
-		</label>
-		<label class="check boxed">
-			<input type="checkbox" bind:checked={c.milestone} />
-			Milestone levelling
-		</label>
-	</div>
-	{#if !c.milestone && xpLevel && xpLevel !== c.level}
-		<p class="hint">
-			{xpLevel > c.level
-				? `${c.xp.toLocaleString('en')} XP is enough for level ${xpLevel}. Level up from Experience on Vitals.`
-				: `Level ${c.level} starts at ${xpForLevel(c.level).toLocaleString('en')} XP; saving sets XP to at least that.`}
-		</p>
 	{/if}
 
 	{#if cls && !isNew}
@@ -326,121 +357,125 @@
 		</label>
 	{/if}
 
-	<fieldset>
-		<legend class="label">Ability scores</legend>
-		<p class="hint">
-			{isNew
-				? "Enter base scores: before racial increases. Ability Score Improvements come later, as you go through each level's choices."
-				: 'Enter base scores: before racial increases and magic items, with any Ability Score Improvements from levelling.'}
-		</p>
-		<div class="scores">
-			{#each ABILITIES as a (a.key)}
-				{@const ok = scoreOk(scores[a.key])}
-				{@const total = preview.breakdown.scores[a.key]}
-				<label class="score" class:invalid={!ok}>
-					<span class="abbr">{a.short}</span>
-					<input
-						type="number"
-						inputmode="numeric"
-						min="1"
-						max="30"
-						aria-label="{a.name} base score"
-						bind:value={() => scores[a.key], (v) => setScore(a.key, v)}
-					/>
-					<span class="mod" aria-label="{a.name}: {total}, modifier {signedMod(abilityMod(total))}">
-						{#if !ok}—{:else}{#if total !== c.abilities[a.key]}<span class="total">{total}</span>{/if}{signedMod(abilityMod(total))}{/if}
-					</span>
-				</label>
-			{/each}
-		</div>
-		{#if !scoresValid}<p class="error">Scores go from 1 to 30.</p>{/if}
-
-		{#if choice}
-			<div class="picks">
-				<p class="sub">
-					{race?.name ?? 'Race'}: {choiceText(choice)}
-					({c.raceAbilityChoices.length}/{choice.count})
-				</p>
-				<div class="chips">
-					{#each choice.from as k (k)}
-						{@const n = pickCount(k)}
-						<button
-							type="button"
-							aria-pressed={n > 0}
-							disabled={!n && c.raceAbilityChoices.length >= choice.count}
-							onclick={() => togglePick(k)}
-							>{ABILITY_SHORT[k]}{#if choice.max && n}&nbsp;{signedMod(n * choice.amount)}{/if}</button
-						>
-					{/each}
-				</div>
-			</div>
-		{/if}
-
-		{#if sources.length}
-			<ul class="sources">
-				{#each sources as src, i (i)}
-					<li><b>{src.ability} {src.value}</b> {src.label}</li>
-				{/each}
-			</ul>
-		{/if}
-	</fieldset>
-
-	<fieldset>
-		<legend class="label">Armor class</legend>
-		<div class="modes" role="radiogroup" aria-label="How AC is set">
-			<button type="button" role="radio" aria-checked={c.acAuto} onclick={() => (c.acAuto = true)}>Work it out</button>
-			<button type="button" role="radio" aria-checked={!c.acAuto} onclick={() => (c.acAuto = false)}>Enter my AC</button>
-		</div>
-		{#if c.acAuto}
-			<p class="derived ac">AC {preview.ac.total}</p>
+	{#if show('abilities')}
+		<fieldset>
+			<legend class="label">Ability scores</legend>
 			<p class="hint">
-				{preview.ac.parts.map((p) => `${p.label} ${p.value}`).join(' · ')}. Equip armor and shields in Inventory.
+				{isNew
+					? "Enter base scores: before racial increases. Ability Score Improvements come later, as you go through each level's choices."
+					: 'Enter base scores: before racial increases and magic items, with any Ability Score Improvements from levelling.'}
 			</p>
-		{:else}
-			<label class="field">
-				<span>AC</span>
-				<input type="number" inputmode="numeric" min="0" bind:value={c.acBase} required />
-			</label>
-			{#if preview.ac.total !== c.acBase}
-				<p class="hint">With items and adjustments: AC {preview.ac.total}</p>
-			{/if}
-		{/if}
-	</fieldset>
+			<div class="scores">
+				{#each ABILITIES as a (a.key)}
+					{@const ok = scoreOk(scores[a.key])}
+					{@const total = preview.breakdown.scores[a.key]}
+					<label class="score" class:invalid={!ok}>
+						<span class="abbr">{a.short}</span>
+						<input
+							type="number"
+							inputmode="numeric"
+							min="1"
+							max="30"
+							aria-label="{a.name} base score"
+							bind:value={() => scores[a.key], (v) => setScore(a.key, v)}
+						/>
+						<span class="mod" aria-label="{a.name}: {total}, modifier {signedMod(abilityMod(total))}">
+							{#if !ok}—{:else}{#if total !== c.abilities[a.key]}<span class="total">{total}</span>{/if}{signedMod(abilityMod(total))}{/if}
+						</span>
+					</label>
+				{/each}
+			</div>
+			{#if !scoresValid}<p class="error">Scores go from 1 to 30.</p>{/if}
 
-	<div class={isNew ? 'two even' : 'three'}>
-		{#if !isNew}
-			<label class="field">
-				<span>Max HP</span>
-				<input type="number" inputmode="numeric" min="1" bind:value={c.hpBase} required />
-			</label>
-			<label class="field">
-				<span>Current HP</span>
-				<input type="number" inputmode="numeric" min="0" max={preview.hp.total} bind:value={c.hpCurrent} />
-			</label>
-		{/if}
-		<label class="field">
-			<span>Speed</span>
-			<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder="30" />
-		</label>
-	</div>
-	{#if !isNew && preview.hp.total !== c.hpBase}
-		<p class="hint">With magic items: max HP {preview.hp.total} ({preview.hp.parts.slice(1).map((p) => `${p.label} ${p.value}`).join(', ')})</p>
+			{#if choice}
+				<div class="picks">
+					<p class="sub">
+						{race?.name ?? 'Race'}: {choiceText(choice)}
+						({c.raceAbilityChoices.length}/{choice.count})
+					</p>
+					<div class="chips">
+						{#each choice.from as k (k)}
+							{@const n = pickCount(k)}
+							<button
+								type="button"
+								aria-pressed={n > 0}
+								disabled={!n && c.raceAbilityChoices.length >= choice.count}
+								onclick={() => togglePick(k)}
+								>{ABILITY_SHORT[k]}{#if choice.max && n}&nbsp;{signedMod(n * choice.amount)}{/if}</button
+							>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			{#if sources.length}
+				<ul class="sources">
+					{#each sources as src, i (i)}
+						<li><b>{src.ability} {src.value}</b> {src.label}</li>
+					{/each}
+				</ul>
+			{/if}
+		</fieldset>
 	{/if}
 
-	<div class="two even">
-		<label class="field">
-			<span>Initiative</span>
-			<input type="number" inputmode="numeric" bind:value={c.initiativeOverride} placeholder={signedMod(preview.init.total)} />
-		</label>
-		<label class="field">
-			<span>Passive Perc.</span>
-			<input type="number" inputmode="numeric" min="0" bind:value={c.passivePerception} placeholder="12" />
-		</label>
-	</div>
-	<p class="hint">
-		Initiative: {preview.init.parts.map((p) => `${p.label} ${p.value}`).join(', ')}.
-		{c.initiativeOverride != null ? 'Clear the box to use this.' : 'Type a number to use your own (Alert feat).'}
-	</p>
+	{#if show('details')}
+		<fieldset>
+			<legend class="label">Armor class</legend>
+			<div class="modes" role="radiogroup" aria-label="How AC is set">
+				<button type="button" role="radio" aria-checked={c.acAuto} onclick={() => (c.acAuto = true)}>Work it out</button>
+				<button type="button" role="radio" aria-checked={!c.acAuto} onclick={() => (c.acAuto = false)}>Enter my AC</button>
+			</div>
+			{#if c.acAuto}
+				<p class="derived ac">AC {preview.ac.total}</p>
+				<p class="hint">
+					{preview.ac.parts.map((p) => `${p.label} ${p.value}`).join(' · ')}. Equip armor and shields in Inventory.
+				</p>
+			{:else}
+				<label class="field">
+					<span>AC</span>
+					<input type="number" inputmode="numeric" min="0" bind:value={c.acBase} required />
+				</label>
+				{#if preview.ac.total !== c.acBase}
+					<p class="hint">With items and adjustments: AC {preview.ac.total}</p>
+				{/if}
+			{/if}
+		</fieldset>
+
+		<div class={isNew ? 'two even' : 'three'}>
+			{#if !isNew}
+				<label class="field">
+					<span>Max HP</span>
+					<input type="number" inputmode="numeric" min="1" bind:value={c.hpBase} required />
+				</label>
+				<label class="field">
+					<span>Current HP</span>
+					<input type="number" inputmode="numeric" min="0" max={preview.hp.total} bind:value={c.hpCurrent} />
+				</label>
+			{/if}
+			<label class="field">
+				<span>Speed</span>
+				<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder="30" />
+			</label>
+		</div>
+		{#if !isNew && preview.hp.total !== c.hpBase}
+			<p class="hint">With magic items: max HP {preview.hp.total} ({preview.hp.parts.slice(1).map((p) => `${p.label} ${p.value}`).join(', ')})</p>
+		{/if}
+
+		<div class="two even">
+			<label class="field">
+				<span>Initiative</span>
+				<input type="number" inputmode="numeric" bind:value={c.initiativeOverride} placeholder={signedMod(preview.init.total)} />
+			</label>
+			<label class="field">
+				<span>Passive Perc.</span>
+				<input type="number" inputmode="numeric" min="0" bind:value={c.passivePerception} placeholder="12" />
+			</label>
+		</div>
+		<p class="hint">
+			Initiative: {preview.init.parts.map((p) => `${p.label} ${p.value}`).join(', ')}.
+			{c.initiativeOverride != null ? 'Clear the box to use this.' : 'Type a number to use your own (Alert feat).'}
+		</p>
+	{/if}
 
 	<!-- Weapon picks come up in a new character's level steps when something asks for them. -->
 	{#if !isNew}
@@ -490,54 +525,56 @@
 
 	{/if}
 
-	<fieldset>
-		<legend class="label">Saving throws</legend>
-		<ul class="sources">
-			{#each [...new Set(ABILITIES.map((a) => givenSave(a.key)).filter(Boolean))] as src (src)}
-				<li><b>{src}</b> {ABILITIES.filter((a) => givenSave(a.key) === src).map((a) => a.name).join(', ')}</li>
-			{/each}
-		</ul>
-		<!-- A new character's Resilient feat adds its save in the level steps. -->
-		{#if !isNew}
-			<p class="sub">Also proficient in (Resilient feat)</p>
-			<div class="chips saves">
-				{#each ABILITIES as a (a.key)}
-					{@const given = !!givenSave(a.key)}
+	{#if show('skills')}
+		<fieldset>
+			<legend class="label">Saving throws</legend>
+			<ul class="sources">
+				{#each [...new Set(ABILITIES.map((a) => givenSave(a.key)).filter(Boolean))] as src (src)}
+					<li><b>{src}</b> {ABILITIES.filter((a) => givenSave(a.key) === src).map((a) => a.name).join(', ')}</li>
+				{/each}
+			</ul>
+			<!-- A new character's Resilient feat adds its save in the level steps. -->
+			{#if !isNew}
+				<p class="sub">Also proficient in (Resilient feat)</p>
+				<div class="chips saves">
+					{#each ABILITIES as a (a.key)}
+						{@const given = !!givenSave(a.key)}
+						<button
+							type="button"
+							aria-pressed={given || c.saveProficiencies.includes(a.key)}
+							disabled={given}
+							onclick={() => toggleSave(a.key)}
+						>{a.short}</button>
+					{/each}
+				</div>
+			{/if}
+		</fieldset>
+
+		<fieldset>
+			<legend class="label">Skills</legend>
+			<p class="hint">
+				Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
+				feats and racial choices.
+			</p>
+			{#if givenSkills.skills.length}
+				<ul class="sources">
+					<li><b>{givenSkills.source}</b> {givenSkills.skills.map((k) => SKILLS.find((s) => s.key === k)?.name).join(', ')}</li>
+				</ul>
+			{/if}
+			<div class="chips skills">
+				{#each SKILLS as s (s.key)}
+					{@const level = skillLevel(s.key)}
 					<button
 						type="button"
-						aria-pressed={given || c.saveProficiencies.includes(a.key)}
-						disabled={given}
-						onclick={() => toggleSave(a.key)}
-					>{a.short}</button>
+						class={level}
+						aria-pressed={level !== 'none'}
+						aria-label="{s.name}: {level === 'none' ? 'not proficient' : level}"
+						onclick={() => stepSkill(s.key)}
+					>{s.name}{level === 'expertise' ? ' ×2' : ''}</button>
 				{/each}
 			</div>
-		{/if}
-	</fieldset>
-
-	<fieldset>
-		<legend class="label">Skills</legend>
-		<p class="hint">
-			Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
-			feats and racial choices.
-		</p>
-		{#if givenSkills.skills.length}
-			<ul class="sources">
-				<li><b>{givenSkills.source}</b> {givenSkills.skills.map((k) => SKILLS.find((s) => s.key === k)?.name).join(', ')}</li>
-			</ul>
-		{/if}
-		<div class="chips skills">
-			{#each SKILLS as s (s.key)}
-				{@const level = skillLevel(s.key)}
-				<button
-					type="button"
-					class={level}
-					aria-pressed={level !== 'none'}
-					aria-label="{s.name}: {level === 'none' ? 'not proficient' : level}"
-					onclick={() => stepSkill(s.key)}
-				>{s.name}{level === 'expertise' ? ' ×2' : ''}</button>
-			{/each}
-		</div>
-	</fieldset>
+		</fieldset>
+	{/if}
 
 	<!-- A new character picks fighting styles, feats and class options level by level instead. -->
 	{#if !isNew}
@@ -631,123 +668,125 @@
 
 	{/if}
 
-	<fieldset>
-		<legend class="label">Senses</legend>
-		{#if givenSenses.length}
-			<ul class="sources">
-				{#each givenSenses as sense (sense.name)}
-					<li><b>{sense.name} {sense.range} ft</b> {sense.sources.join(', ')}</li>
-				{/each}
-			</ul>
-		{:else}
-			<p class="hint">Nothing from your race or class.</p>
-		{/if}
-		{#each c.senses as sense, i (sense.id)}
-			<div class="sense">
-				<label class="field">
-					<span>Sense</span>
-					<input bind:value={sense.name} list="sense-names" autocapitalize="words" required />
-				</label>
-				<label class="field">
-					<span>Range (ft)</span>
-					<input type="number" inputmode="numeric" min="5" step="5" bind:value={sense.range} required />
-				</label>
-				<button type="button" class="remove" aria-label="Remove {sense.name}" onclick={() => (c.senses = c.senses.filter((_, j) => j !== i))}>×</button>
-			</div>
-		{/each}
-		<datalist id="sense-names">
-			<option value="Darkvision"></option>
-			<option value="Blindsight"></option>
-			<option value="Tremorsense"></option>
-			<option value="Truesight"></option>
-			<option value="Devil's Sight"></option>
-		</datalist>
-		<button type="button" class="add-sense" onclick={addSense}>Add a sense</button>
-		<p class="hint">For Custom Lineage darkvision, Goggles of Night, Devil's Sight and the like. The longest range of each sense counts.</p>
-	</fieldset>
-
-	<fieldset>
-		<legend class="label">Resistances and immunities</legend>
-		{#if givenDefenses.length}
-			<ul class="sources">
-				{#each givenDefenses as d (d.kind + d.name + (d.when ?? ''))}
-					<li>
-						<b>{d.kind === 'resistance' ? 'Resist' : 'Immune'} {d.name}{d.when ? ` (${d.when})` : ''}</b>
-						{d.sources.join(', ')}
-					</li>
-				{/each}
-			</ul>
-		{:else}
-			<p class="hint">Nothing from your race, class or attuned items.</p>
-		{/if}
-		{#each c.defenses as d, i (d.id)}
-			<div class="defense">
-				<label class="field">
-					<span>Type</span>
-					<select bind:value={d.kind}>
-						<option value="resistance">Resist</option>
-						<option value="immunity">Immune</option>
-					</select>
-				</label>
-				<label class="field">
-					<span>To</span>
-					<input bind:value={d.name} list="defense-names" placeholder="cold" autocapitalize="none" required />
-				</label>
-				<button type="button" class="remove" aria-label="Remove {d.name || 'this'}" onclick={() => (c.defenses = c.defenses.filter((_, j) => j !== i))}>×</button>
-				<label class="field from">
-					<span>From (optional)</span>
-					<input bind:value={d.source} placeholder="Feat, boon, DM ruling" autocapitalize="words" />
-				</label>
-			</div>
-		{/each}
-		<datalist id="defense-names">
-			{#each DEFENSE_NAMES as n (n)}<option value={n}></option>{/each}
-		</datalist>
-		<button type="button" class="add-sense" onclick={addDefense}>Add a resistance or immunity</button>
-		<p class="hint">For feats like Infernal Constitution, boons, curses lifted or a DM ruling. A damage type or a condition (charmed, poisoned).</p>
-	</fieldset>
-
-	{#if caster}
+	{#if show('details')}
 		<fieldset>
-			<legend class="label">Spellcasting</legend>
-			<label class="field">
-				<span>{ability} modifier</span>
-				<input
-					type="number"
-					inputmode="numeric"
-					min="-5"
-					max="10"
-					bind:value={c.spellModOverride}
-					placeholder={signedMod(preview.spellModAuto)}
-				/>
-			</label>
-			<p class="hint">
-				Your {ability} modifier is {signedMod(preview.spellModAuto)}.
-				{c.spellModOverride != null ? 'Clear the box to use it.' : 'Type a number only to use something else.'}
-			</p>
-			<p class="derived">Spell save DC {preview.spellDc} · spell attack {signedMod(preview.spellAttack)}</p>
-
-			{#if !isNew && c.classKey === 'sorcerer' && c.level >= 3}
-				<p class="sub">Metamagic options</p>
-				<div class="checks">
-					{#each METAMAGIC as m (m.key)}
-						<label class="check">
-							<input
-								type="checkbox"
-								checked={c.metamagic.includes(m.key)}
-								onchange={(e) => toggleMetamagic(m.key, e.currentTarget.checked)}
-							/>
-							{m.name}
-						</label>
+			<legend class="label">Senses</legend>
+			{#if givenSenses.length}
+				<ul class="sources">
+					{#each givenSenses as sense (sense.name)}
+						<li><b>{sense.name} {sense.range} ft</b> {sense.sources.join(', ')}</li>
 					{/each}
-				</div>
+				</ul>
+			{:else}
+				<p class="hint">Nothing from your race or class.</p>
 			{/if}
+			{#each c.senses as sense, i (sense.id)}
+				<div class="sense">
+					<label class="field">
+						<span>Sense</span>
+						<input bind:value={sense.name} list="sense-names" autocapitalize="words" required />
+					</label>
+					<label class="field">
+						<span>Range (ft)</span>
+						<input type="number" inputmode="numeric" min="5" step="5" bind:value={sense.range} required />
+					</label>
+					<button type="button" class="remove" aria-label="Remove {sense.name}" onclick={() => (c.senses = c.senses.filter((_, j) => j !== i))}>×</button>
+				</div>
+			{/each}
+			<datalist id="sense-names">
+				<option value="Darkvision"></option>
+				<option value="Blindsight"></option>
+				<option value="Tremorsense"></option>
+				<option value="Truesight"></option>
+				<option value="Devil's Sight"></option>
+			</datalist>
+			<button type="button" class="add-sense" onclick={addSense}>Add a sense</button>
+			<p class="hint">For Custom Lineage darkvision, Goggles of Night, Devil's Sight and the like. The longest range of each sense counts.</p>
 		</fieldset>
+
+		<fieldset>
+			<legend class="label">Resistances and immunities</legend>
+			{#if givenDefenses.length}
+				<ul class="sources">
+					{#each givenDefenses as d (d.kind + d.name + (d.when ?? ''))}
+						<li>
+							<b>{d.kind === 'resistance' ? 'Resist' : 'Immune'} {d.name}{d.when ? ` (${d.when})` : ''}</b>
+							{d.sources.join(', ')}
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="hint">Nothing from your race, class or attuned items.</p>
+			{/if}
+			{#each c.defenses as d, i (d.id)}
+				<div class="defense">
+					<label class="field">
+						<span>Type</span>
+						<select bind:value={d.kind}>
+							<option value="resistance">Resist</option>
+							<option value="immunity">Immune</option>
+						</select>
+					</label>
+					<label class="field">
+						<span>To</span>
+						<input bind:value={d.name} list="defense-names" placeholder="cold" autocapitalize="none" required />
+					</label>
+					<button type="button" class="remove" aria-label="Remove {d.name || 'this'}" onclick={() => (c.defenses = c.defenses.filter((_, j) => j !== i))}>×</button>
+					<label class="field from">
+						<span>From (optional)</span>
+						<input bind:value={d.source} placeholder="Feat, boon, DM ruling" autocapitalize="words" />
+					</label>
+				</div>
+			{/each}
+			<datalist id="defense-names">
+				{#each DEFENSE_NAMES as n (n)}<option value={n}></option>{/each}
+			</datalist>
+			<button type="button" class="add-sense" onclick={addDefense}>Add a resistance or immunity</button>
+			<p class="hint">For feats like Infernal Constitution, boons, curses lifted or a DM ruling. A damage type or a condition (charmed, poisoned).</p>
+		</fieldset>
+
+		{#if caster}
+			<fieldset>
+				<legend class="label">Spellcasting</legend>
+				<label class="field">
+					<span>{ability} modifier</span>
+					<input
+						type="number"
+						inputmode="numeric"
+						min="-5"
+						max="10"
+						bind:value={c.spellModOverride}
+						placeholder={signedMod(preview.spellModAuto)}
+					/>
+				</label>
+				<p class="hint">
+					Your {ability} modifier is {signedMod(preview.spellModAuto)}.
+					{c.spellModOverride != null ? 'Clear the box to use it.' : 'Type a number only to use something else.'}
+				</p>
+				<p class="derived">Spell save DC {preview.spellDc} · spell attack {signedMod(preview.spellAttack)}</p>
+
+				{#if !isNew && c.classKey === 'sorcerer' && c.level >= 3}
+					<p class="sub">Metamagic options</p>
+					<div class="checks">
+						{#each METAMAGIC as m (m.key)}
+							<label class="check">
+								<input
+									type="checkbox"
+									checked={c.metamagic.includes(m.key)}
+									onchange={(e) => toggleMetamagic(m.key, e.currentTarget.checked)}
+								/>
+								{m.name}
+							</label>
+						{/each}
+					</div>
+				{/if}
+			</fieldset>
+		{/if}
 	{/if}
 
-	<div class="buttons">
-		<button type="button" class="secondary" onclick={oncancel}>Cancel</button>
-		<button type="submit" class="primary" disabled={!valid}>{isNew ? 'Next' : 'Save'}</button>
+	<div class="buttons" class:sticky={isNew}>
+		<button type="button" class="secondary" onclick={() => oncancel($state.snapshot(c) as Character)}>{cancelLabel}</button>
+		<button type="submit" class="primary" disabled={!valid}>{submitLabel ?? (isNew ? 'Next' : 'Save')}</button>
 	</div>
 </form>
 
@@ -1087,6 +1126,16 @@
 		grid-template-columns: 1fr 2fr;
 		gap: 8px;
 		margin-top: 6px;
+	}
+
+	/* A new character's screens end like the level steps, with the buttons kept in reach. */
+	.buttons.sticky {
+		position: sticky;
+		bottom: 0;
+		margin: 10px -16px 0;
+		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+		background: var(--color-bg);
+		border-top: 1px solid var(--color-border);
 	}
 
 	.buttons button {
