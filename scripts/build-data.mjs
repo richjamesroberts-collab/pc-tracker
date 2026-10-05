@@ -783,8 +783,9 @@ function itemEffects(i, type, text) {
 			e.addMax = Number(/maximum of (\d+)/.exec(text)?.[1] ?? 20);
 		}
 	}
-	// A Defender's AC bonus is whatever the wielder moves over, so weapons are left to the player.
-	if (bonus(i.bonusAc) && !type.startsWith('Weapon')) e.ac = bonus(i.bonusAc);
+	// A Defender's AC bonus is whatever the wielder moves over, so weapons are left to the player. A Rod of
+	// Alertness only gives its bonus for 10 minutes after it's planted, so that's a note, not an effect.
+	if (bonus(i.bonusAc) && !type.startsWith('Weapon') && i.name !== 'Rod of Alertness') e.ac = bonus(i.bonusAc);
 	// Attack and damage bonuses only count on weapons; ammunition's goes on the shot, which the player adds themselves.
 	if (type.startsWith('Weapon')) {
 		const attack = bonus(i.bonusWeapon) + bonus(i.bonusWeaponAttack);

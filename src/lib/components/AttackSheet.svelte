@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Sheet from './Sheet.svelte';
+	import Breakdown from './Breakdown.svelte';
 	import { session } from '$lib/session.svelte';
 	import { signedMod } from '$lib/rules/abilities';
 	import { changeQuantity } from '$lib/rules/items';
@@ -38,12 +39,12 @@
 			</div>
 		</div>
 
-		<ul class="parts">
-			<li><b>To hit</b> {live.hitParts.map((p) => `${p.label} ${p.value}`).join(' · ')}</li>
-			<li><b>Damage</b> {live.damageParts.map((p) => `${p.label} ${p.value}`).join(' · ')}</li>
-		</ul>
+		<h3 class="k">How it’s worked out</h3>
+		<Breakdown caption="To hit" parts={live.hitParts} total={signedMod(live.toHit)} />
+		<Breakdown caption="Damage" parts={live.damageParts} total={live.damage} />
 
 		{#if live.notes.length}
+			<h3 class="k">At the table (not in the numbers)</h3>
 			<ul class="notes">
 				{#each live.notes as n (n)}<li>{n}</li>{/each}
 			</ul>
@@ -112,23 +113,22 @@
 		color: var(--color-text-muted);
 	}
 
-	.parts,
+	h3.k {
+		margin-top: 16px;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+
 	.notes {
 		list-style: none;
-		margin-top: 12px;
+		margin-top: 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		font-size: 14px;
-	}
-
-	.parts {
-		color: var(--color-text-muted);
-	}
-
-	.parts b {
-		color: var(--color-text);
-		margin-right: 4px;
 	}
 
 	.notes li {

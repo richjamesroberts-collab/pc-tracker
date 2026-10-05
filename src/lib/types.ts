@@ -146,6 +146,25 @@ export interface InventoryItem {
 }
 
 export type Ability = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+export type Skill =
+	| 'acrobatics'
+	| 'animal-handling'
+	| 'arcana'
+	| 'athletics'
+	| 'deception'
+	| 'history'
+	| 'insight'
+	| 'intimidation'
+	| 'investigation'
+	| 'medicine'
+	| 'nature'
+	| 'perception'
+	| 'performance'
+	| 'persuasion'
+	| 'religion'
+	| 'sleight-of-hand'
+	| 'stealth'
+	| 'survival';
 export type AbilityScores = Record<Ability, number>;
 
 /** A sense the player adds themselves (Devil's Sight, Goggles of Night, a Custom Lineage's darkvision). */
@@ -208,6 +227,12 @@ export interface Character {
 	 * 'simple', 'martial', or a PHB weapon's lowercase name.
 	 */
 	weaponProficiencies: string[];
+	/** Skill proficiencies the player picked (class, background, feats, racial choices); fixed racial ones are added in rules/skills.ts. */
+	skillProficiencies: Skill[];
+	/** Skills with expertise (double proficiency): Rogue, Bard, feats. */
+	skillExpertise: Skill[];
+	/** Saving throw proficiencies beyond the class's (Resilient feat); see rules/saves.ts. */
+	saveProficiencies: Ability[];
 	/** Fighting style keys from `FIGHTING_STYLES` in rules/attacks.ts. */
 	fightingStyles: string[];
 	/** Senses beyond race and class. */

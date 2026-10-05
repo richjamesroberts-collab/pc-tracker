@@ -11,8 +11,10 @@
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
+	import { raceSkills, SKILLS } from '$lib/rules/skills';
+	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
-	import type { Ability, Character } from '$lib/types';
+	import type { Ability, Character, Skill } from '$lib/types';
 
 	let {
 		initial,
@@ -69,6 +71,32 @@
 			? c.weaponProficiencies.filter((k) => k !== key)
 			: [...c.weaponProficiencies, key];
 	}
+
+	const givenSkills = $derived(raceSkills(c));
+	/** Where each save's proficiency comes from without the player's picks. */
+	const givenSave = (a: Ability) => saveProficiencySource({ ...c, saveProficiencies: [] }, a);
+
+	function toggleSave(a: Ability) {
+		c.saveProficiencies = c.saveProficiencies.includes(a) ? c.saveProficiencies.filter((k) => k !== a) : [...c.saveProficiencies, a];
+	}
+
+	/** Tapping a skill steps it from not proficient to proficient to expertise and back; racial skills start proficient. */
+	function stepSkill(key: Skill) {
+		const given = givenSkills.skills.includes(key);
+		const prof = given || c.skillProficiencies.includes(key);
+		const expert = c.skillExpertise.includes(key);
+		if (expert) {
+			c.skillExpertise = c.skillExpertise.filter((k) => k !== key);
+			c.skillProficiencies = c.skillProficiencies.filter((k) => k !== key);
+		} else if (prof) {
+			c.skillExpertise = [...c.skillExpertise, key];
+		} else {
+			c.skillProficiencies = [...c.skillProficiencies, key];
+		}
+	}
+
+	const skillLevel = (key: Skill) =>
+		c.skillExpertise.includes(key) ? 'expertise' : givenSkills.skills.includes(key) || c.skillProficiencies.includes(key) ? 'proficient' : 'none';
 
 	function toggleStyle(key: string) {
 		c.fightingStyles = c.fightingStyles.includes(key) ? c.fightingStyles.filter((k) => k !== key) : [...c.fightingStyles, key];
@@ -418,6 +446,52 @@
 	</fieldset>
 
 	<fieldset>
+		<legend class="label">Saving throws</legend>
+		<ul class="sources">
+			{#each [...new Set(ABILITIES.map((a) => givenSave(a.key)).filter(Boolean))] as src (src)}
+				<li><b>{src}</b> {ABILITIES.filter((a) => givenSave(a.key) === src).map((a) => a.name).join(', ')}</li>
+			{/each}
+		</ul>
+		<p class="sub">Also proficient in (Resilient feat)</p>
+		<div class="chips saves">
+			{#each ABILITIES as a (a.key)}
+				{@const given = !!givenSave(a.key)}
+				<button
+					type="button"
+					aria-pressed={given || c.saveProficiencies.includes(a.key)}
+					disabled={given}
+					onclick={() => toggleSave(a.key)}
+				>{a.short}</button>
+			{/each}
+		</div>
+	</fieldset>
+
+	<fieldset>
+		<legend class="label">Skills</legend>
+		<p class="hint">
+			Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
+			feats and racial choices.
+		</p>
+		{#if givenSkills.skills.length}
+			<ul class="sources">
+				<li><b>{givenSkills.source}</b> {givenSkills.skills.map((k) => SKILLS.find((s) => s.key === k)?.name).join(', ')}</li>
+			</ul>
+		{/if}
+		<div class="chips skills">
+			{#each SKILLS as s (s.key)}
+				{@const level = skillLevel(s.key)}
+				<button
+					type="button"
+					class={level}
+					aria-pressed={level !== 'none'}
+					aria-label="{s.name}: {level === 'none' ? 'not proficient' : level}"
+					onclick={() => stepSkill(s.key)}
+				>{s.name}{level === 'expertise' ? ' ×2' : ''}</button>
+			{/each}
+		</div>
+	</fieldset>
+
+	<fieldset>
 		<legend class="label">Fighting styles</legend>
 		<p class="hint">
 			{styleCount
@@ -696,6 +770,21 @@
 		background: var(--color-accent);
 		border-color: var(--color-accent);
 		color: var(--color-on-accent);
+	}
+
+	/* Saves the class gives can't be turned off, but read as on. */
+	.chips.saves button:disabled {
+		opacity: 1;
+	}
+
+	.chips.skills button {
+		min-height: 36px;
+		padding: 0 10px;
+		font-size: 14px;
+	}
+
+	.chips.skills button.expertise {
+		box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 3.5px var(--color-accent);
 	}
 
 	.chips button:disabled {

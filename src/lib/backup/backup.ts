@@ -1,5 +1,6 @@
 import { legacyToBase, newCharacter } from '$lib/character';
 import { recompute } from '$lib/rules/stats';
+import { SKILL_KEYS } from '$lib/rules/skills';
 import type {
 	Ability,
 	AbilityScores,
@@ -13,6 +14,7 @@ import type {
 	ItemArmor,
 	ItemEffects,
 	ItemWeapon,
+	Skill,
 	Spell,
 	WeaponProperty
 } from '$lib/types';
@@ -147,6 +149,7 @@ function senses(v: unknown): CustomSense[] {
 }
 
 const strings = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))] : []);
+const skills = (v: unknown) => strings(v).filter((x): x is Skill => (SKILL_KEYS as string[]).includes(x));
 
 function scorePart(v: unknown): Partial<AbilityScores> | undefined {
 	if (!isObj(v)) return undefined;
@@ -248,6 +251,9 @@ export function readBackup(data: unknown): Character {
 		stable: !!raw.stable,
 		hitDiceUsed: Math.max(0, Math.floor(num(raw.hitDiceUsed, 0))),
 		weaponProficiencies: strings(raw.weaponProficiencies),
+		skillProficiencies: skills(raw.skillProficiencies),
+		skillExpertise: skills(raw.skillExpertise),
+		saveProficiencies: strings(raw.saveProficiencies).filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability)),
 		fightingStyles: strings(raw.fightingStyles),
 		senses: senses(raw.senses),
 		speed: typeof raw.speed === 'number' ? raw.speed : undefined,

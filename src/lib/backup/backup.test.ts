@@ -192,7 +192,7 @@ describe('race and resource fields', () => {
 describe('experience, proficiencies, senses and weapons', () => {
 	it('fills new fields when importing an old backup', () => {
 		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
-		expect(c).toMatchObject({ xp: 0, milestone: false, weaponProficiencies: [], fightingStyles: [], senses: [] });
+		expect(c).toMatchObject({ xp: 0, milestone: false, weaponProficiencies: [], fightingStyles: [], senses: [], skillProficiencies: [], skillExpertise: [], saveProficiencies: [] });
 	});
 
 	it('keeps them, dropping junk', () => {
