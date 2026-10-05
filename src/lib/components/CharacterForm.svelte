@@ -11,7 +11,7 @@
 	import { portraitFromFile } from '$lib/image';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, armorClass, initiative, maxHp, raceChoice, spellcastingMod, validPicks } from '$lib/rules/stats';
+	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, spellcastingMod, validPicks } from '$lib/rules/stats';
 	import { isCaster, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
@@ -434,7 +434,7 @@
 			{#if c.acAuto}
 				<p class="derived ac">AC {preview.ac.total}</p>
 				<p class="hint">
-					{preview.ac.parts.map((p) => `${p.label} ${p.value}`).join(' · ')}. Equip armor and shields in Inventory.
+					{formula(preview.ac.parts)}. Equip armor and shields in Inventory.
 				</p>
 			{:else}
 				<label class="field">

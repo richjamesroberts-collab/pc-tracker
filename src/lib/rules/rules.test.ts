@@ -35,7 +35,7 @@ import {
 	spendResource
 } from './features';
 import { abilityMod, signedMod } from './abilities';
-import { abilityBreakdown, armorClass, initiative, maxHp, recompute, setAcTotal, spellcasting } from './stats';
+import { abilityBreakdown, armorClass, formula, initiative, maxHp, recompute, setAcTotal, spellcasting } from './stats';
 import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
@@ -596,14 +596,17 @@ describe('armor class', () => {
 		expect(armorClass(pc({ classKey: 'sorcerer', subclassKey: 'draconic', abilities: scores({ dex: 14 }) })).total).toBe(15);
 	});
 
-	it('lists a worn magic shield and its bonus separately', () => {
+	it('counts worn magic armor and shields in their own number, written as a formula', () => {
 		const shield = armor('+1 Shield', 'shield', 2, { effects: { ac: 1 } });
 		const ac = armorClass(pc({ acAuto: true, abilities: scores({ dex: 20 }), items: [shield] }));
 		expect(ac.total).toBe(18);
-		expect(ac.parts.slice(-2)).toEqual([
-			{ label: '+1 Shield', value: '+2' },
-			{ label: '+1 Shield bonus', value: '+1' }
-		]);
+		expect(formula(ac.parts)).toBe('10 (Unarmored) +5 (DEX) +3 (+1 Shield)');
+
+		const mail = armor('+1 Chain Mail', 'heavy', 16, { effects: { ac: 1 } });
+		const ring = item({ name: 'Ring of Protection', attuned: true, effects: { ac: 1 } });
+		const armored = armorClass(pc({ acAuto: true, acAdjust: -2, items: [mail, shield, ring] }));
+		expect(armored.total).toBe(17 + 3 + 1 - 2);
+		expect(formula(armored.parts)).toBe('17 (+1 Chain Mail) +3 (+1 Shield) +1 (Ring of Protection) -2 (Adjustment)');
 	});
 
 	it('loses monk Unarmored Defense with a shield, but barbarians keep theirs', () => {
