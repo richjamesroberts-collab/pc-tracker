@@ -2,29 +2,22 @@
 	import { resolve } from '$app/paths';
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { signedMod } from '$lib/rules/abilities';
-	import { hitDie, hpForLevel, hpGain, levelUp, MAX_LEVEL, xpProgress } from '$lib/rules/xp';
+	import { MAX_LEVEL, xpProgress } from '$lib/rules/xp';
 	import type { Character } from '$lib/types';
 
 	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
 
 	const c = $derived(session.character as Character);
 	const progress = $derived(xpProgress(c));
-	const gain = $derived(hpGain(c));
 
 	let amount = $state<number | null>(null);
-	/** The hit die roll (or average) for the new level. */
-	let roll = $state<number | null>(null);
 
 	$effect(() => {
 		if (!open) return;
 		amount = null;
-		roll = null;
 	});
 
 	const amountOk = $derived(Number.isInteger(amount) && amount! > 0 && amount! <= 1000000);
-	const rollOk = $derived(Number.isInteger(roll) && roll! >= 1 && roll! <= hitDie(c.classKey));
-	const hp = $derived(hpForLevel(rollOk ? roll! : gain.average, gain.bonus));
 	const fmt = (n: number) => n.toLocaleString('en');
 
 	function addXp(e: SubmitEvent) {
@@ -47,13 +40,6 @@
 			d.xp = total;
 		});
 		amount = null;
-	}
-
-	function doLevelUp() {
-		const level = c.level + 1;
-		const gained = hp;
-		session.mutate(`Level ${level}! +${gained} max HP`, (d) => levelUp(d, gained));
-		roll = null;
 	}
 </script>
 
@@ -86,26 +72,8 @@
 	{#if c.level < MAX_LEVEL && (progress.ready || c.milestone)}
 		<section class="level" aria-labelledby="levelup-title">
 			<h3 id="levelup-title">Level up to {c.level + 1}</h3>
-			<p class="muted">
-				Hit points: roll a d{hitDie(c.classKey)} or take {gain.average}, plus {gain.parts.map((p) => `${p.label} ${signedMod(p.value)}`).join(', ')}.
-			</p>
-			<label class="field">
-				<span>Your d{hitDie(c.classKey)} roll</span>
-				<input
-					type="number"
-					inputmode="numeric"
-					min="1"
-					max={hitDie(c.classKey)}
-					step="1"
-					bind:value={roll}
-					placeholder="{gain.average} (average)"
-					aria-invalid={roll !== null && !rollOk}
-				/>
-			</label>
-			<button type="button" class="primary" disabled={roll !== null && !rollOk} onclick={doLevelUp}>
-				Level up: +{hp} max HP
-			</button>
-			<p class="muted small">Then check Features for what's new, and Edit for any Ability Score Improvement or new subclass.</p>
+			<p class="muted">Step through hit points, new features and the choices this level brings.</p>
+			<a class="primary" href={resolve('/c/[id]/level-up', { id: c.id })} onclick={onclose}>Level up</a>
 		</section>
 	{/if}
 </Sheet>
@@ -123,10 +91,6 @@
 		margin-top: 4px;
 		font-size: 14px;
 		color: var(--color-text-muted);
-	}
-
-	.small {
-		font-size: 13px;
 	}
 
 	.add {
@@ -218,7 +182,11 @@
 	}
 
 	.level .primary {
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: var(--color-heal);
 		color: var(--color-on-solid);
+		text-decoration: none;
 	}
 </style>

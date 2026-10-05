@@ -6,7 +6,10 @@ import type {
 	AbilityScores,
 	ArmorType,
 	Character,
+	CharacterFeat,
 	CharacterSpell,
+	ClassOption,
+	ClassOptionKind,
 	Coins,
 	CustomResource,
 	CustomDefense,
@@ -164,6 +167,39 @@ function customDefenses(v: unknown): CustomDefense[] {
 		});
 }
 
+function feats(v: unknown): CharacterFeat[] {
+	if (!Array.isArray(v)) return [];
+	return v
+		.filter((f) => isObj(f) && typeof f.name === 'string' && f.name.trim())
+		.map((f) => {
+			const picked = Array.isArray(f.abilities) ? f.abilities.filter((x: unknown): x is Ability => ABILITY_KEYS.includes(x as Ability)) : [];
+			const level = typeof f.level === 'number' && Number.isInteger(f.level) ? f.level : undefined;
+			const hp = typeof f.hpPerLevel === 'number' && Number.isFinite(f.hpPerLevel) ? f.hpPerLevel : undefined;
+			return {
+				id: str(f.id) || crypto.randomUUID(),
+				...(typeof f.ref === 'string' && f.ref ? { ref: f.ref } : {}),
+				name: (f.name as string).trim(),
+				...(level !== undefined ? { level } : {}),
+				...(picked.length ? { abilities: picked } : {}),
+				...(hp ? { hpPerLevel: hp } : {})
+			};
+		});
+}
+
+const OPTION_KINDS: ClassOptionKind[] = ['invocation', 'pact-boon', 'maneuver', 'arcane-shot', 'rune', 'infusion', 'discipline'];
+
+function classOptions(v: unknown): ClassOption[] {
+	if (!Array.isArray(v)) return [];
+	const seen = new Set<string>();
+	return v
+		.filter(
+			(o) =>
+				isObj(o) && typeof o.ref === 'string' && o.ref && typeof o.name === 'string' && OPTION_KINDS.includes(o.kind as ClassOptionKind)
+		)
+		.filter((o) => !seen.has(o.ref as string) && !!seen.add(o.ref as string))
+		.map((o) => ({ ref: o.ref as string, name: o.name as string, kind: o.kind as ClassOptionKind }));
+}
+
 const strings = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))] : []);
 const skills = (v: unknown) => strings(v).filter((x): x is Skill => (SKILL_KEYS as string[]).includes(x));
 
@@ -275,6 +311,8 @@ export function readBackup(data: unknown): Character {
 		skillExpertise: skills(raw.skillExpertise),
 		saveProficiencies: strings(raw.saveProficiencies).filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability)),
 		fightingStyles: strings(raw.fightingStyles),
+		feats: feats(raw.feats),
+		classOptions: classOptions(raw.classOptions),
 		senses: senses(raw.senses),
 		defenses: customDefenses(raw.defenses),
 		speed: typeof raw.speed === 'number' ? raw.speed : undefined,

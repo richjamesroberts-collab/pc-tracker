@@ -4,6 +4,8 @@ import classesJson from './classes.json';
 import racesJson from './races.json';
 import itemsJson from './items.json';
 import gearJson from './gear.json';
+import featsJson from './feats.json';
+import optionsJson from './options.json';
 import { CLASSES } from './classes';
 import { RACE_BOOKS, RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
@@ -18,12 +20,16 @@ import {
 	RARITIES,
 	unpack,
 	type ClassContent,
+	type ClassOptionData,
+	type FeatData,
 	type Content,
 	type GearItem,
 	type MagicItem,
 	type RaceContent
 } from './content';
 import { parseRegain } from '../rules/items';
+import { SKILL_KEYS } from '../rules/skills';
+import { OPTION_INFO } from '../rules/levelup';
 import raceAbilities from './race-abilities.json';
 import { newCharacter } from '$lib/character';
 import { armorClass, maxHp } from '../rules/stats';
@@ -290,5 +296,36 @@ describe("Volo's and Monsters of the Multiverse races", () => {
 	it('gives every resource its own key', () => {
 		const keys = RESOURCES.map((r) => r.key);
 		expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
+	});
+});
+
+describe('bundled feats and class options', () => {
+	const feats = featsJson as FeatData[];
+	const options = optionsJson as ClassOptionData[];
+
+	it('has every PHB/XGE/TCE feat, with choices the app can apply', () => {
+		expect(feats.length).toBeGreaterThanOrEqual(72);
+		expect(new Set(feats.map((f) => f.id)).size).toBe(feats.length);
+		const resilient = feats.find((f) => f.id === 'resilient|phb')!;
+		expect(resilient.save).toHaveLength(6);
+		expect(resilient.ability?.choose).toHaveLength(6);
+		expect(feats.find((f) => f.id === 'tough|phb')?.hpPerLevel).toBe(2);
+		expect(feats.find((f) => f.id === 'skilled|phb')?.skills).toEqual({ from: 'any', count: 3 });
+		for (const f of feats) {
+			if (Array.isArray(f.skills?.from)) for (const k of f.skills.from) expect(SKILL_KEYS).toContain(k);
+		}
+	});
+
+	it('has the class options level up offers', () => {
+		const kinds = new Set(options.map((o) => o.kind));
+		expect([...kinds].sort()).toEqual(Object.keys(OPTION_INFO).sort());
+		expect(options.filter((o) => o.kind === 'pact-boon').map((o) => o.name).sort()).toEqual([
+			'Pact of the Blade',
+			'Pact of the Chain',
+			'Pact of the Talisman',
+			'Pact of the Tome'
+		]);
+		const thirsting = options.find((o) => o.id === 'thirsting blade|phb');
+		expect(thirsting).toMatchObject({ level: 5, pact: 'blade' });
 	});
 });
