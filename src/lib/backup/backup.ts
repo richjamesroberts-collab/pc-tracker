@@ -9,6 +9,7 @@ import type {
 	CharacterSpell,
 	Coins,
 	CustomResource,
+	CustomDefense,
 	CustomSense,
 	InventoryItem,
 	ItemArmor,
@@ -148,6 +149,21 @@ function senses(v: unknown): CustomSense[] {
 		.map((s) => ({ id: str(s.id) || crypto.randomUUID(), name: (s.name as string).trim(), range: Math.min(9999, Math.round(s.range as number)) }));
 }
 
+function customDefenses(v: unknown): CustomDefense[] {
+	if (!Array.isArray(v)) return [];
+	return v
+		.filter((d) => isObj(d) && (d.kind === 'resistance' || d.kind === 'immunity') && typeof d.name === 'string' && d.name.trim())
+		.map((d) => {
+			const source = typeof d.source === 'string' ? d.source.trim() : '';
+			return {
+				id: str(d.id) || crypto.randomUUID(),
+				kind: d.kind as CustomDefense['kind'],
+				name: (d.name as string).trim().toLowerCase(),
+				...(source ? { source } : {})
+			};
+		});
+}
+
 const strings = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))] : []);
 const skills = (v: unknown) => strings(v).filter((x): x is Skill => (SKILL_KEYS as string[]).includes(x));
 
@@ -161,6 +177,7 @@ function scorePart(v: unknown): Partial<AbilityScores> | undefined {
 function effects(v: unknown): ItemEffects | undefined {
 	if (!isObj(v)) return undefined;
 	const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x !== 0 ? x : undefined);
+	const list = (x: unknown) => (strings(x).length ? strings(x) : undefined);
 	const e: ItemEffects = {
 		set: scorePart(v.set),
 		add: scorePart(v.add),
@@ -170,7 +187,10 @@ function effects(v: unknown): ItemEffects | undefined {
 		spellDc: n(v.spellDc),
 		unarmoredOnly: v.unarmoredOnly === true || undefined,
 		attack: n(v.attack),
-		damage: n(v.damage)
+		damage: n(v.damage),
+		resist: list(v.resist),
+		immune: list(v.immune),
+		conditionImmune: list(v.conditionImmune)
 	};
 	return Object.fromEntries(Object.entries(e).filter(([, x]) => x !== undefined)) as ItemEffects;
 }
@@ -256,6 +276,7 @@ export function readBackup(data: unknown): Character {
 		saveProficiencies: strings(raw.saveProficiencies).filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability)),
 		fightingStyles: strings(raw.fightingStyles),
 		senses: senses(raw.senses),
+		defenses: customDefenses(raw.defenses),
 		speed: typeof raw.speed === 'number' ? raw.speed : undefined,
 		initiativeModifier: optionalNum(raw.initiativeModifier),
 		initiativeOverride: optionalNum(raw.initiativeOverride),

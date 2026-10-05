@@ -192,7 +192,7 @@ describe('race and resource fields', () => {
 describe('experience, proficiencies, senses and weapons', () => {
 	it('fills new fields when importing an old backup', () => {
 		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
-		expect(c).toMatchObject({ xp: 0, milestone: false, weaponProficiencies: [], fightingStyles: [], senses: [], skillProficiencies: [], skillExpertise: [], saveProficiencies: [] });
+		expect(c).toMatchObject({ xp: 0, milestone: false, weaponProficiencies: [], fightingStyles: [], senses: [], skillProficiencies: [], skillExpertise: [], saveProficiencies: [], defenses: [] });
 	});
 
 	it('keeps them, dropping junk', () => {
@@ -208,6 +208,12 @@ describe('experience, proficiencies, senses and weapons', () => {
 				weaponProficiencies: ['whip', 3, 'whip'],
 				fightingStyles: ['defense'],
 				senses: [{ id: 's', name: 'Darkvision', range: 60 }, { name: '', range: 10 }, { name: 'Tremorsense', range: -5 }],
+				defenses: [
+					{ id: 'd', kind: 'resistance', name: ' Cold ', source: 'Infernal Constitution' },
+					{ id: 'e', kind: 'immunity', name: 'charmed', source: '' },
+					{ kind: 'weakness', name: 'fire' },
+					{ kind: 'immunity', name: '  ' }
+				],
 				items: [
 					{
 						id: 'i',
@@ -217,18 +223,24 @@ describe('experience, proficiencies, senses and weapons', () => {
 						weapon: { base: 'longsword', category: 'martial', damage: '1d8', damageType: 'slashing', properties: ['versatile', 'bogus'], versatile: '1d10' },
 						effects: { attack: 1, damage: 1 }
 					},
+					{ id: 'r', name: 'Ring of Cold Resistance', attunement: true, attuned: true, effects: { resist: ['cold', 4], immune: [] } },
 					{ id: 'j', name: 'Stick', weapon: { base: 'stick', category: 'exotic' }, equipped: true }
 				]
 			}
 		});
 		expect(c).toMatchObject({ xp: 6500, milestone: false, weaponProficiencies: ['whip'], fightingStyles: ['defense'] });
 		expect(c.senses).toEqual([{ id: 's', name: 'Darkvision', range: 60 }]);
+		expect(c.defenses).toEqual([
+			{ id: 'd', kind: 'resistance', name: 'cold', source: 'Infernal Constitution' },
+			{ id: 'e', kind: 'immunity', name: 'charmed' }
+		]);
+		expect(c.items[1].effects).toEqual({ resist: ['cold'] });
 		expect(c.items[0]).toMatchObject({
 			equipped: true,
 			weapon: { base: 'longsword', ranged: false, properties: ['versatile'], versatile: '1d10' },
 			effects: { attack: 1, damage: 1 }
 		});
-		expect(c.items[1].weapon).toBeUndefined();
-		expect(c.items[1].equipped).toBeUndefined();
+		expect(c.items[2].weapon).toBeUndefined();
+		expect(c.items[2].equipped).toBeUndefined();
 	});
 });

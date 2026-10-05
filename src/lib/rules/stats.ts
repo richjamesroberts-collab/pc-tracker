@@ -20,11 +20,18 @@ export interface RaceAsi {
 	choose?: { from: Ability[]; count: number; amount: number; max?: number };
 }
 
-interface RaceAbilities {
+/** Damage types resisted or immune to, and conditions immune to (lowercase); a subrace's add to the race's. */
+export interface RaceDefenses {
+	resist?: string[];
+	immune?: string[];
+	conditionImmune?: string[];
+}
+
+interface RaceAbilities extends RaceDefenses {
 	asi?: RaceAsi;
 	/** Feet; a subrace's own darkvision replaces it. */
 	darkvision?: number;
-	subraces: Record<string, { asi?: RaceAsi; replaces?: true; darkvision?: number }>;
+	subraces: Record<string, { asi?: RaceAsi; replaces?: true; darkvision?: number } & RaceDefenses>;
 }
 
 export const RACE_ABILITIES = raceAbilitiesJson as Record<string, RaceAbilities>;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Pips from '$lib/components/Pips.svelte';
+	import SpellNav from '$lib/components/SpellNav.svelte';
 	import CastSheet from '$lib/components/CastSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
 	import { session } from '$lib/session.svelte';
@@ -58,6 +59,8 @@
 		<button type="button" onclick={() => session.mutate('Long rest: HP, slots, points and features restored', longRest)}>Long rest</button>
 	</div>
 </div>
+
+<SpellNav id={c.id} />
 
 <section class="card slots">
 	<div class="head">

@@ -54,6 +54,7 @@ import {
 import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon, martialArtsDie } from './attacks';
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
+import { defenses } from './defenses';
 import { skillChecks } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
@@ -1018,5 +1019,71 @@ describe('saving throws', () => {
 		expect(save(pc({ raceKey: 'dwarf' }), 'con').notes).toContain('Dwarven Resilience (Dwarf): advantage against poison');
 		expect(save(pc({ raceKey: 'gnome' }), 'wis').notes[0]).toMatch(/^Gnome Cunning/);
 		expect(save(pc({ classKey: 'barbarian', level: 2 }), 'dex').notes[0]).toMatch(/^Danger Sense/);
+	});
+});
+
+describe('resistances and immunities', () => {
+	const names = (list: { name: string }[]) => list.map((d) => d.name);
+	it('comes from race, subrace and dragon ancestry', () => {
+		expect(names(defenses(pc({ raceKey: 'tiefling' })).resistances)).toEqual(['fire']);
+		expect(defenses(pc({ raceKey: 'halfling', subraceKey: 'stout' })).resistances).toEqual([
+			{ kind: 'resistance', name: 'poison', sources: ['Stout Halfling'] }
+		]);
+		expect(names(defenses(pc({ raceKey: 'dragonborn', subraceKey: 'silver' })).resistances)).toEqual(['cold']);
+		expect(names(defenses(pc({ raceKey: 'yuan-ti-pureblood-vgm' })).immunities)).toEqual(['poison', 'poisoned']);
+		expect(names(defenses(pc({ raceKey: 'elf', subraceKey: 'high' })).immunities)).toEqual(['magical sleep']);
+		expect(defenses(pc({ raceKey: 'human' }))).toEqual({ resistances: [], immunities: [], notes: [] });
+	});
+	it('comes from class and subclass features at their level', () => {
+		const rage = defenses(pc({ classKey: 'barbarian', level: 1 })).resistances;
+		expect(rage).toEqual([{ kind: 'resistance', name: 'bludgeoning, piercing and slashing', when: 'while raging', sources: ['Rage'] }]);
+		expect(names(defenses(pc({ classKey: 'barbarian', subclassKey: 'totem-bear', level: 3 })).resistances)).toEqual(['all damage but psychic']);
+		expect(names(defenses(pc({ classKey: 'sorcerer', subclassKey: 'storm', level: 5 })).resistances)).toEqual([]);
+		expect(names(defenses(pc({ classKey: 'sorcerer', subclassKey: 'storm', level: 6 })).resistances)).toEqual(['lightning', 'thunder']);
+		expect(defenses(pc({ classKey: 'warlock', subclassKey: 'fiend', level: 10 })).notes[0].source).toBe('Fiendish Resilience');
+	});
+	it('drops a resistance the character is immune to', () => {
+		const d = defenses(pc({ classKey: 'sorcerer', subclassKey: 'storm', level: 18 }));
+		expect(names(d.resistances)).toEqual([]);
+		expect(names(d.immunities)).toEqual(['lightning', 'thunder']);
+		const dwarfMonk = defenses(pc({ raceKey: 'dwarf', classKey: 'monk', level: 10 }));
+		expect(names(dwarfMonk.resistances)).toEqual([]);
+		expect(names(dwarfMonk.immunities)).toEqual(['poison', 'poisoned', 'disease']);
+	});
+	it("adds the player's own, merging with the same thing from elsewhere", () => {
+		const d = defenses(
+			pc({
+				raceKey: 'tiefling',
+				defenses: [
+					{ id: 'a', kind: 'resistance', name: 'Fire', source: 'Boon' },
+					{ id: 'b', kind: 'resistance', name: 'cold', source: 'Infernal Constitution' },
+					{ id: 'c', kind: 'immunity', name: 'charmed' }
+				]
+			})
+		);
+		expect(d.resistances).toEqual([
+			{ kind: 'resistance', name: 'fire', sources: ['Tiefling', 'Boon'] },
+			{ kind: 'resistance', name: 'cold', sources: ['Infernal Constitution'] }
+		]);
+		expect(d.immunities).toEqual([{ kind: 'immunity', name: 'charmed', sources: ['Your choice'] }]);
+	});
+	it('counts items only while attuned', () => {
+		const ring: InventoryItem = {
+			id: 'r',
+			kind: 'magic',
+			ref: 'ring of fire resistance|dmg',
+			name: 'Ring of Fire Resistance',
+			type: 'Ring',
+			rarity: 'rare',
+			attunement: true,
+			attuned: false,
+			quantity: 1,
+			effects: { resist: ['fire'] },
+			notes: ''
+		};
+		expect(defenses(pc({ items: [ring] })).resistances).toEqual([]);
+		expect(defenses(pc({ raceKey: 'tiefling', items: [{ ...ring, attuned: true }] })).resistances).toEqual([
+			{ kind: 'resistance', name: 'fire', sources: ['Tiefling', 'Ring of Fire Resistance'] }
+		]);
 	});
 });

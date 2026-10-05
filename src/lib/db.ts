@@ -74,6 +74,13 @@ class PcTrackerDB extends Dexie {
 				.toCollection()
 				.modify((c: Character) => migrateToBaseStats(c))
 		);
+		// The player's own resistances and immunities.
+		this.version(10).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
+		);
 	}
 }
 
