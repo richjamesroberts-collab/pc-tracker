@@ -2,10 +2,12 @@
 	import { resolve } from '$app/paths';
 	import Pips from '$lib/components/Pips.svelte';
 	import CounterSheet from '$lib/components/CounterSheet.svelte';
+	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { loadContent, featureGroups, type Content } from '$lib/data/content';
-	import { resourceLeft, resourcesFor, restoreCustom, restoreResource, spendCustom, spendResource, type ResourceDef } from '$lib/rules/features';
-	import { longRest, shortRest } from '$lib/rules/resources';
+	import { proficiencyBonus, resourceLeft, resourcesFor, restoreCustom, restoreResource, spendCustom, spendResource, type ResourceDef } from '$lib/rules/features';
+	import { longRest } from '$lib/rules/resources';
+	import { signedMod } from '$lib/rules/abilities';
 	import { FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { proficiencyLabel, proficiencyList, weaponProficiencies } from '$lib/rules/proficiency';
 	import { senses } from '$lib/rules/senses';
@@ -42,7 +44,10 @@
 	let editing = $state(-1);
 	const editingCounter = $derived(editing >= 0 ? c.customResources[editing] : undefined);
 
-	const resetLabel = (kind: 'short' | 'long') => (kind === 'short' ? 'Short rest' : 'Long rest');
+	let restOpen = $state(false);
+
+	const RESET_LABEL = { short: 'Short rest', long: 'Long rest', none: 'No recharge' };
+	const resetLabel = (kind: CustomResource['reset']) => RESET_LABEL[kind];
 
 	function spend(def: ResourceDef, n = 1) {
 		session.mutate(`${def.name} used`, (d) => spendResource(d, def.key, n));
@@ -90,8 +95,8 @@
 <div class="top">
 	<h1>Features</h1>
 	<div class="rests">
-		<button type="button" onclick={() => session.mutate('Short rest taken', shortRest)}>Short rest</button>
-		<button type="button" onclick={() => session.mutate('Long rest: HP, slots, points and features restored', longRest)}>Long rest</button>
+		<button type="button" onclick={() => (restOpen = true)}>Short rest</button>
+		<button type="button" onclick={() => session.mutate('Long rest: HP, slots, points, features and hit dice restored', longRest)}>Long rest</button>
 	</div>
 </div>
 
@@ -156,6 +161,7 @@
 
 <h2 class="label group">Proficiencies and senses</h2>
 <div class="card profs">
+	<p><b>Proficiency bonus</b> {signedMod(proficiencyBonus(c.level))}</p>
 	<p><b>Weapons</b> {weapons.length ? weapons.join(', ') : 'None'}</p>
 	{#each styles as st (st.key)}
 		<p><b>{st.name}</b> {st.text}</p>
@@ -198,6 +204,8 @@
 		</div>
 	{/each}
 {/if}
+
+<ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
 
 <CounterSheet
 	open={sheetOpen}

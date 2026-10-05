@@ -19,7 +19,7 @@
 
 	let name = $state('');
 	let max = $state(1);
-	let reset = $state<'short' | 'long'>('long');
+	let reset = $state<CustomResource['reset']>('long');
 	// Fixed when the sheet opens, so the title doesn't flip to "New counter" while it closes after a delete.
 	let editing = $state(false);
 
@@ -64,11 +64,13 @@
 			<input type="number" inputmode="numeric" min="1" max="99" step="1" bind:value={max} required />
 		</label>
 		<div class="field">
-			<span id="counter-reset">Comes back on a</span>
+			<span id="counter-reset">Comes back on</span>
 			<div class="modes" role="radiogroup" aria-labelledby="counter-reset">
 				<button type="button" role="radio" aria-checked={reset === 'short'} onclick={() => (reset = 'short')}>Short rest</button>
 				<button type="button" role="radio" aria-checked={reset === 'long'} onclick={() => (reset = 'long')}>Long rest</button>
+				<button type="button" role="radio" aria-checked={reset === 'none'} onclick={() => (reset = 'none')}>None</button>
 			</div>
+			{#if reset === 'none'}<small>Rests don't bring uses back; restore them by hand.</small>{/if}
 		</div>
 		<button type="submit" class="save" disabled={!valid}>{editing ? 'Save' : 'Add counter'}</button>
 		{#if editing && ondelete}
@@ -122,7 +124,7 @@
 
 	.modes {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 4px;
 		padding: 4px;
 		background: var(--color-chip);
@@ -142,6 +144,11 @@
 		background: var(--color-spell-ink);
 		color: var(--color-bg);
 		font-weight: 800;
+	}
+
+	.field small {
+		font-size: 13px;
+		color: var(--color-text-muted);
 	}
 
 	.save {

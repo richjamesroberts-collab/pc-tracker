@@ -44,7 +44,8 @@ export interface CustomResource {
 	id: string;
 	name: string;
 	max: number;
-	reset: 'short' | 'long';
+	/** 'none': spent uses only come back when the player restores them. */
+	reset: 'short' | 'long' | 'none';
 	used: number;
 }
 
@@ -199,6 +200,8 @@ export interface Character {
 	tempHp: number;
 	deathSaves: DeathSaves;
 	stable: boolean;
+	/** Hit dice spent (one per level in total, the class's hit die); half come back on a long rest. */
+	hitDiceUsed: number;
 
 	/**
 	 * Weapon proficiencies beyond class, subclass and race (feats, multiclassing, a Kensei's or Bladesinger's pick):

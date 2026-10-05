@@ -61,7 +61,7 @@ function customResources(v: unknown): CustomResource[] {
 	const out: CustomResource[] = [];
 	for (const r of v) {
 		if (!isObj(r) || typeof r.id !== 'string' || typeof r.name !== 'string' || !r.name) continue;
-		if (r.reset !== 'short' && r.reset !== 'long') continue;
+		if (r.reset !== 'short' && r.reset !== 'long' && r.reset !== 'none') continue;
 		const max = Math.max(1, num(r.max, 1));
 		out.push({ id: r.id, name: r.name, max, reset: r.reset, used: Math.min(max, Math.max(0, num(r.used, 0))) });
 	}
@@ -246,6 +246,7 @@ export function readBackup(data: unknown): Character {
 		tempHp: Math.max(0, num(raw.tempHp, 0)),
 		deathSaves: { successes: num(saves.successes, 0), failures: num(saves.failures, 0) },
 		stable: !!raw.stable,
+		hitDiceUsed: Math.max(0, Math.floor(num(raw.hitDiceUsed, 0))),
 		weaponProficiencies: strings(raw.weaponProficiencies),
 		fightingStyles: strings(raw.fightingStyles),
 		senses: senses(raw.senses),
@@ -278,6 +279,7 @@ export function readBackup(data: unknown): Character {
 	// Backups from before base stats: keep what the player typed as the base or an override.
 	// AC and max HP already fall back to what was typed; the spellcasting modifier and initiative become overrides.
 	if (raw.hpBase === undefined) legacyToBase(c);
+	c.hitDiceUsed = Math.min(c.hitDiceUsed, c.level);
 	return recompute(c);
 }
 
