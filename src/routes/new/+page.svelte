@@ -7,7 +7,7 @@
 	import { CLASS_MAP } from '$lib/data/classes';
 	import { signedMod } from '$lib/rules/abilities';
 	import { applyChoices, applyLevelUp, hasChoices, levelUpNeeds, startingHp, type LevelUpChoices } from '$lib/rules/levelup';
-	import { recompute } from '$lib/rules/stats';
+	import { formula, recompute } from '$lib/rules/stats';
 	import { hitDie, hpGain } from '$lib/rules/xp';
 	import { cacheSpell } from '$lib/library.svelte';
 	import { db, requestPersistentStorage } from '$lib/db';
@@ -218,7 +218,7 @@
 	{:else if stage === 'hp' && final && gain}
 		<p class="lead">
 			A d{hitDie(final.classKey)} at 1st level{target > 1 ? `, then the average of ${gain.average} for each level after` : ''}, plus
-			{gain.parts.map((p) => `${p.label} ${signedMod(p.value)}`).join(', ')} per level.
+			{formula(gain.parts.map((p) => ({ label: p.label, value: signedMod(p.value) })), true)} per level.
 		</p>
 		<p class="big">{hpAuto} max HP</p>
 		<label class="field">

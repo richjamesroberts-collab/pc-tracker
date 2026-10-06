@@ -464,7 +464,7 @@
 			</label>
 		</div>
 		{#if !isNew && preview.hp.total !== c.hpBase}
-			<p class="hint">With magic items: max HP {preview.hp.total} ({preview.hp.parts.slice(1).map((p) => `${p.label} ${p.value}`).join(', ')})</p>
+			<p class="hint">Max HP {preview.hp.total} with magic items: {formula(preview.hp.parts)}</p>
 		{/if}
 
 		<div class="two even">
@@ -478,7 +478,7 @@
 			</label>
 		</div>
 		<p class="hint">
-			Initiative: {preview.init.parts.map((p) => `${p.label} ${p.value}`).join(', ')}.
+			Initiative: {formula(preview.init.parts, true)}.
 			{c.initiativeOverride != null ? 'Clear the box to use this.' : 'Type a number to use your own (Alert feat).'}
 		</p>
 	{/if}
