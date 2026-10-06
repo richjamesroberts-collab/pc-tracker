@@ -16,6 +16,8 @@
 	import SpellcastingSheet from '$lib/components/SpellcastingSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
 	import CountersCard from '$lib/components/CountersCard.svelte';
+	import PotionIcon from '$lib/components/PotionIcon.svelte';
+	import PotionSheet from '$lib/components/PotionSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
@@ -38,6 +40,7 @@
 	import { abilityBreakdown } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
+	import { healingDice, isPotion } from '$lib/rules/potions';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -82,6 +85,35 @@
 	let hpMode = $state<HpMode>('damage');
 	let menuOpen = $state(false);
 	let backupOpen = $state(false);
+
+	const potions = $derived.by(() => {
+		const all = c.items.filter(isPotion);
+		const group = (healing: boolean) => {
+			const list = all.filter((i) => !!healingDice(i) === healing);
+			return {
+				count: list.reduce((n, i) => n + i.quantity, 0),
+				names: list.map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name)).join(', ')
+			};
+		};
+		return { healing: group(true), other: group(false) };
+	});
+	let potionGroup = $state<'healing' | 'other' | null>(null);
+
+	/** The last potion's healing, shown rising off the hit points; `n` restarts the animation. */
+	let healFx = $state<{ amount: number; n: number } | null>(null);
+	let healTimer: ReturnType<typeof setTimeout> | undefined;
+	let hpCard: HTMLElement | undefined = $state();
+
+	function healed(amount: number) {
+		clearTimeout(healTimer);
+		healFx = { amount, n: (healFx?.n ?? 0) + 1 };
+		healTimer = setTimeout(() => (healFx = null), 1800);
+		// The sheet has closed by now; bring the hit points into view if the page was scrolled down to the potions.
+		requestAnimationFrame(() => {
+			const top = hpCard?.getBoundingClientRect().top ?? 0;
+			if (top < 0) hpCard?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		});
+	}
 
 	function openHp(mode: HpMode) {
 		hpMode = mode;
@@ -160,12 +192,14 @@
 	{#if down}
 		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
 	{:else}
-		<section class="card hp" aria-labelledby="hp-title">
+		<section class="card hp" class:healed={!!healFx} aria-labelledby="hp-title" bind:this={hpCard}>
 			<div class="hp-head">
 				<h2 id="hp-title" class="label">Hit points</h2>
 				{#if c.tempHp > 0}<span class="temp-chip">+{c.tempHp} temp</span>{/if}
 			</div>
-			<p class="hp-num"><span class="cur">{c.hpCurrent}</span><span class="max">/ {c.hpMax}</span></p>
+			<p class="hp-num">
+				{#key healFx?.n}<span class="cur" class:pulse={!!healFx}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
+			</p>
 			<div class="bar" aria-hidden="true">
 				<div class="fill {hpTone}" style:width="{hpPct}%"></div>
 				<div class="fill temp" style:width="{tempPct}%"></div>
@@ -175,6 +209,17 @@
 				<button type="button" class="heal" onclick={() => openHp('heal')}>Heal</button>
 				<button type="button" class="temp" onclick={() => openHp('temp')}>Temp HP</button>
 			</div>
+			{#if healFx}
+				{#key healFx.n}
+					<span class="heal-fx" aria-hidden="true">
+						<span class="glow"></span>
+						<span class="gain">+{healFx.amount}</span>
+						{#each [18, 38, 62, 82] as x, i (x)}
+							<span class="spark" style:left="{x}%" style:animation-delay="{i * 90}ms">+</span>
+						{/each}
+					</span>
+				{/key}
+			{/if}
 		</section>
 	{/if}
 </div>
@@ -200,6 +245,26 @@
 			<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
 		{/each}
 	</div>
+{/if}
+
+{#if potions.healing.count || potions.other.count}
+	<section class="potions" aria-labelledby="potions-title">
+		<h2 id="potions-title" class="label">Potions</h2>
+		<div class="card potion-list">
+			{#each [['healing', 'Healing potions'], ['other', 'Other potions']] as const as [key, label] (key)}
+				{#if potions[key].count}
+					<button type="button" class="potion-row" onclick={() => (potionGroup = key)}>
+						<PotionIcon kind={key} size={36} />
+						<span class="p-name">
+							<b>{label}</b>
+							<span>{potions[key].names}</span>
+						</span>
+						<span class="p-count {key}">{potions[key].count}</span>
+					</button>
+				{/if}
+			{/each}
+		</div>
+	</section>
 {/if}
 
 <section class="attacks" aria-labelledby="attacks-title">
@@ -285,6 +350,7 @@
 <FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
+<PotionSheet group={potionGroup} onclose={() => (potionGroup = null)} onhealed={healed} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
@@ -463,8 +529,138 @@
 	}
 
 	.hp {
+		position: relative;
 		min-width: 0;
 		padding: 14px;
+		transition: box-shadow 0.4s;
+	}
+
+	.hp.healed {
+		box-shadow: 0 0 0 2px var(--color-heal), var(--shadow-sm);
+	}
+
+	/* A potion's healing: a green wash, the number floating up, and little crosses rising off the card. */
+	.heal-fx {
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	.glow {
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(circle at 30% 45%, var(--color-heal), transparent 70%);
+		opacity: 0;
+		animation: heal-glow 1.2s ease-out;
+	}
+
+	.gain {
+		position: absolute;
+		right: 14px;
+		top: 34px;
+		font-family: var(--font-display);
+		font-size: 34px;
+		font-weight: 900;
+		color: var(--color-heal);
+		opacity: 0;
+		animation: heal-rise 1.6s ease-out;
+	}
+
+	.spark {
+		position: absolute;
+		bottom: 8px;
+		font-size: 18px;
+		font-weight: 900;
+		color: var(--color-heal);
+		opacity: 0;
+		animation: heal-spark 1.3s ease-out both;
+	}
+
+	.cur.pulse {
+		display: inline-block;
+		animation: heal-pulse 0.7s ease-out;
+	}
+
+	@keyframes heal-glow {
+		0% {
+			opacity: 0;
+		}
+		25% {
+			opacity: 0.28;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+
+	@keyframes heal-rise {
+		0% {
+			opacity: 0;
+			transform: translateY(16px) scale(0.7);
+		}
+		20% {
+			opacity: 1;
+			transform: translateY(0) scale(1.1);
+		}
+		70% {
+			opacity: 1;
+			transform: translateY(-10px) scale(1);
+		}
+		100% {
+			opacity: 0;
+			transform: translateY(-26px);
+		}
+	}
+
+	@keyframes heal-spark {
+		0% {
+			opacity: 0;
+			transform: translateY(0) scale(0.6);
+		}
+		30% {
+			opacity: 0.9;
+		}
+		100% {
+			opacity: 0;
+			transform: translateY(-90px) scale(1.2);
+		}
+	}
+
+	@keyframes heal-pulse {
+		0% {
+			transform: scale(1);
+		}
+		35% {
+			transform: scale(1.15);
+			color: var(--color-heal);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.glow,
+		.spark,
+		.cur.pulse {
+			animation: none;
+		}
+
+		.gain {
+			animation: heal-fade 1.6s ease-out;
+		}
+
+		@keyframes heal-fade {
+			0%,
+			70% {
+				opacity: 1;
+			}
+			100% {
+				opacity: 0;
+			}
+		}
 	}
 
 	.hp-head {
@@ -632,6 +828,82 @@
 
 	.attacks {
 		margin-top: 14px;
+	}
+
+	.potions {
+		margin-top: 14px;
+	}
+
+	.potions .label {
+		margin: 0 4px 6px;
+	}
+
+	.potion-list {
+		overflow: hidden;
+	}
+
+	.potion-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		min-height: 60px;
+		padding: 8px 12px;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		font-weight: 400;
+		text-align: left;
+	}
+
+	.potion-row + .potion-row {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.potion-row:active {
+		background: var(--color-chip);
+	}
+
+	.p-name {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.p-name b {
+		font-size: 16px;
+	}
+
+	.p-name span {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.p-count {
+		flex-shrink: 0;
+		min-width: 36px;
+		padding: 4px 8px;
+		border-radius: 10px;
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-weight: 900;
+		text-align: center;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.p-count.healing {
+		background: var(--color-chip);
+		color: var(--color-heal);
+	}
+
+	.p-count.other {
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
 	}
 
 	.attacks-head {
