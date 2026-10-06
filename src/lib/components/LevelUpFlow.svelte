@@ -87,7 +87,7 @@
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { raceSkills, SKILLS } from '$lib/rules/skills';
 	import { ordinal, pactSlots, slotMax } from '$lib/rules/spellcasting';
-	import { abilityBreakdown, recompute } from '$lib/rules/stats';
+	import { abilityBreakdown, formula, recompute } from '$lib/rules/stats';
 	import { hitDie, hpForLevel, hpGain, xpForLevel } from '$lib/rules/xp';
 	import { characterSpells, spellListClass, spellPool } from '$lib/library.svelte';
 	import {
@@ -774,7 +774,7 @@
 		{/if}
 	{:else if step === 'hp'}
 		<p class="lead">
-			Roll a d{die} or take {gain.average}, then add {gain.parts.map((p) => `${p.label} ${signedMod(p.value)}`).join(', ')}.
+			Roll a d{die} or take {gain.average}, then add {formula(gain.parts.map((p) => ({ label: p.label, value: signedMod(p.value) })), true)}.
 		</p>
 		<label class="field">
 			<span>Your d{die} roll</span>

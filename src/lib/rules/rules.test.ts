@@ -575,6 +575,7 @@ describe('worked-out stats', () => {
 		const amulet = magic('Amulet of Health', { set: { con: 19 } });
 		const c = pc({ level: 5, hpBase: 40, hpCurrent: 40, abilities: scores({ con: 12 }), items: [amulet] });
 		expect(maxHp(c).total).toBe(55);
+		expect(formula(maxHp(c).parts)).toBe('40 (Your max HP) +15 (CON +3 from items × level 5)');
 		recompute(c);
 		expect(c.hpMax).toBe(55);
 		c.hpCurrent = 55;
@@ -667,6 +668,8 @@ describe('initiative and spellcasting', () => {
 		expect(initiative(pc({ classKey: 'bard', level: 1, abilities: scores({ dex: 14 }) })).total).toBe(2);
 		expect(initiative(pc({ classKey: 'fighter', subclassKey: 'champion', level: 7, abilities: scores({ dex: 14 }) })).total).toBe(4);
 		expect(initiative(pc({ classKey: 'bard', level: 5, initiativeOverride: 7 })).total).toBe(7);
+		expect(formula(initiative(pc({ classKey: 'bard', level: 5, abilities: scores({ dex: 14 }) })).parts, true)).toBe('+2 (DEX) +1 (Jack of All Trades)');
+		expect(formula(initiative(pc({ abilities: scores({ dex: 8 }) })).parts, true)).toBe('-1 (DEX)');
 	});
 
 	it('works out the spellcasting modifier and item bonuses to DC and attack', () => {

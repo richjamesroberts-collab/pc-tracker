@@ -45,8 +45,12 @@ export interface StatSource {
 	from?: string;
 }
 
-/** "10 (Unarmored) +5 (DEX) +3 (+1 Shield)": each number, then where it comes from. */
-export const formula = (parts: StatSource[]) => parts.map((p, n) => `${n ? p.value : p.value.replace(/^\+/, '')} (${p.label})`).join(' ');
+/**
+ * "10 (Unarmored) +5 (DEX) +3 (+1 Shield)": each number, then where it comes from. The first number drops its
+ * plus sign unless `signed` (a modifier, like initiative: "+5 (DEX) +1 (Jack of All Trades)").
+ */
+export const formula = (parts: Pick<StatSource, 'label' | 'value'>[], signed = false) =>
+	parts.map((p, n) => `${n || signed ? p.value : p.value.replace(/^\+/, '')} (${p.label})`).join(' ');
 
 export interface AbilityBreakdown {
 	/** Totals with everything applied. */
@@ -342,7 +346,7 @@ export function spellcasting(c: StatInput, breakdown = abilityBreakdown(c)): Spe
 export function maxHp(c: StatInput, breakdown = abilityBreakdown(c)): Breakdown {
 	const diff = abilityMod(breakdown.scores.con) - abilityMod(breakdown.withoutItems.con);
 	const parts: StatSource[] = [{ label: 'Your max HP', value: `${c.hpBase}` }];
-	if (diff) parts.push({ label: `CON ${signedMod(diff)} × level ${c.level} (items)`, value: signedMod(diff * c.level) });
+	if (diff) parts.push({ label: `CON ${signedMod(diff)} from items × level ${c.level}`, value: signedMod(diff * c.level) });
 	return { total: Math.max(1, c.hpBase + diff * c.level), parts };
 }
 
