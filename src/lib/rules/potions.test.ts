@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
 import type { Character, InventoryItem } from '$lib/types';
-import { drinkPotion, healingDice, healingRange, isPotion } from './potions';
+import { drinkPotion, healingDice, healingRange, isPotion, potionTempHp } from './potions';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', hpMax: 30, hpCurrent: 12, ...overrides };
@@ -50,25 +50,45 @@ describe('potions', () => {
 
 	it('uses one and heals up to max HP', () => {
 		const c = pc({ items: [potion()] });
-		expect(drinkPotion(c, 'p1', 10)).toBe(10);
+		expect(drinkPotion(c, 'p1', 10)).toEqual({ healed: 10, temp: 0 });
 		expect(c.hpCurrent).toBe(22);
 		expect(c.items[0].quantity).toBe(1);
-		expect(drinkPotion(c, 'p1', 10)).toBe(8);
+		expect(drinkPotion(c, 'p1', 10)).toEqual({ healed: 8, temp: 0 });
 		expect(c.hpCurrent).toBe(30);
 		expect(c.items).toHaveLength(0);
 	});
 
 	it('brings a character at 0 HP back up', () => {
 		const c = pc({ hpCurrent: 0, deathSaves: { successes: 1, failures: 2 }, items: [potion()] });
-		expect(drinkPotion(c, 'p1', 6)).toBe(6);
+		expect(drinkPotion(c, 'p1', 6)).toEqual({ healed: 6, temp: 0 });
 		expect(c.hpCurrent).toBe(6);
 		expect(c.deathSaves).toEqual({ successes: 0, failures: 0 });
 	});
 
 	it('uses up a potion that does not heal', () => {
 		const c = pc({ items: [potion({ quantity: 1, ref: 'potion of flying|dmg', name: 'Potion of Flying' })] });
-		expect(drinkPotion(c, 'p1')).toBe(0);
+		expect(drinkPotion(c, 'p1')).toEqual({ healed: 0, temp: 0 });
 		expect(c.items).toHaveLength(0);
 		expect(c.hpCurrent).toBe(12);
+		expect(c.tempHp).toBe(0);
+	});
+
+	it('knows the temp HP a potion gives', () => {
+		const heroism = potion({ ref: 'potion of heroism|dmg', name: 'Potion of Heroism' });
+		expect(potionTempHp(heroism)).toBe(10);
+		expect(potionTempHp({ ...heroism, name: 'Blue brew' })).toBe(10);
+		expect(potionTempHp(potion())).toBe(0);
+		expect(potionTempHp(potion({ ref: undefined, name: 'Ogre ale', notes: 'You gain 5 temporary hit points.' }))).toBe(5);
+	});
+
+	it('gives Potion of Heroism temp HP, which does not stack', () => {
+		const heroism = potion({ quantity: 2, ref: 'potion of heroism|dmg', name: 'Potion of Heroism' });
+		const c = pc({ tempHp: 4, items: [heroism] });
+		expect(drinkPotion(c, 'p1')).toEqual({ healed: 0, temp: 6 });
+		expect(c.tempHp).toBe(10);
+		expect(c.hpCurrent).toBe(12);
+		expect(drinkPotion(c, 'p1')).toEqual({ healed: 0, temp: 0 });
+		expect(c.tempHp).toBe(10);
+		expect(c.items).toHaveLength(0);
 	});
 });
