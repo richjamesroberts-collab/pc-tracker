@@ -3,7 +3,7 @@
 	import Portrait from '$lib/components/Portrait.svelte';
 	import AcShield from '$lib/components/AcShield.svelte';
 	import AcSheet from '$lib/components/AcSheet.svelte';
-	import HpSheet, { type HpMode } from '$lib/components/HpSheet.svelte';
+	import HpSheet, { type HpChange, type HpMode } from '$lib/components/HpSheet.svelte';
 	import DeathSaves from '$lib/components/DeathSaves.svelte';
 	import Pips from '$lib/components/Pips.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
@@ -99,21 +99,25 @@
 	});
 	let potionGroup = $state<'healing' | 'other' | null>(null);
 
-	/** The last potion's healing or temp HP, shown rising off the hit points; `n` restarts the animation. */
-	let healFx = $state<{ amount: number; temp: boolean; n: number } | null>(null);
-	let healTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The last damage, healing or temp HP, animated on the hit points; `n` restarts the animation. */
+	let hpFx = $state<(HpChange & { n: number }) | null>(null);
+	let hpFxTimer: ReturnType<typeof setTimeout> | undefined;
 	let hpCard: HTMLElement | undefined = $state();
 
-	function drank(gain: { amount: number; temp: boolean }) {
-		clearTimeout(healTimer);
-		healFx = { ...gain, n: (healFx?.n ?? 0) + 1 };
-		healTimer = setTimeout(() => (healFx = null), 1800);
-		// The sheet has closed by now; bring the hit points into view if the page was scrolled down to the potions.
+	function hpChanged(change: HpChange) {
+		if (change.amount <= 0) return;
+		clearTimeout(hpFxTimer);
+		hpFx = { ...change, n: (hpFx?.n ?? 0) + 1 };
+		hpFxTimer = setTimeout(() => (hpFx = null), 1800);
+		// The sheet has closed by now; bring the hit points into view if the page was scrolled down (to the potions).
 		requestAnimationFrame(() => {
 			const top = hpCard?.getBoundingClientRect().top ?? 0;
 			if (top < 0) hpCard?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 		});
 	}
+
+	const drank = (gain: { amount: number; temp: boolean }) =>
+		hpChanged({ kind: gain.temp ? 'temp' : 'heal', amount: gain.amount });
 
 	function openHp(mode: HpMode) {
 		hpMode = mode;
@@ -192,15 +196,19 @@
 	{#if down}
 		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
 	{:else}
-		<section class="card hp" class:healed={!!healFx} class:temp-fx={healFx?.temp} aria-labelledby="hp-title" bind:this={hpCard}>
+		<section
+			class="card hp {hpFx ? `fx-${hpFx.kind}` : ''}"
+			aria-labelledby="hp-title"
+			bind:this={hpCard}
+		>
 			<div class="hp-head">
 				<h2 id="hp-title" class="label">Hit points</h2>
 				{#if c.tempHp > 0}
-					{#key healFx?.n}<span class="temp-chip" class:pulse={healFx?.temp}>+{c.tempHp} temp</span>{/key}
+					{#key hpFx?.n}<span class="temp-chip" class:pulse={hpFx?.kind === 'temp'}>+{c.tempHp} temp</span>{/key}
 				{/if}
 			</div>
 			<p class="hp-num">
-				{#key healFx?.n}<span class="cur" class:pulse={healFx && !healFx.temp}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
+				{#key hpFx?.n}<span class="cur" class:pulse={hpFx?.kind === 'heal'} class:hit={hpFx?.kind === 'damage'}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
 			</p>
 			<div class="bar" aria-hidden="true">
 				<div class="fill {hpTone}" style:width="{hpPct}%"></div>
@@ -211,11 +219,21 @@
 				<button type="button" class="heal" onclick={() => openHp('heal')}>Heal</button>
 				<button type="button" class="temp" onclick={() => openHp('temp')}>Temp HP</button>
 			</div>
-			{#if healFx}
-				{#key healFx.n}
-					<span class="heal-fx" class:temp={healFx.temp} aria-hidden="true">
+			{#if hpFx?.kind === 'damage'}
+				{#key hpFx.n}
+					<span class="hit-fx" aria-hidden="true">
+						<span class="flash"></span>
+						{#each [24, 50, 76] as x, i (x)}
+							<span class="slash" style:left="{x}%" style:animation-delay="{i * 70}ms"></span>
+						{/each}
+						<span class="loss">−{hpFx.amount}</span>
+					</span>
+				{/key}
+			{:else if hpFx}
+				{#key hpFx.n}
+					<span class="heal-fx" class:temp={hpFx.kind === 'temp'} aria-hidden="true">
 						<span class="glow"></span>
-						<span class="gain">+{healFx.amount}{healFx.temp ? ' temp' : ''}</span>
+						<span class="gain">+{hpFx.amount}{hpFx.kind === 'temp' ? ' temp' : ''}</span>
 						{#each [18, 38, 62, 82] as x, i (x)}
 							<span class="spark" style:left="{x}%" style:animation-delay="{i * 90}ms">+</span>
 						{/each}
@@ -344,7 +362,7 @@
 	<button type="button" onclick={() => rest('long')}>Long rest</button>
 </div>
 
-<HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} />
+<HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} onchanged={hpChanged} />
 <AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
@@ -537,15 +555,145 @@
 		transition: box-shadow 0.4s;
 	}
 
-	.hp.healed {
+	.hp.fx-heal {
 		box-shadow: 0 0 0 2px var(--color-heal), var(--shadow-sm);
 	}
 
-	.hp.healed.temp-fx {
+	.hp.fx-temp {
 		box-shadow: 0 0 0 2px var(--color-accent), var(--shadow-sm);
 	}
 
-	/* A potion's healing: a green wash, the number floating up, and little crosses rising off the card. */
+	.hp.fx-damage {
+		box-shadow: 0 0 0 2px var(--color-hit), var(--shadow-sm);
+		animation: hit-shake 0.45s ease-out;
+	}
+
+	/* Damage: the card jolts, a red flash closes in from the edges, three claw slashes, and the number drops away. */
+	.hit-fx {
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	.flash {
+		position: absolute;
+		inset: 0;
+		box-shadow: inset 0 0 40px 6px var(--color-hit);
+		opacity: 0;
+		animation: hit-flash 1s ease-out;
+	}
+
+	.slash {
+		position: absolute;
+		top: -10%;
+		width: 4px;
+		height: 120%;
+		border-radius: 2px;
+		background: var(--color-hit);
+		transform: rotate(28deg) scaleY(0);
+		transform-origin: top;
+		opacity: 0;
+		animation: hit-slash 0.8s ease-out both;
+	}
+
+	.loss {
+		position: absolute;
+		right: 14px;
+		top: 34px;
+		font-family: var(--font-display);
+		font-size: 34px;
+		font-weight: 900;
+		color: var(--color-hit);
+		opacity: 0;
+		animation: hit-drop 1.6s ease-in;
+	}
+
+	.cur.hit {
+		display: inline-block;
+		animation: hit-pulse 0.6s ease-out;
+	}
+
+	@keyframes hit-shake {
+		0%,
+		100% {
+			transform: translateX(0);
+		}
+		20% {
+			transform: translateX(-6px);
+		}
+		40% {
+			transform: translateX(5px);
+		}
+		60% {
+			transform: translateX(-3px);
+		}
+		80% {
+			transform: translateX(2px);
+		}
+	}
+
+	@keyframes hit-flash {
+		0% {
+			opacity: 0;
+		}
+		15% {
+			opacity: 0.55;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+
+	@keyframes hit-slash {
+		0% {
+			opacity: 0.9;
+			transform: rotate(28deg) scaleY(0);
+		}
+		45% {
+			opacity: 0.9;
+			transform: rotate(28deg) scaleY(1);
+		}
+		100% {
+			opacity: 0;
+			transform: rotate(28deg) scaleY(1);
+		}
+	}
+
+	@keyframes hit-drop {
+		0% {
+			opacity: 0;
+			transform: translateY(-14px) scale(1.4);
+		}
+		12% {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+		70% {
+			opacity: 1;
+			transform: translateY(6px);
+		}
+		100% {
+			opacity: 0;
+			transform: translateY(30px);
+		}
+	}
+
+	@keyframes hit-pulse {
+		0% {
+			transform: scale(1);
+		}
+		30% {
+			transform: scale(0.88);
+			color: var(--color-hit);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	/* Healing (a potion or the Heal button): a green wash, the number floating up, and little crosses rising off the card. */
 	.heal-fx {
 		position: absolute;
 		inset: 0;
@@ -589,7 +737,7 @@
 		animation: heal-pulse 0.7s ease-out;
 	}
 
-	/* Temp HP from a potion (Heroism) in the temp colour, and the temp chip pulses instead of the hit points. */
+	/* Temp HP (the Temp HP button or Heroism) in the temp colour, and the temp chip pulses instead of the hit points. */
 	.heal-fx.temp .glow {
 		background: radial-gradient(circle at 30% 45%, var(--color-accent), transparent 70%);
 	}
@@ -680,14 +828,19 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.hp.fx-damage,
 		.glow,
 		.spark,
+		.flash,
+		.slash,
 		.cur.pulse,
+		.cur.hit,
 		.temp-chip.pulse {
 			animation: none;
 		}
 
-		.gain {
+		.gain,
+		.loss {
 			animation: heal-fade 1.6s ease-out;
 		}
 
