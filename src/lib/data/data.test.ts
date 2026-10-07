@@ -279,6 +279,20 @@ describe('item effects and armor', () => {
 		fillItemData(c, magicById, gearById);
 		expect(c.items[0].effects).toEqual({ resist: ['fire'] });
 	});
+	it('copies how an item is used, and fills it in on older entries', () => {
+		expect(inventoryItem(magicById.get('wand of magic missiles|dmg')!).use).toEqual({ times: ['action'] });
+		expect(inventoryItem(magicById.get('spell scroll (1st level)|dmg')!).use).toMatchObject({ consumed: true });
+		expect(inventoryItem(magicById.get('cloak of protection|dmg')!).use).toBeUndefined();
+		expect(gearInventoryItem(gearById.get("alchemist's fire (flask)|phb")!).use).toEqual({ times: ['action'], consumed: true });
+		expect(gearInventoryItem(gearById.get("healer's kit|phb")!).charges).toEqual({ max: 10, used: 0 });
+		const wand = { ...inventoryItem(magicById.get('wand of magic missiles|dmg')!), use: undefined };
+		const kit = { ...gearInventoryItem(gearById.get("healer's kit|phb")!), charges: undefined };
+		const c = { ...newCharacter(), items: [wand, kit], itemDataVersion: 5 };
+		expect(needsItemData(c)).toBe(true);
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0].use).toEqual({ times: ['action'] });
+		expect(c.items[1]).toMatchObject({ charges: { max: 10, used: 0 }, use: { times: ['action'] } });
+	});
 	it('has racial increases for every race', () => {
 		for (const r of RACES) expect((raceAbilities as Record<string, unknown>)[r.key], r.key).toBeDefined();
 	});

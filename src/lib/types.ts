@@ -64,6 +64,17 @@ export interface ItemCharges {
 	regain?: string;
 }
 
+/** The kinds of action an item's description says it's used with. */
+export type UseTime = 'action' | 'bonus' | 'reaction';
+
+/** How an item is used in play, read from its description (see rules/usable.ts). */
+export interface ItemUse {
+	/** Action first, then bonus action, then reaction; empty when it doesn't say (spell scrolls). */
+	times: UseTime[];
+	/** Using it uses one up (scrolls, alchemist's fire, feather tokens). */
+	consumed?: boolean;
+}
+
 export type ArmorType = 'light' | 'medium' | 'heavy' | 'shield';
 
 /** Base AC of a suit of armor, or a shield's bonus (normally 2). */
@@ -156,6 +167,8 @@ export interface InventoryItem {
 	/** Copied from the bundled item. Absent on entries added before effects were tracked, until filled in. */
 	effects?: ItemEffects;
 	charges?: ItemCharges;
+	/** How a bundled item is used, copied from its description; custom items' are read from `notes` instead. */
+	use?: ItemUse;
 	/** The description for custom items; the player's own notes for bundled ones. */
 	notes: string;
 }

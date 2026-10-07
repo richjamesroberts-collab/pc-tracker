@@ -1,4 +1,5 @@
-import type { Ability, AbilityScores, Character, CharacterFeat, ClassOption, ClassOptionKind, InventoryItem, ItemArmor, ItemEffects, ItemWeapon, Skill } from '$lib/types';
+import type { Ability, AbilityScores, Character, CharacterFeat, ClassOption, ClassOptionKind, InventoryItem, ItemArmor, ItemEffects, ItemUse, ItemWeapon, Skill } from '$lib/types';
+import { GEAR_USES, readItemUse } from '$lib/rules/usable';
 import { CLASS_MAP } from './classes';
 import { specificName } from '$lib/rules/items';
 import { armorClass, maxHp } from '$lib/rules/stats';
@@ -191,6 +192,12 @@ export const copyWeapon = (w: ItemWeapon): ItemWeapon => ({
 	...(w.range ? { range: [w.range[0], w.range[1]] as [number, number] } : {})
 });
 
+/** `{ use }` for spreading onto an entry, or nothing when the description doesn't say it's used. */
+function useOf(i: Pick<InventoryItem, 'kind' | 'type' | 'ref'>, text: string): { use?: ItemUse } {
+	const use = readItemUse(i, text);
+	return use ? { use } : {};
+}
+
 /** A new inventory entry for a bundled magic item, with full charges. */
 export function inventoryItem(m: MagicItem): InventoryItem {
 	return {
@@ -208,6 +215,7 @@ export function inventoryItem(m: MagicItem): InventoryItem {
 		...(m.weapon ? { weapon: copyWeapon(m.weapon), equipped: false } : {}),
 		effects: copyEffects(m.effects),
 		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
+		...useOf({ kind: 'magic', type: m.type, ref: m.id }, m.text),
 		notes: ''
 	};
 }
@@ -277,6 +285,8 @@ export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): Invent
 		...(g.armor ? { armor: { ...g.armor }, equipped: false } : {}),
 		...(g.weapon ? { weapon: copyWeapon(g.weapon), equipped: false } : {}),
 		effects: {},
+		...(GEAR_USES[g.id] ? { charges: { max: GEAR_USES[g.id], used: 0 } } : {}),
+		...useOf({ kind: 'gear', type: g.type, ref: g.id }, g.text),
 		notes: ''
 	};
 }
@@ -334,8 +344,9 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
  * 3: damage resistances and immunities, and condition immunities.
  * 4: generic magic weapons already picked as a weapon are named for it ("+1 Weapon" becomes "+1 Longsword").
  * 5: armor and shields of a set kind get their bundled AC back (the item sheet let a +1 Shield's 2 be typed over as 1).
+ * 6: how an item is used (the actions its description names, and whether it's used up), and a healer's kit's ten uses.
  */
-export const ITEM_DATA_VERSION = 5;
+export const ITEM_DATA_VERSION = 6;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
@@ -364,6 +375,8 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 			const base = gear.get(`${i.weapon.base}|phb`)?.name;
 			if (base) i.name = specificName(data.name, base);
 		}
+		if (!i.use) Object.assign(i, useOf(i, data.text));
+		if (i.kind === 'gear' && !i.charges && GEAR_USES[data.id]) i.charges = { max: GEAR_USES[data.id], used: 0 };
 	}
 	c.itemDataVersion = ITEM_DATA_VERSION;
 }

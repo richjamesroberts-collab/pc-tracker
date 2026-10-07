@@ -18,6 +18,8 @@
 	import CountersCard from '$lib/components/CountersCard.svelte';
 	import PotionIcon from '$lib/components/PotionIcon.svelte';
 	import PotionSheet from '$lib/components/PotionSheet.svelte';
+	import ItemIcon from '$lib/components/ItemIcon.svelte';
+	import UsableSheet from '$lib/components/UsableSheet.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
@@ -41,6 +43,7 @@
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { healingDice, isPotion } from '$lib/rules/potions';
+	import { isUsable } from '$lib/rules/usable';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -98,6 +101,9 @@
 		return { healing: group(true), other: group(false) };
 	});
 	let potionGroup = $state<'healing' | 'other' | null>(null);
+
+	const usable = $derived(c.items.filter(isUsable));
+	let usableOpen = $state(false);
 
 	/** The last damage, healing or temp HP, animated on the hit points; `n` restarts the animation. */
 	let hpFx = $state<(HpChange & { n: number }) | null>(null);
@@ -287,6 +293,22 @@
 	</section>
 {/if}
 
+{#if usable.length}
+	<section class="potions" aria-labelledby="usable-title">
+		<h2 id="usable-title" class="label">Items</h2>
+		<div class="card potion-list">
+			<button type="button" class="potion-row" onclick={() => (usableOpen = true)}>
+				<ItemIcon size={36} />
+				<span class="p-name">
+					<b>Usable items</b>
+					<span>{usable.map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name)).join(', ')}</span>
+				</span>
+				<span class="p-count usable">{usable.length}</span>
+			</button>
+		</div>
+	</section>
+{/if}
+
 <section class="attacks" aria-labelledby="attacks-title">
 	<div class="attacks-head">
 		<h2 id="attacks-title" class="label">Attacks</h2>
@@ -371,6 +393,7 @@
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 <PotionSheet group={potionGroup} onclose={() => (potionGroup = null)} ondrank={drank} />
+<UsableSheet open={usableOpen} onclose={() => (usableOpen = false)} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
@@ -1096,6 +1119,11 @@
 	.p-count.other {
 		background: var(--color-spell-bg);
 		color: var(--color-spell-ink);
+	}
+
+	.p-count.usable {
+		background: var(--color-effect-bg);
+		color: var(--color-effect-ink);
 	}
 
 	.attacks-head {
