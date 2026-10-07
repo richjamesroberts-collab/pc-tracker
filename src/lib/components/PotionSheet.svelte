@@ -5,23 +5,23 @@
 	import PotionIcon from './PotionIcon.svelte';
 	import { session } from '$lib/session.svelte';
 	import { loadItems, rarityLabel, type MagicItem } from '$lib/data/content';
-	import { drinkPotion, healingDice, healingRange, isPotion } from '$lib/rules/potions';
+	import { drinkPotion, healingDice, healingRange, isPotion, potionTempHp } from '$lib/rules/potions';
 	import type { Character, InventoryItem } from '$lib/types';
 
 	let {
 		group,
 		onclose,
-		onhealed
+		ondrank
 	}: {
 		/** Which potions to list; the sheet is open while set. */
 		group: 'healing' | 'other' | null;
 		onclose: () => void;
-		/** After a healing potion: the hit points actually regained. */
-		onhealed: (amount: number) => void;
+		/** After a potion that heals or gives temp HP: the hit points or temp HP actually gained. */
+		ondrank: (gain: { amount: number; temp: boolean }) => void;
 	} = $props();
 
 	const c = $derived(session.character as Character);
-	
+
 	/** The potion whose details are showing, or null for the list. */
 	let viewing = $state<string | null>(null);
 	/** The healing potion being drunk: choosing action or bonus action, then the roll. */
@@ -69,7 +69,8 @@
 	const meta = (i: InventoryItem) => {
 		const d = healingDice(i);
 		const r = d ? healingRange(d) : null;
-		return [r ? `${d} (up to ${r.max})` : '', rarityLabel(i.rarity)].filter(Boolean).join(' · ') || i.type;
+		const temp = potionTempHp(i);
+		return [r ? `${d} (up to ${r.max})` : '', temp ? `${temp} temp HP` : '', rarityLabel(i.rarity)].filter(Boolean).join(' · ') || i.type;
 	};
 
 	function use(i: InventoryItem) {
@@ -77,6 +78,15 @@
 			drinking = i.id;
 			way = null;
 			roll = null;
+			return;
+		}
+		const temp = potionTempHp(i);
+		if (temp) {
+			// Temp HP doesn't stack: keep whichever is higher (PHB p.198).
+			const label = temp > c.tempHp ? `Drank ${i.name}: ${temp} temp HP` : `Drank ${i.name}. Kept ${c.tempHp} temp HP; temp HP doesn't stack`;
+			const drunk = session.mutate(label, (d) => drinkPotion(d, i.id));
+			onclose();
+			if (drunk?.temp) ondrank({ amount: drunk.temp, temp: true });
 			return;
 		}
 		session.mutate(`Drank ${i.name}`, (d) => drinkPotion(d, i.id));
@@ -88,9 +98,9 @@
 		const i = drinkItem;
 		if (!i) return;
 		const regains = Math.max(0, Math.min(amount, c.hpMax - Math.max(0, c.hpCurrent)));
-		const gained = session.mutate(`Drank ${i.name}: +${regains} HP`, (d) => drinkPotion(d, i.id, amount));
+		const drunk = session.mutate(`Drank ${i.name}: +${regains} HP`, (d) => drinkPotion(d, i.id, amount));
 		onclose();
-		if (gained != null) onhealed(gained);
+		if (drunk) ondrank({ amount: drunk.healed, temp: false });
 	}
 
 	function back() {

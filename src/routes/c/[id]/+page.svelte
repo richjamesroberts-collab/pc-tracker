@@ -99,14 +99,14 @@
 	});
 	let potionGroup = $state<'healing' | 'other' | null>(null);
 
-	/** The last potion's healing, shown rising off the hit points; `n` restarts the animation. */
-	let healFx = $state<{ amount: number; n: number } | null>(null);
+	/** The last potion's healing or temp HP, shown rising off the hit points; `n` restarts the animation. */
+	let healFx = $state<{ amount: number; temp: boolean; n: number } | null>(null);
 	let healTimer: ReturnType<typeof setTimeout> | undefined;
 	let hpCard: HTMLElement | undefined = $state();
 
-	function healed(amount: number) {
+	function drank(gain: { amount: number; temp: boolean }) {
 		clearTimeout(healTimer);
-		healFx = { amount, n: (healFx?.n ?? 0) + 1 };
+		healFx = { ...gain, n: (healFx?.n ?? 0) + 1 };
 		healTimer = setTimeout(() => (healFx = null), 1800);
 		// The sheet has closed by now; bring the hit points into view if the page was scrolled down to the potions.
 		requestAnimationFrame(() => {
@@ -192,13 +192,15 @@
 	{#if down}
 		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
 	{:else}
-		<section class="card hp" class:healed={!!healFx} aria-labelledby="hp-title" bind:this={hpCard}>
+		<section class="card hp" class:healed={!!healFx} class:temp-fx={healFx?.temp} aria-labelledby="hp-title" bind:this={hpCard}>
 			<div class="hp-head">
 				<h2 id="hp-title" class="label">Hit points</h2>
-				{#if c.tempHp > 0}<span class="temp-chip">+{c.tempHp} temp</span>{/if}
+				{#if c.tempHp > 0}
+					{#key healFx?.n}<span class="temp-chip" class:pulse={healFx?.temp}>+{c.tempHp} temp</span>{/key}
+				{/if}
 			</div>
 			<p class="hp-num">
-				{#key healFx?.n}<span class="cur" class:pulse={!!healFx}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
+				{#key healFx?.n}<span class="cur" class:pulse={healFx && !healFx.temp}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
 			</p>
 			<div class="bar" aria-hidden="true">
 				<div class="fill {hpTone}" style:width="{hpPct}%"></div>
@@ -211,9 +213,9 @@
 			</div>
 			{#if healFx}
 				{#key healFx.n}
-					<span class="heal-fx" aria-hidden="true">
+					<span class="heal-fx" class:temp={healFx.temp} aria-hidden="true">
 						<span class="glow"></span>
-						<span class="gain">+{healFx.amount}</span>
+						<span class="gain">+{healFx.amount}{healFx.temp ? ' temp' : ''}</span>
 						{#each [18, 38, 62, 82] as x, i (x)}
 							<span class="spark" style:left="{x}%" style:animation-delay="{i * 90}ms">+</span>
 						{/each}
@@ -350,7 +352,7 @@
 <FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
-<PotionSheet group={potionGroup} onclose={() => (potionGroup = null)} onhealed={healed} />
+<PotionSheet group={potionGroup} onclose={() => (potionGroup = null)} ondrank={drank} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
@@ -539,6 +541,10 @@
 		box-shadow: 0 0 0 2px var(--color-heal), var(--shadow-sm);
 	}
 
+	.hp.healed.temp-fx {
+		box-shadow: 0 0 0 2px var(--color-accent), var(--shadow-sm);
+	}
+
 	/* A potion's healing: a green wash, the number floating up, and little crosses rising off the card. */
 	.heal-fx {
 		position: absolute;
@@ -581,6 +587,38 @@
 	.cur.pulse {
 		display: inline-block;
 		animation: heal-pulse 0.7s ease-out;
+	}
+
+	/* Temp HP from a potion (Heroism) in the temp colour, and the temp chip pulses instead of the hit points. */
+	.heal-fx.temp .glow {
+		background: radial-gradient(circle at 30% 45%, var(--color-accent), transparent 70%);
+	}
+
+	.heal-fx.temp .gain {
+		top: 40px;
+		font-size: 26px;
+	}
+
+	.heal-fx.temp .gain,
+	.heal-fx.temp .spark {
+		color: var(--color-accent);
+	}
+
+	.temp-chip.pulse {
+		display: inline-block;
+		animation: temp-pulse 0.8s ease-out;
+	}
+
+	@keyframes temp-pulse {
+		0% {
+			transform: scale(1);
+		}
+		35% {
+			transform: scale(1.2);
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 
 	@keyframes heal-glow {
@@ -644,7 +682,8 @@
 	@media (prefers-reduced-motion: reduce) {
 		.glow,
 		.spark,
-		.cur.pulse {
+		.cur.pulse,
+		.temp-chip.pulse {
 			animation: none;
 		}
 
