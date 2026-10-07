@@ -17,9 +17,11 @@ import type {
 	InventoryItem,
 	ItemArmor,
 	ItemEffects,
+	ItemUse,
 	ItemWeapon,
 	Skill,
 	Spell,
+	UseTime,
 	WeaponProperty
 } from '$lib/types';
 
@@ -106,10 +108,19 @@ function items(v: unknown): InventoryItem[] {
 						}
 					}
 				: {}),
+			...(itemUse(i.use) ? { use: itemUse(i.use) } : {}),
 			notes: str(i.notes)
 		});
 	}
 	return out;
+}
+
+const USE_TIMES: UseTime[] = ['action', 'bonus', 'reaction'];
+
+function itemUse(v: unknown): ItemUse | undefined {
+	if (!isObj(v) || !Array.isArray(v.times)) return undefined;
+	const times = USE_TIMES.filter((t) => (v.times as unknown[]).includes(t));
+	return { times, ...(v.consumed === true ? { consumed: true } : {}) };
 }
 
 function abilities(v: unknown): AbilityScores {

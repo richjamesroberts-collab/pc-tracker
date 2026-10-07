@@ -73,6 +73,7 @@ describe('backup files', () => {
 			attuned: false,
 			quantity: 1,
 			charges: { max: 7, used: 3, regain: '1d6 + 1' },
+			use: { times: ['action' as const] },
 			notes: ''
 		};
 		const mail = {
@@ -85,17 +86,19 @@ describe('backup files', () => {
 			armor: { type: 'heavy' as const, ac: 16, base: 'chain mail' },
 			equipped: true,
 			effects: { ac: 1 },
-			charges: undefined
+			charges: undefined,
+			use: undefined
 		};
 		delete mail.charges;
+		delete mail.use;
 		const c = { ...lyra(), items: [wand, mail] };
 		expect(parseBackupText(JSON.stringify(toBackup(c))).items).toEqual([wand, mail]);
 
 		const raw = { ...toBackup(lyra()) };
-		const bad = [{ id: 'x', name: '' }, { id: 'y', name: 'Ring', attuned: true, quantity: -2, charges: { max: 3, used: 9 } }];
+		const bad = [{ id: 'x', name: '' }, { id: 'y', name: 'Ring', attuned: true, quantity: -2, charges: { max: 3, used: 9 }, use: { times: ['zap', 'bonus'], consumed: 'yes' } }];
 		const back = readBackup({ ...raw, character: { ...raw.character, items: bad } });
 		expect(back.items).toHaveLength(1);
-		expect(back.items[0]).toMatchObject({ kind: 'magic', attuned: false, quantity: 1, charges: { max: 3, used: 3 }, type: '', notes: '' });
+		expect(back.items[0]).toMatchObject({ kind: 'magic', attuned: false, quantity: 1, charges: { max: 3, used: 3 }, use: { times: ['bonus'] }, type: '', notes: '' });
 	});
 
 	it('keeps what older backups showed: typed AC, max HP, spellcasting modifier and initiative', () => {
