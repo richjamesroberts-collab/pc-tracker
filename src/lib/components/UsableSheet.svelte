@@ -7,10 +7,19 @@
 	import { session } from '$lib/session.svelte';
 	import { loadGear, loadItems, rarityLabel, type GearItem, type MagicItem } from '$lib/data/content';
 	import { chargesLeft, restoreCharges, spendCharges } from '$lib/rules/items';
-	import { isUsable, useCost, useItem, useTimes } from '$lib/rules/usable';
+	import { isUsable, useCost, useFx, useItem, useTimes, type UseFx } from '$lib/rules/usable';
 	import type { Character, InventoryItem } from '$lib/types';
 
-	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
+	let {
+		open,
+		onclose,
+		onused
+	}: {
+		open: boolean;
+		onclose: () => void;
+		/** After an item is used (the sheet has closed): its kind of animation and what was spent ("−2 charges"). */
+		onused: (used: { kind: UseFx; label: string }) => void;
+	} = $props();
 
 	const c = $derived(session.character as Character);
 	const items = $derived(c.items.filter(isUsable));
@@ -60,18 +69,20 @@
 
 	function use(i: InventoryItem, n = 1) {
 		const cost = useCost(i);
+		let spent = 'Used';
 		if (cost === 'free') {
 			session.notify(`Used ${i.name}`);
 		} else if (cost === 'charges') {
 			const left = chargesLeft(i) - n;
-			session.mutate(`Used ${i.name}: ${plural(n, chargeWord(i))}, ${left} left`, (d) => useItem(d, i.id, n));
+			if (!session.mutate(`Used ${i.name}: ${plural(n, chargeWord(i))}, ${left} left`, (d) => useItem(d, i.id, n))) return;
+			spent = `−${plural(n, chargeWord(i))}`;
 		} else {
 			const left = i.quantity - 1;
 			session.mutate(left ? `Used ${i.name}: ${left} left` : `Used ${i.name}. That was the last one`, (d) => useItem(d, i.id));
+			spent = '−1';
 		}
-		viewing = null;
-		spend = 1;
-		if (!items.length) onclose();
+		onclose();
+		onused({ kind: useFx(i), label: spent });
 	}
 
 	function view(i: InventoryItem) {
