@@ -75,3 +75,59 @@ export function useItem(c: Character, id: string, charges = 1): boolean {
 	if (cost === 'consumed') changeQuantity(c, id, -1);
 	return true;
 }
+
+/** What kind of thing an item does when used, for the animation Vitals plays. */
+export type UseFx =
+	| 'fire'
+	| 'lightning'
+	| 'frost'
+	| 'poison'
+	| 'radiant'
+	| 'heal'
+	| 'light'
+	| 'force'
+	| 'vanish'
+	| 'summon'
+	| 'music'
+	| 'wind'
+	| 'strike'
+	| 'scroll'
+	| 'arcane'
+	| 'gear';
+
+/** Matched against the item's name (and bundled name) in order, so a Brazier of Commanding Fire Elementals summons. */
+const FX: [UseFx, RegExp][] = [
+	['summon', /figurine|bag of (?:tricks|beans)|valhalla|feather token|(?<!protection from )elementals?\b|efreeti|djinni|servant|smoke|summon|deck of illusions|swarming|vermin/],
+	['heal', /heal|\bcure|ointment|antitoxin|restorat|regenerat|lifewell|wound closure/],
+	['fire', /fire|flame|burn|ember|inferno|blaz|pyrotechnic|oil \(flask\)|ignit|(?:red|gold|brass) dragon/],
+	['lightning', /lightning|thunder|storm|shooting star|blasting|(?:blue|bronze) dragon/],
+	['frost', /frost|cold|\bice\b|\bicy|winter|snow|frozen|freez|(?:white|silver) dragon/],
+	['poison', /poison|acid|venom|toxin|sneezing|solvent|essence of ether|oil of taggit|adder|python|(?:black|copper|green) dragon/],
+	['radiant', /holy|radiant|\bsun\b|exalted|devotee|prayer|pure good|disruption|smiting/],
+	['music', /instrument|\bhorn\b|pipes?\b|lyre|harp|lute|drum|concertina|chime|\bbell\b|flute|mandolin|cittern|bandore|whistle|birdcall/],
+	['vanish', /invisib|disappear|ethereal|disguise|blink|displacement|shadow|fashions|teleport|dimension|mountebank|\bplanes?\b|\bgate\b|portable hole|masquerade|ghost step/],
+	['force', /force|shield|armou?r\b|protection|guardian|barrier|security|warding|absorbing|invulnerab/],
+	['light', /\blight|glow|lantern|torch|tinderbox|candle|bright|brillian|globe|illuminat|daylight|seeing|revealing/],
+	['wind', /\bwind\b|flying|levitation|speed|jumping|billowing|\bair\b|carpet|\bbat\b|manta|gust|feather fall/],
+	['scroll', /scroll|spellwrought/]
+];
+
+function fxOf(text: string): UseFx | undefined {
+	const t = text.toLowerCase();
+	return FX.find(([, re]) => re.test(t))?.[0];
+}
+
+/**
+ * Which animation suits an item: poisons always drip; otherwise by its name (fire, frost, healing, music, a
+ * summoned creature, a dragon's colour and so on), then its type (scrolls, weapons), then a custom item's
+ * description, else arcane for magic and gear for the rest.
+ */
+export function useFx(i: Pick<InventoryItem, 'kind' | 'type' | 'ref' | 'name' | 'notes'>): UseFx {
+	if (i.kind === 'gear' && i.type === 'Poison') return 'poison';
+	const fromName = fxOf(`${i.name} | ${i.ref?.split('|')[0] ?? ''}`);
+	if (fromName) return fromName;
+	if (/^Scroll/.test(i.type)) return 'scroll';
+	if (/^Weapon/.test(i.type)) return 'strike';
+	const fromText = i.ref ? undefined : fxOf(i.notes);
+	return fromText ?? (i.kind === 'gear' ? 'gear' : 'arcane');
+}

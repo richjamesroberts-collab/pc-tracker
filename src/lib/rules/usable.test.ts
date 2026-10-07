@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
 import type { Character, InventoryItem } from '$lib/types';
-import { isUsable, readItemUse, useCost, useItem, useTimes } from './usable';
+import { isUsable, readItemUse, useCost, useFx, useItem, useTimes } from './usable';
 
 function pc(items: InventoryItem[]): Character {
 	return { ...newCharacter(), name: 'Lyra', items };
@@ -103,5 +103,30 @@ describe('usable items', () => {
 		expect(useCost(rod)).toBe('free');
 		expect(useItem(c, 'r1')).toBe(true);
 		expect(c.items[0]).toEqual(rod);
+	});
+
+	it('picks an animation from the name, then the type, then a custom description', () => {
+		const fx = (overrides: Partial<InventoryItem>) => useFx(item({ ref: undefined, notes: '', ...overrides }));
+		expect(fx({ name: 'Wand of Fireballs' })).toBe('fire');
+		expect(fx({ name: 'Wand of Lightning Bolts' })).toBe('lightning');
+		expect(fx({ name: 'Staff of Frost' })).toBe('frost');
+		expect(fx({ name: 'Staff of Healing' })).toBe('heal');
+		expect(fx({ name: 'Brazier of Commanding Fire Elementals' })).toBe('summon');
+		expect(fx({ name: 'Scroll of Protection from Elementals', type: 'Scroll' })).toBe('force');
+		expect(fx({ name: 'Red Dragon Scale Mail', type: 'Armor (scale mail)' })).toBe('fire');
+		expect(fx({ name: 'Instrument of the Bards, Doss Lute' })).toBe('music');
+		expect(fx({ name: 'Ring of Invisibility', type: 'Ring' })).toBe('vanish');
+		expect(fx({ name: 'Boots of Speed' })).toBe('wind');
+		expect(fx({ name: 'Spell Scroll (1st Level)', type: 'Scroll' })).toBe('scroll');
+		expect(fx({ name: 'Moonblade', type: 'Weapon (longsword)' })).toBe('strike');
+		expect(fx({ name: 'Wand of Magic Missiles' })).toBe('arcane');
+	});
+
+	it('animates renamed items by their bundled name, gear and poisons by kind', () => {
+		expect(useFx(item({ name: 'Old Faithful', ref: 'wand of fireballs|dmg' }))).toBe('fire');
+		expect(useFx(item({ kind: 'gear', ref: 'burnt othur fumes|dmg', name: 'Burnt Othur Fumes', type: 'Poison' }))).toBe('poison');
+		expect(useFx(item({ kind: 'gear', ref: "healer's kit|phb", name: "Healer's Kit", type: 'Adventuring gear' }))).toBe('heal');
+		expect(useFx(item({ kind: 'gear', ref: 'caltrop|phb', name: 'Caltrop', type: 'Adventuring gear' }))).toBe('gear');
+		expect(useFx(item({ ref: undefined, name: 'Grandma’s Thimble', notes: 'As an action, the thimble fills with frost.' }))).toBe('frost');
 	});
 });

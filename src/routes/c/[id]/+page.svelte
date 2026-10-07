@@ -20,6 +20,7 @@
 	import PotionSheet from '$lib/components/PotionSheet.svelte';
 	import ItemIcon from '$lib/components/ItemIcon.svelte';
 	import UsableSheet from '$lib/components/UsableSheet.svelte';
+	import UseFx from '$lib/components/UseFx.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { session } from '$lib/session.svelte';
@@ -43,7 +44,7 @@
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { healingDice, isPotion } from '$lib/rules/potions';
-	import { isUsable } from '$lib/rules/usable';
+	import { isUsable, type UseFx as UseFxKind } from '$lib/rules/usable';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -104,6 +105,22 @@
 
 	const usable = $derived(c.items.filter(isUsable));
 	let usableOpen = $state(false);
+
+	/** The last item used, animated on the Usable items card; `n` restarts the animation. */
+	let useFx = $state<{ kind: UseFxKind; label: string; n: number } | null>(null);
+	let useFxTimer: ReturnType<typeof setTimeout> | undefined;
+	let usableCard: HTMLElement | undefined = $state();
+
+	function used(u: { kind: UseFxKind; label: string }) {
+		clearTimeout(useFxTimer);
+		useFx = { ...u, n: (useFx?.n ?? 0) + 1 };
+		useFxTimer = setTimeout(() => (useFx = null), 1900);
+		// The sheet covered the bottom of the screen; bring the card into view if it was under it or scrolled off.
+		requestAnimationFrame(() => {
+			const r = usableCard?.getBoundingClientRect();
+			if (r && (r.top < 0 || r.bottom > window.innerHeight - 80)) usableCard?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		});
+	}
 
 	/** The last damage, healing or temp HP, animated on the hit points; `n` restarts the animation. */
 	let hpFx = $state<(HpChange & { n: number }) | null>(null);
@@ -293,18 +310,27 @@
 	</section>
 {/if}
 
-{#if usable.length}
-	<section class="potions" aria-labelledby="usable-title">
+{#if usable.length || useFx}
+	<section class="potions usable" aria-labelledby="usable-title" bind:this={usableCard}>
 		<h2 id="usable-title" class="label">Items</h2>
-		<div class="card potion-list">
-			<button type="button" class="potion-row" onclick={() => (usableOpen = true)}>
-				<ItemIcon size={36} />
-				<span class="p-name">
-					<b>Usable items</b>
-					<span>{usable.map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name)).join(', ')}</span>
-				</span>
-				<span class="p-count usable">{usable.length}</span>
-			</button>
+		<div class="usable-wrap">
+			{#key useFx?.n}
+				<div class="card potion-list {useFx ? `fx-${useFx.kind}` : ''}">
+					<button type="button" class="potion-row" onclick={() => (usableOpen = true)}>
+						<span class="item-icon" class:jiggle={!!useFx}><ItemIcon size={36} /></span>
+						<span class="p-name">
+							<b>Usable items</b>
+							<span>{usable.map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name)).join(', ')}</span>
+						</span>
+						<span class="p-count usable" class:bump={!!useFx}>{usable.length}</span>
+					</button>
+				</div>
+			{/key}
+			{#if useFx}
+				{#key useFx.n}
+					<UseFx kind={useFx.kind} label={useFx.label} />
+				{/key}
+			{/if}
 		</div>
 	</section>
 {/if}
@@ -393,7 +419,7 @@
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
 <PotionSheet group={potionGroup} onclose={() => (potionGroup = null)} ondrank={drank} />
-<UsableSheet open={usableOpen} onclose={() => (usableOpen = false)} />
+<UsableSheet open={usableOpen} onclose={() => (usableOpen = false)} onused={used} />
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} label="Menu">
 	<div class="menu-list">
@@ -858,7 +884,12 @@
 		.slash,
 		.cur.pulse,
 		.cur.hit,
-		.temp-chip.pulse {
+		.temp-chip.pulse,
+		.item-icon.jiggle,
+		.p-count.bump,
+		.fx-lightning,
+		.fx-strike,
+		.fx-vanish .potion-row {
 			animation: none;
 		}
 
@@ -1124,6 +1155,67 @@
 	.p-count.usable {
 		background: var(--color-effect-bg);
 		color: var(--color-effect-ink);
+	}
+
+	/* Using an item: the pouch jiggles as it's pulled from, and the card does what the item does (UseFx). */
+	.usable-wrap {
+		position: relative;
+	}
+
+	.item-icon {
+		display: block;
+		flex-shrink: 0;
+	}
+
+	.item-icon.jiggle {
+		animation: pouch 0.6s ease-out;
+	}
+
+	.p-count.bump {
+		animation: heal-pulse 0.6s ease-out 0.2s;
+	}
+
+	.fx-lightning {
+		animation: hit-shake 0.45s ease-out 0.1s;
+	}
+
+	.fx-strike {
+		animation: hit-shake 0.35s ease-out 0.2s;
+	}
+
+	.fx-vanish .potion-row {
+		animation: vanish 1.4s ease-in-out;
+	}
+
+	@keyframes pouch {
+		0% {
+			transform: rotate(0) scale(1);
+		}
+		20% {
+			transform: rotate(-14deg) scale(1.12);
+		}
+		45% {
+			transform: rotate(10deg) scale(1.05);
+		}
+		70% {
+			transform: rotate(-5deg);
+		}
+		100% {
+			transform: rotate(0) scale(1);
+		}
+	}
+
+	@keyframes vanish {
+		0%,
+		100% {
+			opacity: 1;
+			filter: none;
+		}
+		35%,
+		60% {
+			opacity: 0.12;
+			filter: blur(3px);
+		}
 	}
 
 	.attacks-head {
