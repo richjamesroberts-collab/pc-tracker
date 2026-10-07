@@ -1,5 +1,7 @@
 <script lang="ts" module>
 	export type HpMode = 'damage' | 'heal' | 'temp';
+	/** A change to the hit points: damage taken, hit points healed, or temp HP gained. */
+	export type HpChange = { kind: HpMode; amount: number };
 </script>
 
 <script lang="ts">
@@ -8,7 +10,18 @@
 	import { applyDamage, applyHealing, applyTempHp, isDown } from '$lib/rules/hp';
 	import type { Character } from '$lib/types';
 
-	let { open, mode = $bindable('damage'), onclose }: { open: boolean; mode?: HpMode; onclose: () => void } = $props();
+	let {
+		open,
+		mode = $bindable('damage'),
+		onclose,
+		onchanged
+	}: {
+		open: boolean;
+		mode?: HpMode;
+		onclose: () => void;
+		/** After hit points change, to animate it: the damage taken, or the hit points or temp HP actually gained. */
+		onchanged?: (change: HpChange) => void;
+	} = $props();
 
 	let digits = $state('');
 	let critical = $state(false);
@@ -59,13 +72,22 @@
 			if (r?.instantDeath) session.notify('Massive damage: instant death', { tone: 'warn', canUndo: true });
 			else if (r?.droppedToZero) session.notify(`Took ${amount} damage. You're down!`, { tone: 'warn', canUndo: true });
 			if (r?.concentrationDC && spell) session.concentrationCheck = { spell, dc: r.concentrationDC };
-		} else if (mode === 'heal') {
-			session.mutate(`Healed ${amount}`, (ch) => applyHealing(ch, amount));
-		} else {
-			const gained = session.mutate(`Gained ${amount} temp HP`, (ch) => applyTempHp(ch, amount));
-			if (!gained) session.notify(`Kept ${c.tempHp} temp HP. Temp HP doesn't stack.`);
+			onclose();
+			if (r) onchanged?.({ kind: 'damage', amount });
+			return;
 		}
+		if (mode === 'heal') {
+			const before = Math.max(0, c.hpCurrent);
+			session.mutate(`Healed ${amount}`, (ch) => applyHealing(ch, amount));
+			onclose();
+			onchanged?.({ kind: 'heal', amount: c.hpCurrent - before });
+			return;
+		}
+		const before = c.tempHp;
+		const gained = session.mutate(`Gained ${amount} temp HP`, (ch) => applyTempHp(ch, amount));
+		if (!gained) session.notify(`Kept ${c.tempHp} temp HP. Temp HP doesn't stack.`);
 		onclose();
+		if (gained) onchanged?.({ kind: 'temp', amount: c.tempHp - before });
 	}
 
 	const verb = $derived(
