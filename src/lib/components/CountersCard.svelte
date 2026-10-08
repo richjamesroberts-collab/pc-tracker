@@ -29,11 +29,13 @@
 	import CounterSheet from './CounterSheet.svelte';
 	import FeatureSheet from './FeatureSheet.svelte';
 	import UseFx from './UseFx.svelte';
+	import type { HpChange } from './HpSheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASS_MAP } from '$lib/data/classes';
 	import { RACE_MAP, raceLabel } from '$lib/data/races';
 	import {
 		featureFx,
+		healWithFeature,
 		resourceLeft,
 		resourcesFor,
 		resourceUnit,
@@ -46,6 +48,9 @@
 
 	// Limited-use class, subclass and racial features, plus the player's own counters. Tapping one opens its
 	// details; Use spends one (or opens the details to pick how many) and plays an animation over the row.
+	// Healing features used on the character heal them, and the hit points card shows it (`onhealed`).
+
+	let { onhealed }: { onhealed?: (change: HpChange) => void } = $props();
 
 	/** Rows with more pips than this show as a number instead. */
 	const MAX_PIPS = 10;
@@ -95,6 +100,8 @@
 
 	// Details sheet: the row's id, kept live so pips and Use update it.
 	let viewing = $state<string | null>(null);
+	/** The sheet was opened by Use, to ask who a healing feature is for or for its roll. */
+	let begin = $state(false);
 	const viewRow = $derived(viewing ? rows.find((r) => r.id === viewing) : undefined);
 
 	// Custom counter sheet: `editing` is the index of the counter being edited, -1 for a new one.
@@ -115,16 +122,42 @@
 		for (let i = 0; i < n; i++) spendCustom(d, row.custom!.id);
 	}
 
-	function use(row: CounterRow, n = 1) {
+	/** Use on the card: pools, and healing features that ask who or for a roll, open the sheet for that. */
+	function useFromCard(row: CounterRow) {
+		const heal = row.def?.heal;
+		if (row.pool || (heal && (!heal.selfOnly || heal.roll))) {
+			begin = !row.pool;
+			viewing = row.id;
+		} else use(row, 1, heal ? {} : undefined);
+	}
+
+	function openRow(row: CounterRow) {
+		begin = false;
+		viewing = row.id;
+	}
+
+	function use(row: CounterRow, n = 1, me?: { roll?: number }) {
 		if (row.left < n || n < 1) return;
 		const left = row.left - n;
 		const what = row.unit[0] === 'use' && n === 1 ? row.name : `${count(n, row.unit)} of ${row.name}`;
-		session.mutate(`Used ${what}, ${left} left`, (d) => spendOne(row, d, n));
+		const key = row.def?.heal && me ? row.def.key : undefined;
+		if (key) {
+			// Work out what it gives on a copy first, so the toast can say.
+			const got = healWithFeature(structuredClone($state.snapshot(c)) as Character, key, n, me!.roll);
+			const gain = [got?.healed ? `+${got.healed} HP` : '', got?.temp ? `+${got.temp} temp HP` : ''].filter(Boolean).join(', ');
+			const healed = session.mutate(gain ? `Used ${what}: ${gain}` : `Used ${what}, ${left} left`, (d) => healWithFeature(d, key, n, me!.roll));
+			if (healed?.healed) onhealed?.({ kind: 'heal', amount: healed.healed });
+			else if (healed?.temp) onhealed?.({ kind: 'temp', amount: healed.temp });
+		} else {
+			session.mutate(`Used ${what}, ${left} left`, (d) => spendOne(row, d, n));
+		}
 		viewing = null;
 		clearTimeout(fxTimer);
 		fx = { id: row.id, kind: row.fx, label: row.unit[0] === 'use' ? `−${n}` : `−${count(n, row.unit)}`, n: (fx?.n ?? 0) + 1 };
 		fxTimer = setTimeout(() => (fx = null), 1900);
 		// The sheet covered the bottom of the screen; bring the row into view if it was under it or scrolled off.
+		// Healing the character shows on the hit points instead, which come into view themselves.
+		if (key) return;
 		requestAnimationFrame(() => {
 			const el = rowEls[row.id];
 			const r = el?.getBoundingClientRect();
@@ -180,7 +213,7 @@
 		<div class="counter" bind:this={rowEls[row.id]}>
 			{#key playing?.n}
 				<div class="line {playing ? `fx-${playing.kind}` : ''}">
-					<button type="button" class="row" onclick={() => (viewing = row.id)}>
+					<button type="button" class="row" onclick={() => openRow(row)}>
 						<span class="name">{row.name}</span>
 						<span class="sub">
 							{#if row.max > MAX_PIPS}
@@ -197,7 +230,7 @@
 						class:pop={!!playing}
 						aria-label="Use {row.name}"
 						disabled={row.left < 1}
-						onclick={() => (row.pool ? (viewing = row.id) : use(row))}>Use</button
+						onclick={() => useFromCard(row)}>Use</button
 					>
 				</div>
 			{/key}
@@ -219,7 +252,8 @@
 <FeatureSheet
 	counter={viewRow}
 	onclose={() => (viewing = null)}
-	onuse={(n) => viewRow && use(viewRow, n)}
+	{begin}
+	onuse={(n, me) => viewRow && use(viewRow, n, me)}
 	onspend={() => viewRow && spend(viewRow)}
 	onrestore={() => viewRow && restore(viewRow)}
 	onedit={editViewing}

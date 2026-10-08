@@ -2,6 +2,7 @@ import type { Ability, Character } from '$lib/types';
 import { abilityMod } from './abilities';
 import { proficiencyBonus } from './spellcasting';
 import { abilityScores } from './stats';
+import { applyHealing, applyTempHp, isDead } from './hp';
 import type { UseFx } from './usable';
 
 export { proficiencyBonus };
@@ -23,6 +24,24 @@ export interface ResourceDef {
 	pool?: true;
 	/** The feature, trait or class option its rules are under, when not its own name (Psionic Energy: Psionic Power). */
 	feature?: string;
+	/** It restores hit points: used on the character, Vitals heals them. */
+	heal?: FeatureHeal;
+}
+
+/** How a feature heals, for `n` of it spent (a use, Lay on Hands points, Healing Light dice). */
+export interface FeatureHeal {
+	/** Only ever the character (Second Wind); otherwise the player says who it's for. */
+	selfOnly?: true;
+	/** Dice the player rolls ("1d10 + 5"), entering the total. */
+	roll?(c: Character, n: number): string;
+	/** A set amount (Lay on Hands: the points spent). */
+	amount?(c: Character, n: number): number;
+	/** Temporary hit points too (Balm of the Summer Court: 1 per die). */
+	temp?(c: Character, n: number): number;
+	/** Most that can be spent at once (Healing Light: the Charisma modifier). */
+	most?(c: Character): number;
+	/** Drops to 1 hit point instead of 0 (Relentless Endurance): only does anything at 0 HP. */
+	toOne?: true;
 }
 
 type Steps = [level: number, value: number][];
@@ -85,12 +104,12 @@ export const RESOURCES: ResourceDef[] = [
 	}),
 	cls('cleric', { key: 'channel-divinity', name: 'Channel Divinity', max: (c) => byLevel(c.level, [[2, 1], [6, 2], [18, 3]]), reset: short }),
 	cls('druid', { key: 'wild-shape', name: 'Wild Shape', max: (c) => byLevel(c.level, [[2, 2], [20, 0]]), reset: short }),
-	cls('fighter', { key: 'second-wind', name: 'Second Wind', max: () => 1, reset: short }),
+	cls('fighter', { key: 'second-wind', name: 'Second Wind', max: () => 1, reset: short, heal: { selfOnly: true, roll: (c) => `1d10 + ${c.level}` } }),
 	cls('fighter', { key: 'action-surge', name: 'Action Surge', max: (c) => byLevel(c.level, [[2, 1], [17, 2]]), reset: short }),
 	cls('fighter', { key: 'indomitable', name: 'Indomitable', max: (c) => byLevel(c.level, [[9, 1], [13, 2], [17, 3]]), reset: long }),
 	cls('monk', { key: 'ki', name: 'Ki', max: (c) => (c.level >= 2 ? c.level : 0), reset: short }),
 	cls('paladin', { key: 'divine-sense', name: 'Divine Sense', max: (c) => Math.max(1, 1 + c.spellMod), reset: long }),
-	cls('paladin', { key: 'lay-on-hands', name: 'Lay on Hands', max: (c) => 5 * c.level, reset: long, pool: true }),
+	cls('paladin', { key: 'lay-on-hands', name: 'Lay on Hands', max: (c) => 5 * c.level, reset: long, pool: true, heal: { amount: (_, n) => n } }),
 	cls('paladin', { key: 'paladin-channel-divinity', name: 'Channel Divinity', max: (c) => byLevel(c.level, [[3, 1]]), reset: short }),
 	// TCE optional feature replacing Favored Enemy; shown for every ranger since most tables allow it.
 	cls('ranger', {
@@ -164,7 +183,15 @@ export const RESOURCES: ResourceDef[] = [
 	sub('cleric/twilight', { key: 'steps-of-night', name: 'Steps of Night', max: profAt(6), reset: long }),
 	// Slots back on a short rest, up to half the druid level (rounded up) in total levels.
 	sub('druid/land', { key: 'natural-recovery', name: 'Natural Recovery', max: oneAt(2), reset: long, die: (c) => `${Math.ceil(c.level / 2)} slot levels` }),
-	sub('druid/dreams', { key: 'balm-of-the-summer-court', name: 'Balm of the Summer Court', max: (c) => (c.level >= 2 ? c.level : 0), reset: long, die: () => 'd6', pool: true }),
+	sub('druid/dreams', {
+		key: 'balm-of-the-summer-court',
+		name: 'Balm of the Summer Court',
+		max: (c) => (c.level >= 2 ? c.level : 0),
+		reset: long,
+		die: () => 'd6',
+		pool: true,
+		heal: { roll: (_, n) => `${n}d6`, temp: (_, n) => n, most: (c) => Math.max(1, Math.floor(c.level / 2)) }
+	}),
 	sub('druid/dreams', { key: 'hidden-paths', name: 'Hidden Paths', max: modAt(10, 'wis'), reset: long }),
 	sub('druid/dreams', { key: 'walker-in-dreams', name: 'Walker in Dreams', max: oneAt(14), reset: long }),
 	sub('druid/shepherd', { key: 'spirit-totem', name: 'Spirit Totem', max: oneAt(2), reset: short }),
@@ -175,9 +202,9 @@ export const RESOURCES: ResourceDef[] = [
 	sub('fighter/rune-knight', { key: 'runic-shield', name: 'Runic Shield', max: profAt(7), reset: long }),
 	sub('fighter/samurai', { key: 'fighting-spirit', name: 'Fighting Spirit', max: (c) => byLevel(c.level, [[3, 3]]), reset: long }),
 	sub('fighter/samurai', { key: 'strength-before-death', name: 'Strength before Death', max: oneAt(18), reset: long }),
-	sub('monk/open-hand', { key: 'wholeness-of-body', name: 'Wholeness of Body', max: oneAt(6), reset: long }),
+	sub('monk/open-hand', { key: 'wholeness-of-body', name: 'Wholeness of Body', max: oneAt(6), reset: long, heal: { selfOnly: true, amount: (c) => 3 * c.level } }),
 	sub('monk/mercy', { key: 'hand-of-ultimate-mercy', name: 'Hand of Ultimate Mercy', max: oneAt(17), reset: long }),
-	sub('paladin/ancients', { key: 'undying-sentinel', name: 'Undying Sentinel', max: oneAt(15), reset: long }),
+	sub('paladin/ancients', { key: 'undying-sentinel', name: 'Undying Sentinel', max: oneAt(15), reset: long, heal: { selfOnly: true, toOne: true } }),
 	sub('paladin/ancients', { key: 'elder-champion', name: 'Elder Champion', max: oneAt(20), reset: long }),
 	sub('paladin/conquest', { key: 'invincible-conqueror', name: 'Invincible Conqueror', max: oneAt(20), reset: long }),
 	sub('paladin/devotion', { key: 'holy-nimbus', name: 'Holy Nimbus', max: oneAt(20), reset: long }),
@@ -192,12 +219,20 @@ export const RESOURCES: ResourceDef[] = [
 	sub('sorcerer/aberrant-mind', { key: 'warping-implosion', name: 'Warping Implosion', max: oneAt(18), reset: long }),
 	sub('sorcerer/clockwork-soul', { key: 'trance-of-order', name: 'Trance of Order', max: oneAt(14), reset: long }),
 	sub('sorcerer/clockwork-soul', { key: 'clockwork-cavalcade', name: 'Clockwork Cavalcade', max: oneAt(18), reset: long }),
-	sub('sorcerer/divine-soul', { key: 'unearthly-recovery', name: 'Unearthly Recovery', max: oneAt(18), reset: long }),
-	sub('sorcerer/shadow', { key: 'strength-of-the-grave', name: 'Strength of the Grave', max: one, reset: long }),
+	sub('sorcerer/divine-soul', { key: 'unearthly-recovery', name: 'Unearthly Recovery', max: oneAt(18), reset: long, heal: { selfOnly: true, amount: (c) => Math.floor(c.hpMax / 2) } }),
+	sub('sorcerer/shadow', { key: 'strength-of-the-grave', name: 'Strength of the Grave', max: one, reset: long, heal: { selfOnly: true, toOne: true } }),
 	sub('warlock/archfey', { key: 'fey-presence', name: 'Fey Presence', max: one, reset: short }),
 	sub('warlock/archfey', { key: 'misty-escape', name: 'Misty Escape', max: oneAt(6), reset: short }),
 	sub('warlock/archfey', { key: 'dark-delirium', name: 'Dark Delirium', max: oneAt(14), reset: short }),
-	sub('warlock/celestial', { key: 'healing-light', name: 'Healing Light', max: (c) => 1 + c.level, reset: long, die: () => 'd6', pool: true }),
+	sub('warlock/celestial', {
+		key: 'healing-light',
+		name: 'Healing Light',
+		max: (c) => 1 + c.level,
+		reset: long,
+		die: () => 'd6',
+		pool: true,
+		heal: { roll: (_, n) => `${n}d6`, most: mod1 }
+	}),
 	sub('warlock/celestial', { key: 'searing-vengeance', name: 'Searing Vengeance', max: oneAt(14), reset: long }),
 	sub('warlock/fathomless', { key: 'tentacle-of-the-deeps', name: 'Tentacle of the Deeps', max: prof, reset: long }),
 	sub('warlock/fathomless', { key: 'fathomless-plunge', name: 'Fathomless Plunge', max: oneAt(14), reset: short }),
@@ -233,14 +268,14 @@ export const RESOURCES: ResourceDef[] = [
 		reset: short,
 		die: (c) => dieByLevel(c.level, [[1, '2d6'], [6, '3d6'], [11, '4d6'], [16, '5d6']])
 	}),
-	race('half-orc', { key: 'relentless-endurance', name: 'Relentless Endurance', max: () => 1, reset: long }),
+	race('half-orc', { key: 'relentless-endurance', name: 'Relentless Endurance', max: () => 1, reset: long, heal: { selfOnly: true, toOne: true } }),
 	race('tiefling', { key: 'hellish-rebuke', name: 'Hellish Rebuke', feature: 'Infernal Legacy', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
 	race('tiefling', { key: 'infernal-darkness', name: 'Darkness', feature: 'Infernal Legacy', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
 	subrace('elf/drow', { key: 'faerie-fire', name: 'Faerie Fire', feature: 'Drow Magic', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
 	subrace('elf/drow', { key: 'drow-darkness', name: 'Darkness', feature: 'Drow Magic', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
 
 	// Volo's Guide to Monsters. Keys get -vgm where the MPMM version has the same trait.
-	race('aasimar-vgm', { key: 'healing-hands-vgm', name: 'Healing Hands', max: one, reset: long }),
+	race('aasimar-vgm', { key: 'healing-hands-vgm', name: 'Healing Hands', max: one, reset: long, heal: { amount: (c) => c.level } }),
 	subrace('aasimar-vgm/protector', { key: 'radiant-soul', name: 'Radiant Soul', max: at3, reset: long }),
 	subrace('aasimar-vgm/scourge', { key: 'radiant-consumption', name: 'Radiant Consumption', max: at3, reset: long }),
 	subrace('aasimar-vgm/fallen', { key: 'necrotic-shroud', name: 'Necrotic Shroud', max: at3, reset: long }),
@@ -259,7 +294,7 @@ export const RESOURCES: ResourceDef[] = [
 
 	// Monsters of the Multiverse. Racial spells are keyed '<race>-<spell>'; each can be cast once per long rest.
 	race('aarakocra', { key: 'aarakocra-gust-of-wind', name: 'Gust of Wind', feature: 'Wind Caller', max: at3, reset: long }),
-	race('aasimar', { key: 'healing-hands', name: 'Healing Hands', max: one, reset: long, die: (c) => `${prof(c)}d4` }),
+	race('aasimar', { key: 'healing-hands', name: 'Healing Hands', max: one, reset: long, die: (c) => `${prof(c)}d4`, heal: { roll: (c) => `${prof(c)}d4` } }),
 	race('aasimar', { key: 'celestial-revelation', name: 'Celestial Revelation', max: at3, reset: long }),
 	race('deep-gnome', { key: 'deep-gnome-disguise-self', name: 'Disguise Self', feature: 'Gift of the Svirfneblin', max: at3, reset: long }),
 	race('deep-gnome', { key: 'deep-gnome-nondetection', name: 'Nondetection', feature: 'Gift of the Svirfneblin', max: at5, reset: long }),
@@ -293,7 +328,7 @@ export const RESOURCES: ResourceDef[] = [
 	race('kobold', { key: 'draconic-cry', name: 'Draconic Cry', max: prof, reset: long }),
 	race('lizardfolk', { key: 'hungry-jaws', name: 'Hungry Jaws', max: prof, reset: long }),
 	race('orc', { key: 'adrenaline-rush', name: 'Adrenaline Rush', max: prof, reset: long }),
-	race('orc', { key: 'orc-relentless-endurance', name: 'Relentless Endurance', max: one, reset: long }),
+	race('orc', { key: 'orc-relentless-endurance', name: 'Relentless Endurance', max: one, reset: long, heal: { selfOnly: true, toOne: true } }),
 	race('shadar-kai', { key: 'blessing-of-the-raven-queen', name: 'Blessing of the Raven Queen', max: prof, reset: long }),
 	race('shifter', { key: 'shifting', name: 'Shifting', max: prof, reset: long }),
 	race('triton', { key: 'triton-fog-cloud', name: 'Fog Cloud', feature: 'Control Air and Water', max: one, reset: long }),
@@ -358,6 +393,38 @@ export function resetResources(c: Character, kind: 'short' | 'long'): void {
 		for (const def of resourcesFor(c)) if (def.reset(c) === 'short') delete c.resourcesUsed[def.key];
 	}
 	for (const r of c.customResources) if (r.reset === 'short' || (kind === 'long' && r.reset === 'long')) r.used = 0;
+}
+
+/** What the character gets from a healing feature: hit points regained and temp HP gained. */
+export interface Healed {
+	healed: number;
+	temp: number;
+}
+
+/**
+ * Use `n` of a healing feature on the character: spend it and regain its hit points (the player's `rolled`
+ * total for a rolled one), plus its temp HP, which doesn't stack (PHB p.198). A drop-to-1 feature (Relentless
+ * Endurance) brings the character back up to 1 HP from 0 and does nothing otherwise. Null if it can't be spent.
+ */
+export function healWithFeature(c: Character, key: string, n = 1, rolled = 0): Healed | null {
+	const heal = resourcesFor(c).find((r) => r.key === key)?.heal;
+	if (!heal || !spendResource(c, key, n)) return null;
+	const before = Math.max(0, c.hpCurrent);
+	const tempBefore = c.tempHp;
+	if (heal.toOne) {
+		if (c.hpCurrent <= 0 && !isDead(c)) applyHealing(c, 1);
+	} else {
+		applyHealing(c, heal.roll ? rolled : (heal.amount?.(c, n) ?? 0));
+	}
+	if (heal.temp) applyTempHp(c, heal.temp(c, n));
+	return { healed: Math.max(0, c.hpCurrent) - before, temp: c.tempHp - tempBefore };
+}
+
+/** What a healing feature gives for `n` spent, as the sheet says it: "1d10 + 5 HP", "15 HP", "Up to 1 HP". */
+export function healLabel(c: Character, heal: FeatureHeal, n = 1): string {
+	if (heal.toOne) return 'Up to 1 HP from 0';
+	const hp = `${heal.roll ? heal.roll(c, n) : (heal.amount?.(c, n) ?? 0)} HP`;
+	return heal.temp ? `${hp} + ${heal.temp(c, n)} temp HP` : hp;
 }
 
 export function spendCustom(c: Character, id: string): boolean {

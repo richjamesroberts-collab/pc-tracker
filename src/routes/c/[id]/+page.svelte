@@ -403,7 +403,7 @@
 	{/if}
 {/if}
 
-<CountersCard />
+<CountersCard onhealed={hpChanged} />
 
 <div class="rests">
 	<button type="button" onclick={() => rest('short')}>Short rest</button>
