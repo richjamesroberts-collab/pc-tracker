@@ -175,6 +175,26 @@ export function overLimit(before: EncumbranceInput, after: EncumbranceInput, to:
 }
 
 /**
+ * Why an edited item can't be saved: more of it, or a heavier one, that won't fit where it is, or a container made
+ * too small (or no longer weightless) for what's in it. Edits that add no weight and don't shrink a container always
+ * save, so an entry that was already over a limit can still be renamed. Empty when it's fine.
+ */
+export function editProblem(c: EncumbranceInput, item: InventoryItem): string {
+	const was = c.items.find((i) => i.id === item.id);
+	if (!was) return '';
+	const heavier = item.quantity * (item.weight ?? 0) > was.quantity * (was.weight ?? 0);
+	const shrunk = (item.container?.lb ?? Infinity) < (was.container?.lb ?? Infinity) || (!!was.container?.weightless && !item.container?.weightless);
+	if (!heavier && !shrunk) return '';
+	const next = { ...c, items: c.items.map((i) => (i.id === item.id ? item : i)) };
+	const problem = overLimit(c, next, { stash: was.stash, inside: containersOf(c).get(was.id)?.id });
+	if (problem) return `${item.name} won't fit: ${problem}.`;
+	const load = carryState(next).loads.get(item.id) ?? 0;
+	const lb = item.container?.lb;
+	if (lb !== undefined && load > lb) return `${item.name} has ${load} lb in it, more than its ${lb} lb.`;
+	return '';
+}
+
+/**
  * Move an item, or `count` of a stack, to a place. A container takes everything in it along; nothing goes inside
  * itself. Things put in a stash are unequipped; a container put in another is unequipped, and one taken out onto the
  * character is equipped. A moved stack piles onto a matching one already there. Returns the id of the entry it ended

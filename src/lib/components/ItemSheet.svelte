@@ -13,6 +13,7 @@
 		kind = 'magic',
 		onsave,
 		ondelete,
+		check,
 		onclose
 	}: {
 		open: boolean;
@@ -24,6 +25,8 @@
 		kind?: InventoryItem['kind'];
 		onsave: (item: InventoryItem) => void;
 		ondelete?: () => void;
+		/** Why the edited item can't be saved as it is (too heavy to carry where it is); empty when it can. */
+		check?: (item: InventoryItem) => string;
 		onclose: () => void;
 	} = $props();
 
@@ -50,6 +53,8 @@
 	let holds = $state<number | null>(null);
 	let weightless = $state(false);
 	let notes = $state('');
+	/** Why the last save was refused, cleared on the next edit. */
+	let problem = $state('');
 	// Fixed when the sheet opens, so the title doesn't change while it closes after a delete.
 	let editing = $state(false);
 	let custom = $state(true);
@@ -79,7 +84,17 @@
 			holds = item?.container?.lb ?? null;
 			weightless = !!item?.container?.weightless;
 			notes = item?.notes ?? '';
+			problem = '';
 		});
+	});
+
+	// A refusal stops applying once the numbers it was about change.
+	$effect(() => {
+		void quantity;
+		void weight;
+		void holds;
+		void weightless;
+		untrack(() => (problem = ''));
 	});
 
 	/** The dropdown's choices, keeping a type typed before it was a dropdown. */
@@ -199,7 +214,7 @@
 				delete effects.damage;
 			}
 		}
-		onsave({
+		const next: InventoryItem = {
 			id: item?.id ?? crypto.randomUUID(),
 			kind: gear ? 'gear' : 'magic',
 			...(item?.ref ? { ref: item.ref } : {}),
@@ -223,7 +238,10 @@
 			...(item?.inside ? { inside: item.inside } : {}),
 			...(item?.stash ? { stash: item.stash } : {}),
 			notes
-		});
+		};
+		problem = check?.(next) ?? '';
+		if (problem) return;
+		onsave(next);
 		onclose();
 	}
 </script>
@@ -396,6 +414,7 @@
 			<span>{custom ? 'Description' : 'Notes'}</span>
 			<textarea bind:value={notes} rows="4" placeholder={custom ? '' : gear ? 'Where it is, who gave it to you…' : 'Command word, which weapon it is…'}></textarea>
 		</label>
+		{#if problem}<p class="problem" role="alert">{problem}</p>{/if}
 		<button type="submit" class="save" disabled={!valid}>{editing ? 'Save' : 'Add item'}</button>
 		{#if editing && ondelete}
 			<button
@@ -460,6 +479,15 @@
 	small.error {
 		color: var(--color-danger);
 		font-weight: 700;
+	}
+
+	.problem {
+		padding: 10px 12px;
+		border-radius: 12px;
+		border-left: 4px solid var(--color-warning);
+		background: var(--color-surface-raised);
+		font-size: 14px;
+		line-height: 1.45;
 	}
 
 	.two,
