@@ -28,6 +28,8 @@ import {
 	FEATURE_FX,
 	RESOURCES,
 	featureFx,
+	healLabel,
+	healWithFeature,
 	proficiencyBonus,
 	resourceUnit,
 	resourceLeft,
@@ -261,6 +263,41 @@ describe('limited-use features', () => {
 		]);
 		const keys = new Set(RESOURCES.map((r) => r.key));
 		expect(Object.values(FEATURE_FX).flat().filter((k) => !keys.has(k))).toEqual([]);
+	});
+	it('heals the character with a healing feature', () => {
+		const hurt = (over: Partial<Character>) => {
+			const c = pc(over);
+			c.hpCurrent = 10;
+			return c;
+		};
+		const fighter = hurt({ classKey: 'fighter', level: 5 });
+		expect(healLabel(fighter, RESOURCES.find((r) => r.key === 'second-wind')!.heal!)).toBe('1d10 + 5 HP');
+		expect(healWithFeature(fighter, 'second-wind', 1, 9)).toEqual({ healed: 9, temp: 0 });
+		expect([fighter.hpCurrent, resourceLeft(fighter, RESOURCES.find((r) => r.key === 'second-wind')!)]).toEqual([19, 0]);
+		expect(healWithFeature(fighter, 'second-wind', 1, 9)).toBeNull();
+
+		const paladin = hurt({ classKey: 'paladin', level: 4 });
+		const loh = healWithFeature(paladin, 'lay-on-hands', 7);
+		expect([loh?.healed, paladin.hpCurrent, paladin.resourcesUsed['lay-on-hands']]).toEqual([7, 17, 7]);
+
+		const monk = hurt({ classKey: 'monk', subclassKey: 'open-hand', level: 6 });
+		expect(healWithFeature(monk, 'wholeness-of-body')?.healed).toBe(Math.min(18, monk.hpMax - 10));
+
+		const druid = hurt({ classKey: 'druid', subclassKey: 'dreams', level: 6 });
+		const balm = RESOURCES.find((r) => r.key === 'balm-of-the-summer-court')!.heal!;
+		expect([balm.most!(druid), healLabel(druid, balm, 3)]).toEqual([3, '3d6 HP + 3 temp HP']);
+		expect(healWithFeature(druid, 'balm-of-the-summer-court', 3, 11)).toEqual({ healed: 11, temp: 3 });
+	});
+	it('drops to 1 HP instead of 0 only when down', () => {
+		const orc = pc({ raceKey: 'half-orc', classKey: 'fighter', level: 3 });
+		orc.hpCurrent = 0;
+		orc.deathSaves = { successes: 1, failures: 2 };
+		expect(healWithFeature(orc, 'relentless-endurance')).toEqual({ healed: 1, temp: 0 });
+		expect([orc.hpCurrent, orc.deathSaves]).toEqual([1, { successes: 0, failures: 0 }]);
+		const up = pc({ raceKey: 'half-orc', classKey: 'fighter', level: 3 });
+		up.hpCurrent = 12;
+		expect(healWithFeature(up, 'relentless-endurance')).toEqual({ healed: 0, temp: 0 });
+		expect(up.hpCurrent).toBe(12);
 	});
 	it('ki equals level from 2', () => expect([1, 2, 11].map((level) => max(pc({ classKey: 'monk', level }), 'ki'))).toEqual([0, 2, 11]));
 	it('bardic inspiration die and reset', () => {
