@@ -15,6 +15,7 @@ import {
 	fillItemDetails,
 	ITEM_DATA_VERSION,
 	needsItemData,
+	resourceFeature,
 	gearInventoryItem,
 	inventoryItem,
 	RARITIES,
@@ -113,6 +114,30 @@ describe('class and race content', () => {
 		expect(g.map((x) => x.kind)).toEqual(['race', 'subrace', 'class', 'subclass']);
 		expect(g[2].features.some((f) => f.name === 'Action Surge')).toBe(true);
 		expect(g[2].features.some((f) => f.name === 'Extra Attack')).toBe(false);
+	});
+});
+
+describe('limited-use feature text', () => {
+	const content = { classes, races } as Content;
+	const text = (key: string) => resourceFeature(content, optionsJson as ClassOptionData[], RESOURCES.find((r) => r.key === key)!);
+	it('finds the rules for every counter', () => {
+		expect(RESOURCES.filter((def) => !resourceFeature(content, optionsJson as ClassOptionData[], def)?.text.trim()).map((d) => d.key)).toEqual([]);
+	});
+	it('matches whole features, levelled names and run-in headings', () => {
+		expect(text('bardic-inspiration')?.text).toMatch(/^You can inspire others/);
+		expect(text('superiority-dice')).toMatchObject({ name: 'Superiority Dice', text: expect.stringMatching(/^You have four superiority dice/) });
+		expect(text('superiority-dice')?.text).not.toMatch(/Saving Throws/);
+		expect(text('radiant-soul')?.text).toMatch(/radiant/);
+		expect(text('hellish-rebuke')?.name).toBe('Infernal Legacy');
+		expect(text('cloud-rune')?.name).toBe('Cloud Rune');
+	});
+	it('keeps a TCE feature\'s own headings and stops at the next feature', () => {
+		const psi = text('psionic-energy')!.text;
+		expect(psi).toMatch(/Psionic Strike\./);
+		expect(psi).not.toMatch(/^Telekinetic Adept\./m);
+		const harness = text('paladin-harness-divine-power')!.text;
+		expect(harness).toMatch(/^You can expend a use of your Channel Divinity/);
+		expect(harness).not.toMatch(/Breaking Your Oath/);
 	});
 });
 

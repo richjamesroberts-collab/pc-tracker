@@ -5,6 +5,8 @@
 	 * The animation Vitals plays over the Usable items card when an item is used, one per kind of item: flames for
 	 * fire, a bolt for lightning, snow for frost, notes for music, smoke for a summoned creature and so on. Sits
 	 * over the card (its parent is positioned); the icon is at the card's left, which is where most of it starts.
+	 * Limited-use features play it over their row; the parent can move it with `--fx-ox` (where things start),
+	 * `--fx-radius` and `--fx-tag-right` (where the spent amount floats up).
 	 */
 	let { kind, label }: { kind: UseFx; label: string } = $props();
 
@@ -51,6 +53,8 @@
 			</svg>
 		{:else if kind === 'radiant'}
 			<span class="rays"></span>
+		{:else if kind === 'necrotic'}
+			<span class="shade"></span>
 		{:else if kind === 'frost'}
 			<span class="rime"></span>
 		{:else if kind === 'wind'}
@@ -72,6 +76,10 @@
 	{#if kind === 'fire'}
 		{#each ROW as p, i (i)}
 			<span class="p flame" style:left="{p.x}%" style:--dx="{p.dx}px" style:animation-delay="{p.d}ms"></span>
+		{/each}
+	{:else if kind === 'necrotic'}
+		{#each ROW as p, i (i)}
+			<span class="p wisp" style:left="{p.x}%" style:--dx="{p.dx * 1.6}px" style:animation-delay="{p.d}ms"></span>
 		{/each}
 	{:else if kind === 'heal'}
 		{#each ROW.slice(1, 6) as p, i (i)}
@@ -139,7 +147,7 @@
 <style>
 	.fx {
 		/* Where the icon sits on the card: things thrown out start here. */
-		--ox: 31px;
+		--ox: var(--fx-ox, 31px);
 		position: absolute;
 		inset: 0;
 		z-index: 2;
@@ -165,6 +173,10 @@
 	.radiant {
 		--c: var(--color-warning);
 		--c2: var(--color-effect-edge);
+	}
+	.necrotic {
+		--c: var(--color-lair);
+		--c2: var(--color-spell-ink);
 	}
 	.heal {
 		--c: var(--color-heal);
@@ -214,14 +226,14 @@
 	.clip {
 		position: absolute;
 		inset: 0;
-		border-radius: var(--radius-xl);
+		border-radius: var(--fx-radius, var(--radius-xl));
 		overflow: hidden;
 	}
 
 	.edge {
 		position: absolute;
 		inset: -1px;
-		border-radius: var(--radius-xl);
+		border-radius: var(--fx-radius, var(--radius-xl));
 		box-shadow: 0 0 0 2px var(--c);
 		opacity: 0;
 		animation: fx-fade 1.7s ease-out;
@@ -262,7 +274,7 @@
 	/* What was spent ("−2 charges", "Used"), floating up over the count. */
 	.tag {
 		position: absolute;
-		right: 58px;
+		right: var(--fx-tag-right, 58px);
 		top: 50%;
 		font-family: var(--font-display);
 		font-size: 20px;
@@ -476,6 +488,58 @@
 		100% {
 			opacity: 0;
 			transform: rotate(50deg) scale(1.3);
+		}
+	}
+
+	/* Necrotic: shadow closes in from the edges and dark wisps curl up off the card. */
+	.shade {
+		position: absolute;
+		inset: 0;
+		box-shadow: inset 0 0 26px 4px var(--c);
+		opacity: 0;
+		animation: shade 1.6s ease-in-out;
+	}
+
+	@keyframes shade {
+		0% {
+			opacity: 0;
+		}
+		35%,
+		55% {
+			opacity: 0.55;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+
+	.wisp {
+		bottom: -4px;
+		width: 10px;
+		height: 24px;
+		margin-left: -5px;
+		border-radius: 50%;
+		background: var(--c);
+		filter: blur(3px);
+		animation: wisp 1.5s ease-out;
+	}
+
+	@keyframes wisp {
+		0% {
+			opacity: 0;
+			transform: translate(0, 0) scale(0.6, 0.5);
+		}
+		30% {
+			opacity: 0.85;
+			transform: translate(calc(var(--dx) * -0.5), -22px) scale(0.9, 1.2);
+		}
+		65% {
+			opacity: 0.55;
+			transform: translate(var(--dx), -46px) scale(1.2, 1.4) rotate(12deg);
+		}
+		100% {
+			opacity: 0;
+			transform: translate(calc(var(--dx) * 0.4), -70px) scale(1.6, 1.6) rotate(-8deg);
 		}
 	}
 

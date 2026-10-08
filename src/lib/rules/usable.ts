@@ -83,6 +83,7 @@ export type UseFx =
 	| 'frost'
 	| 'poison'
 	| 'radiant'
+	| 'necrotic'
 	| 'heal'
 	| 'light'
 	| 'force'

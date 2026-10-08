@@ -4,6 +4,7 @@ import { CLASS_MAP } from './classes';
 import { specificName } from '$lib/rules/items';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
+import type { ResourceDef } from '$lib/rules/features';
 
 export interface Feature {
 	name: string;
@@ -467,3 +468,70 @@ export function characterFeat(f: FeatData, level: number | undefined, abilities:
 }
 
 export const classOption = (o: ClassOptionData): ClassOption => ({ ref: o.id, name: o.name, kind: o.kind });
+
+/** Lowercase words only, and without a "(d8)" or "Channel Divinity: " around the name, for matching names. */
+const bareName = (s: string) =>
+	s
+		.replace(/\s*\(.*\)$/, '')
+		.replace(/^Channel Divinity:\s*/i, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+
+const SMALL = 'of|the|and|at|to|a|an|in|on|from|with|for|or|by';
+/** A run-in heading starting a paragraph: "Superiority Dice. You have four…", "Channel Divinity: Harness Divine Power. 3rd-level…". */
+const RUN_IN = new RegExp(`^((?:[A-Z][\\w'’/-]*)(?:[ :]+(?:[A-Z][\\w'’/-]*|${SMALL}))*)\\. (.*)$`);
+/** The line TCE puts under a heading: "3rd-level Rune Knight feature". */
+const LEVEL_LINE = /^\d+(?:st|nd|rd|th)-level .* feature$/;
+
+/** The paragraphs under the run-in heading `want` in a feature's text, up to the next heading. */
+function section(text: string, want: string): string | undefined {
+	const paras = text.split('\n');
+	const at = paras.findIndex((p) => {
+		const m = RUN_IN.exec(p);
+		return !!m && bareName(m[1]) === want;
+	});
+	if (at < 0) return undefined;
+	const rest = RUN_IN.exec(paras[at])![2];
+	// In text written the TCE way (every feature heading has a level line), a feature can have headings of its
+	// own under it (Psionic Power's Psionic Strike), so it ends at the next heading with a level line. PHB text
+	// with an optional feature added (Sacred Oath's Harness Divine Power) ends at any heading.
+	const first = paras.map((p) => RUN_IN.exec(p)).find((m) => !!m);
+	const top = LEVEL_LINE.test(rest) && !!first && LEVEL_LINE.test(first[2]);
+	const body = LEVEL_LINE.test(rest) ? [] : [rest];
+	for (const p of paras.slice(at + 1)) {
+		const m = RUN_IN.exec(p);
+		if (m && (!top || LEVEL_LINE.test(m[2]))) break;
+		body.push(p);
+	}
+	return body.join('\n');
+}
+
+/**
+ * Where a limited-use counter's rules are written: the class or subclass feature, racial trait or class option
+ * named by its `feature` (else its own name), in what its owner gives. A feature that goes up with level
+ * ("Bardic Inspiration (d8)") matches its first entry; one written under a run-in heading inside another
+ * (Battle Master's "Superiority Dice.") is cut out of it.
+ */
+export function resourceFeature(content: Content, options: ClassOptionData[], def: ResourceDef): { name: string; text: string } | undefined {
+	const { kind, key } = def.owner;
+	if (kind === 'option') return options.find((o) => o.id === key);
+	const [owner, sub] = key.split('/');
+	let list: { name: string; text: string }[] | undefined;
+	if (kind === 'class') list = content.classes[owner]?.features;
+	else if (kind === 'subclass') list = content.classes[owner]?.subclasses[sub];
+	else {
+		const race = content.races.find((r) => r.key === owner);
+		list = kind === 'race' ? race?.traits : race?.subraces.find((s) => s.key === sub)?.traits;
+	}
+	if (!list) return undefined;
+	const name = def.feature ?? def.name;
+	const want = bareName(name);
+	const whole = list.find((f) => bareName(f.name) === want);
+	if (whole) return whole;
+	for (const f of list) {
+		const text = section(f.text, want);
+		if (text) return { name, text };
+	}
+	return undefined;
+}
