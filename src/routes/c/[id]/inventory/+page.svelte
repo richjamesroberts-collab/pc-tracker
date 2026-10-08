@@ -27,6 +27,7 @@
 		carriedCoins,
 		carryState,
 		coinRoom,
+		editProblem,
 		encumbrance,
 		moveItem,
 		overLimit,
@@ -727,6 +728,7 @@
 	kind={customKind}
 	onsave={saveItem}
 	ondelete={deleteItem}
+	check={(item) => (editing ? editProblem(c, $state.snapshot(item) as InventoryItem) : '')}
 	onclose={() => (sheetOpen = false)}
 />
 

@@ -8,6 +8,7 @@ import {
 	carryState,
 	coinRoom,
 	containersOf,
+	editProblem,
 	encumbrance,
 	gainCoinsAt,
 	moveCoinsTo,
@@ -161,6 +162,19 @@ describe('moving things', () => {
 		const lighter = structuredClone(heavier);
 		lighter.items[0].weight = 65;
 		expect(overLimit(heavier, lighter, {})).toBe('');
+	});
+
+	it('checks edits that add weight or shrink a container, and lets other edits through', () => {
+		const weak = { str: 4, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+		// 5 lb backpack, 10 lb of torches in it, 20 lb rope: 35 of 60 lb.
+		const c = pc({ abilities: weak, items: [backpack({ equipped: true }), gear('Torch', 1, { quantity: 10, inside: 'backpack' }), gear('Rope', 20)] });
+		const torches = c.items[1];
+		expect(editProblem(c, { ...torches, quantity: 25 })).toBe('');
+		expect(editProblem(c, { ...torches, quantity: 31 })).toBe("Torch won't fit: Backpack holds 30 lb.");
+		expect(editProblem(c, { ...c.items[2], weight: 50 })).toBe("Rope won't fit: you'd carry 65 of 60 lb.");
+		expect(editProblem(c, { ...c.items[0], container: { lb: 5 } })).toBe('Backpack has 10 lb in it, more than its 5 lb.');
+		const over = pc({ abilities: weak, items: [gear('Rope', 80)] });
+		expect(editProblem(over, { ...over.items[0], name: 'Silk rope' })).toBe('');
 	});
 
 	it('equips containers on the character, and only those are ways to carry things', () => {
