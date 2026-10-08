@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { CARRY_STATUS, PLACE_IDEAS, addStash, encumbrance, partyBag, removeStash } from '$lib/rules/carry';
+	import { CARRY_STATUS, MOUNTS, PLACE_IDEAS, addStash, encumbrance, partyBag, removeStash } from '$lib/rules/carry';
 	import { coinCount } from '$lib/rules/coins';
 	import type { Character } from '$lib/types';
 
@@ -11,6 +11,27 @@
 	const load = $derived(encumbrance(c));
 	const bag = $derived(partyBag(c));
 	const places = $derived(c.stashes.filter((s) => s.kind === 'place'));
+	const mounts = $derived(c.stashes.filter((s) => s.kind === 'mount'));
+
+	let mountName = $state('');
+	let mountLb = $state<number | null>(null);
+
+	function chooseMount(name: string) {
+		const m = MOUNTS.find((x) => x.name === name);
+		mountName = name;
+		if (m) mountLb = m.lb;
+	}
+
+	function addMount(e: SubmitEvent) {
+		e.preventDefault();
+		const name = mountName.trim();
+		const lb = mountLb;
+		if (!name || !lb || lb <= 0) return;
+		const id = session.mutate(`Added ${name}: carries ${lb} lb`, (d) => addStash(d, 'mount', name, lb));
+		mountName = '';
+		mountLb = null;
+		if (id) onplace?.(id);
+	}
 	const variant = $derived(c.encumbranceRule === 'variant');
 
 	let newPlace = $state('');
@@ -115,6 +136,29 @@
 			<small>Someone else carries it: what you put in doesn't weigh on you. Holds 500 lb.</small>
 		</span>
 	</label>
+
+	<h3 class="label">Mounts</h3>
+	<p class="hint">A horse, mule or other animal carrying things for you. What it carries doesn't weigh on you, up to its carrying capacity.</p>
+	{#if mounts.length}
+		<div class="card list">
+			{#each mounts as m (m.id)}
+				<div class="row">
+					<button type="button" class="name" onclick={() => onplace?.(m.id)}>{m.name} <small>{m.lb ?? 0} lb</small></button>
+					<button type="button" class="remove" onclick={() => remove(m.id, m.name)}>Remove</button>
+				</div>
+			{/each}
+		</div>
+	{/if}
+	<form class="add mount" onsubmit={addMount}>
+		<input bind:value={mountName} placeholder="Name or kind" autocapitalize="words" aria-label="Mount" />
+		<input type="number" inputmode="numeric" min="1" step="1" bind:value={mountLb} placeholder="lb" aria-label="Carrying capacity in pounds" />
+		<button type="submit" disabled={!mountName.trim() || !mountLb || mountLb <= 0}>Add</button>
+	</form>
+	<div class="ideas">
+		{#each MOUNTS as m (m.name)}
+			<button type="button" onclick={() => chooseMount(m.name)}>{m.name} · {m.lb}</button>
+		{/each}
+	</div>
 
 	<h3 class="label">Places</h3>
 	<p class="hint">Somewhere to keep things you aren't carrying: a guild hall, a safe house, a bank. They don't weigh on you, and can't be used until you fetch them.</p>
@@ -304,6 +348,16 @@
 	.add {
 		display: flex;
 		gap: 8px;
+	}
+
+	.add.mount input[type='number'] {
+		flex: 0 0 76px;
+	}
+
+	.row .name small {
+		margin-left: 4px;
+		font-weight: 600;
+		color: var(--color-text-muted);
 	}
 
 	.add input {

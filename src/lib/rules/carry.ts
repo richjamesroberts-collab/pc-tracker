@@ -1,29 +1,43 @@
-import type { Character, InventoryItem, Stash } from '$lib/types';
-import { coinCount } from './coins';
+import type { Character, Coin, Coins, InventoryItem, Stash } from '$lib/types';
+import { COINS, coinCount, gainCoins, pay, purseOf } from './coins';
 import { sameStack } from './items';
 import { RACE_ABILITIES, abilityBreakdown } from './stats';
 
 /**
- * Carrying things: what the character carries and where it all is. Items are carried loose (worn, held, strapped
- * on), in a container (a pouch in a backpack), or kept in a stash: the party's Bag of Holding, carried by someone
- * else, or a place like a guild hall or a bank. Coins on the character are kept in containers marked for coins.
+ * Carrying things: what the character carries and where it all is. Items are carried on the character (worn, held,
+ * strapped on), in a container (a pouch, a backpack), or kept in a stash: a mount, the party's Bag of Holding
+ * (carried by someone else), or a place like a guild hall or a bank. Containers the character uses are equipped;
+ * only those take things on the character. Coins go in a container or a stash, never loose.
  */
 
 /** Coins weigh a pound per 50 (PHB), so a pouch's 6 lb holds 300 coins and a sack's 30 lb holds 1,500. */
 export const COINS_PER_LB = 50;
 /** What a Bag of Holding holds. */
 export const BAG_OF_HOLDING_LB = 500;
-/** Containers that keep the character's coins as soon as they're added. */
+/** Containers coins go in as soon as they're added. */
 export const COIN_CONTAINERS = ['pouch|phb', 'sack|phb'];
 export const PARTY_BAG_NAME = 'Party Bag of Holding';
 /** Offered when adding a place. */
 export const PLACE_IDEAS = ['Guild hall', 'Safe house', 'Bank', 'Inn room', 'Home', 'Ship'];
+/** PHB mounts and pack animals, with their carrying capacity. */
+export const MOUNTS: { name: string; lb: number }[] = [
+	{ name: 'Riding horse', lb: 480 },
+	{ name: 'Warhorse', lb: 540 },
+	{ name: 'Draft horse', lb: 540 },
+	{ name: 'Pony', lb: 225 },
+	{ name: 'Donkey or mule', lb: 420 },
+	{ name: 'Camel', lb: 480 },
+	{ name: 'Elephant', lb: 1320 },
+	{ name: 'Mastiff', lb: 195 }
+];
+
+const empty = (): Coins => ({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 });
 
 type CarryInput = Pick<Character, 'items' | 'coins' | 'stashes'>;
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-/** Where something is: loose on the character (both absent), in a container (wherever that is) or in a stash. */
+/** Where something is: on the character (both absent), in a container (wherever that is) or in a stash. */
 export interface Place {
 	stash?: string;
 	inside?: string;
@@ -63,19 +77,20 @@ export function withContents(c: Pick<Character, 'items'>, id: string, parents = 
 	return out;
 }
 
+/** Containers the character has equipped: the ways they carry things on themselves (a pouch, a sack, a backpack). */
+export const wornContainers = (c: Pick<Character, 'items'>) => c.items.filter((i) => i.container && i.equipped && !i.stash);
+
 export interface CarryState {
 	/** Pounds the character carries, coins included. */
 	carried: number;
+	/** Pounds of things on the character outside any container: worn, held or strapped on (and loose coins). */
+	onPerson: number;
 	/** Pounds of items in each container (by item id), however deep, without coins. */
 	itemLoads: Map<string, number>;
-	/** Pounds in each container: items and the coins kept there. */
+	/** Pounds in each container: items and coins. */
 	loads: Map<string, number>;
-	/** Coins kept in each container on the character. */
-	purses: Map<string, number>;
-	/** Coins on the character with no room in a coin container. */
+	/** Coins on the character that aren't in a container. */
 	looseCoins: number;
-	/** How many coins the character's coin containers have room for, all told. */
-	coinRoom: number;
 	/** Pounds in each stash, its coins included. */
 	stashLoads: Map<string, number>;
 	parents: Map<string, InventoryItem>;
@@ -83,8 +98,7 @@ export interface CarryState {
 
 /**
  * Weights, everywhere. A container adds its own weight and, unless it's weightless inside (Bag of Holding), what's
- * in it. Coins on the character go into coin containers in list order, as many as the room left after items allows;
- * the rest are loose but still weigh what they weigh.
+ * in it, coins included.
  */
 export function carryState(c: CarryInput): CarryState {
 	const parents = containersOf(c);
@@ -110,57 +124,61 @@ export function carryState(c: CarryInput): CarryState {
 	}
 
 	const itemLoads = loadsWith(() => 0);
-	const purses = new Map<string, number>();
-	let left = coinCount(c.coins);
-	let coinRoom = 0;
-	for (const box of c.items) {
-		if (box.stash || !box.container?.coins) continue;
-		const lb = box.container.lb;
-		const room = lb === undefined ? Infinity : Math.max(0, Math.floor(round((lb - (itemLoads.get(box.id) ?? 0)) * COINS_PER_LB)));
-		coinRoom += room;
-		const here = Math.min(left, room);
-		if (here > 0) purses.set(box.id, here);
-		left -= here;
-	}
-	const loads = loadsWith((box) => (purses.get(box.id) ?? 0) / COINS_PER_LB);
+	const loads = loadsWith((box) => (box.coins ? coinCount(box.coins) : 0) / COINS_PER_LB);
 	const weigh = (i: InventoryItem) => own(i) + (i.container && !i.container.weightless ? (loads.get(i.id) ?? 0) : 0);
 
-	let carried = left / COINS_PER_LB;
+	const looseCoins = coinCount(c.coins);
+	let carried = looseCoins / COINS_PER_LB;
+	let onPerson = carried;
 	const stashLoads = new Map<string, number>((c.stashes ?? []).map((s) => [s.id, coinCount(s.coins) / COINS_PER_LB]));
 	for (const i of c.items) {
 		if (parents.has(i.id)) continue;
-		if (!i.stash) carried += weigh(i);
-		else if (stashLoads.has(i.stash)) stashLoads.set(i.stash, stashLoads.get(i.stash)! + weigh(i));
+		if (!i.stash) {
+			carried += weigh(i);
+			// A container's own weight is on the character; what's in it shows against the container.
+			onPerson += i.container && i.equipped ? own(i) : weigh(i);
+		} else if (stashLoads.has(i.stash)) stashLoads.set(i.stash, stashLoads.get(i.stash)! + weigh(i));
 	}
 	for (const [k, v] of stashLoads) stashLoads.set(k, round(v));
 
-	return { carried: round(carried), itemLoads, loads, purses, looseCoins: left, coinRoom, stashLoads, parents };
+	return { carried: round(carried), onPerson: round(onPerson), itemLoads, loads, looseCoins, stashLoads, parents };
 }
 
-/** Pounds an item, or `count` of a stack, weighs where it's put: its own weight and its contents, coins left out. */
-export function movingWeight(state: CarryState, i: InventoryItem, count = i.quantity): number {
-	const inside = i.container && !i.container.weightless ? (state.itemLoads.get(i.id) ?? 0) : 0;
-	return round(count * (i.weight ?? 0) + inside);
+/** How many more coins a container has room for; Infinity when it has no limit. */
+export function coinRoom(state: CarryState, box: InventoryItem): number {
+	const lb = box.container?.lb;
+	if (!box.container) return 0;
+	return lb === undefined ? Infinity : Math.max(0, Math.floor(round((lb - (state.loads.get(box.id) ?? 0)) * COINS_PER_LB)));
 }
 
-/** Pounds of room left in a container or the party's Bag of Holding; Infinity for a place, the character or no limit. */
-export function roomAt(c: Pick<Character, 'items' | 'stashes'>, state: CarryState, to: Place): number {
-	if (to.inside) {
-		const box = c.items.find((i) => i.id === to.inside);
-		if (!box?.container) return 0;
-		return box.container.lb === undefined ? Infinity : round(box.container.lb - (state.itemLoads.get(box.id) ?? 0));
-	}
-	const stash = to.stash ? c.stashes.find((s) => s.id === to.stash) : undefined;
-	if (stash?.kind === 'bag') return round(BAG_OF_HOLDING_LB - (state.stashLoads.get(stash.id) ?? 0));
-	return Infinity;
-}
+/** Pounds a stash can hold: a mount's carrying capacity, the party bag's 500 lb, or no limit for a place. */
+export const stashCapacity = (s: Stash) => (s.kind === 'bag' ? BAG_OF_HOLDING_LB : s.kind === 'mount' ? s.lb : undefined);
 
 export const samePlace = (a: Place, b: Place) => (a.stash ?? '') === (b.stash ?? '') && (a.inside ?? '') === (b.inside ?? '');
 
 /**
+ * Why something can't end up where it is in `after`: a container or stash over its limit, or the character carrying
+ * more than their capacity (when that's more than they carried before). Empty when it's fine.
+ */
+export function overLimit(before: EncumbranceInput, after: EncumbranceInput, to: Place): string {
+	const state = carryState(after);
+	const box = to.inside ? after.items.find((i) => i.id === to.inside) : undefined;
+	if (box?.container?.lb !== undefined && (state.loads.get(box.id) ?? 0) > box.container.lb) return `${box.name} holds ${box.container.lb} lb`;
+	const stashId = box ? box.stash : to.stash;
+	const stash = stashId ? after.stashes.find((s) => s.id === stashId) : undefined;
+	const cap = stash && stashCapacity(stash);
+	if (stash && cap !== undefined && (state.stashLoads.get(stash.id) ?? 0) > cap) return `${stash.name} can carry ${cap} lb`;
+	if (stash) return '';
+	const now = encumbrance(after, state.carried);
+	if (now.carried > now.capacity && now.carried > carryState(before).carried) return `you'd carry ${now.carried} of ${now.capacity} lb`;
+	return '';
+}
+
+/**
  * Move an item, or `count` of a stack, to a place. A container takes everything in it along; nothing goes inside
- * itself. Things put in a stash are unequipped. A moved stack piles onto a matching one already there. Returns the
- * id of the entry it ended up in, or null if it can't go there.
+ * itself. Things put in a stash are unequipped; a container put in another is unequipped, and one taken out onto the
+ * character is equipped. A moved stack piles onto a matching one already there. Returns the id of the entry it ended
+ * up in, or null if it can't go there.
  */
 export function moveItem(c: Character, id: string, to: Place, count?: number): string | null {
 	const item = c.items.find((i) => i.id === id);
@@ -180,6 +198,7 @@ export function moveItem(c: Character, id: string, to: Place, count?: number): s
 		if (c.items.some((i) => parents.get(i.id) === item)) return null;
 		item.quantity -= n;
 		moving = { ...structuredClone(item), id: crypto.randomUUID(), quantity: n };
+		delete moving.coins;
 		c.items.push(moving);
 	}
 	if (box) moving.inside = box.id;
@@ -189,6 +208,7 @@ export function moveItem(c: Character, id: string, to: Place, count?: number): s
 		else delete i.stash;
 		if (stash && i.equipped) i.equipped = false;
 	}
+	if (moving.container) moving.equipped = !box && !stash;
 	const same = moving.container ? undefined : sameStack(c, moving);
 	if (!same) return moving.id;
 	same.quantity = Math.min(9999, same.quantity + moving.quantity);
@@ -196,33 +216,138 @@ export function moveItem(c: Character, id: string, to: Place, count?: number): s
 	return same.id;
 }
 
-/** A new item set to go in a place: loose on the character, in a container (and wherever that is) or a stash. */
+/**
+ * A new item set to go in a place: on the character, in a container (and wherever that is) or a stash. Things in a
+ * stash or container aren't equipped; a container put on the character is.
+ */
 export function placed(c: Pick<Character, 'items'>, item: InventoryItem, to: Place): InventoryItem {
 	const box = to.inside ? c.items.find((i) => i.id === to.inside && i.container) : undefined;
 	const stash = box ? box.stash : to.stash;
 	const { inside: _inside, stash: _stash, ...rest } = item;
-	return { ...rest, ...(box ? { inside: box.id } : {}), ...(stash ? { stash } : {}), ...(stash && item.equipped ? { equipped: false } : {}) };
+	const out: InventoryItem = { ...rest, ...(box ? { inside: box.id } : {}), ...(stash ? { stash } : {}) };
+	if (out.container) out.equipped = !box && !stash;
+	else if ((box || stash) && out.equipped) out.equipped = false;
+	return out;
 }
 
 export const partyBag = (c: Pick<Character, 'stashes'>) => c.stashes.find((s) => s.kind === 'bag');
 
-/** Add a place to keep things, or the party's Bag of Holding (only one). Returns its id. */
-export function addStash(c: Character, kind: Stash['kind'], name = kind === 'bag' ? PARTY_BAG_NAME : 'Stash'): string {
+/** Add a place, a mount (with its carrying capacity) or the party's Bag of Holding (only one). Returns its id. */
+export function addStash(c: Character, kind: Stash['kind'], name = kind === 'bag' ? PARTY_BAG_NAME : 'Stash', lb?: number): string {
 	const bag = kind === 'bag' ? partyBag(c) : undefined;
 	if (bag) return bag.id;
 	const id = crypto.randomUUID();
-	c.stashes.push({ id, name: name.trim() || 'Stash', kind, coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 } });
+	c.stashes.push({ id, name: name.trim() || 'Stash', kind, ...(kind === 'mount' && lb ? { lb } : {}), coins: empty() });
 	return id;
 }
 
-/** Stop keeping things in a stash: everything in it, coins too, comes back to the character. */
+/** Stop keeping things in a stash: everything in it comes back to the character, coins loose until put away. */
 export function removeStash(c: Character, id: string): void {
 	const stash = c.stashes.find((s) => s.id === id);
 	if (!stash) return;
 	for (const i of c.items) if (i.stash === id) delete i.stash;
-	for (const k of Object.keys(stash.coins) as (keyof typeof stash.coins)[]) c.coins[k] += stash.coins[k];
+	for (const k of COINS) c.coins[k] += stash.coins[k];
 	c.stashes = c.stashes.filter((s) => s.id !== id);
 }
+
+// Coins ---------------------------------------------------------------------------------------------------------
+
+/** The purses coins with the character are in: loose coins first, then each container on them, in list order. */
+function carriedPurses(c: Character): Coins[] {
+	return [c.coins, ...c.items.filter((i) => !i.stash && i.container && i.coins).map((i) => i.coins!)];
+}
+
+/** Every coin the character has with them, loose or in containers. */
+export function carriedCoins(c: CarryInput): Coins {
+	const out = { ...c.coins };
+	for (const i of c.items) if (!i.stash && i.container && i.coins) for (const k of COINS) out[k] += i.coins[k];
+	return out;
+}
+
+/** Coins in a container, or a stash's, or the loose ones. */
+function purseAt(c: Character, to: Place, create = false): Coins | undefined {
+	if (to.inside) {
+		const box = c.items.find((i) => i.id === to.inside && i.container);
+		if (box && create) box.coins ??= empty();
+		return box?.coins;
+	}
+	return purseOf(c, to.stash);
+}
+
+/** Gain coins in a container or a stash (or loose on the character, which the app doesn't offer). */
+export function gainCoinsAt(c: Character, coin: Coin, n: number, to: Place): boolean {
+	if (!to.inside) return gainCoins(c, coin, n, to.stash);
+	const purse = purseAt(c, to, true);
+	if (!purse || !Number.isInteger(n) || n <= 0) return false;
+	purse[coin] += n;
+	return true;
+}
+
+/**
+ * Pay `n` coins of a kind from what the character has with them, the way `pay` makes change. Loose coins go first,
+ * then containers in order; change goes back in the first purse paid from.
+ */
+export function spendCarried(c: Character, coin: Coin, n: number): boolean {
+	const purses = carriedPurses(c);
+	const total = carriedCoins(c);
+	const after = pay(total, coin, n);
+	if (!after) return false;
+	let payer: Coins | undefined;
+	for (const k of COINS) {
+		let take = total[k] - after[k];
+		for (const p of purses) {
+			if (take <= 0) break;
+			const x = Math.min(p[k], take);
+			if (x > 0) payer ??= p;
+			p[k] -= x;
+			take -= x;
+		}
+	}
+	for (const k of COINS) if (after[k] > total[k]) (payer ?? c.coins)[k] += after[k] - total[k];
+	return true;
+}
+
+/** Take `n` coins of one kind, as they are: from a stash, or from the character (loose first, then containers). */
+function takeCoins(c: Character, coin: Coin, n: number, from: string | undefined, keep?: Coins): boolean {
+	const purses = from ? [purseOf(c, from)].filter((p): p is Coins => !!p) : carriedPurses(c).filter((p) => p !== keep);
+	if (!Number.isInteger(n) || n <= 0 || purses.reduce((t, p) => t + p[coin], 0) < n) return false;
+	let left = n;
+	for (const p of purses) {
+		const x = Math.min(p[coin], left);
+		p[coin] -= x;
+		left -= x;
+	}
+	return true;
+}
+
+/** Move coins from the character (`from` absent) or a stash to a container or stash. */
+export function moveCoinsTo(c: Character, coin: Coin, n: number, from: string | undefined, to: Place): boolean {
+	if (!to.inside && (to.stash ?? '') === (from ?? '')) return false;
+	const target = purseAt(c, to, true);
+	if (!target || !takeCoins(c, coin, n, from, target)) return false;
+	target[coin] += n;
+	return true;
+}
+
+/** Put loose coins in the character's coin containers, biggest coins first, as many as fit. Returns how many went in. */
+export function putCoinsAway(c: Character): number {
+	let moved = 0;
+	for (const box of wornContainers(c).filter((i) => i.container!.coins)) {
+		let room = coinRoom(carryState(c), box);
+		for (const k of COINS) {
+			const x = Math.min(room, c.coins[k]);
+			if (x <= 0) continue;
+			box.coins ??= empty();
+			box.coins[k] += x;
+			c.coins[k] -= x;
+			room -= x;
+			moved += x;
+		}
+	}
+	return moved;
+}
+
+// Encumbrance ---------------------------------------------------------------------------------------------------
 
 export type CarryStatus = 'light' | 'encumbered' | 'heavy' | 'over' | 'stuck';
 

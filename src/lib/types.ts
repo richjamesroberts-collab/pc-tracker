@@ -144,7 +144,7 @@ export interface ItemContainer {
 	lb?: number;
 	/** What's inside adds nothing to the weight carried; only the container's own weight counts (Bag of Holding). */
 	weightless?: boolean;
-	/** The character keeps coins in it (pouches and sacks start out this way). */
+	/** Coins can be kept in it (pouches and sacks start out this way). */
 	coins?: boolean;
 }
 
@@ -172,7 +172,7 @@ export interface InventoryItem {
 	armor?: ItemArmor;
 	/** A weapon; it's listed under Attacks while `equipped`. */
 	weapon?: ItemWeapon;
-	/** Armor being worn, or a weapon at hand. */
+	/** Armor being worn, a weapon at hand, or a container worn or carried for use (a belt pouch, a backpack). */
 	equipped?: boolean;
 	/** Copied from the bundled item. Absent on entries added before effects were tracked, until filled in. */
 	effects?: ItemEffects;
@@ -181,6 +181,8 @@ export interface InventoryItem {
 	use?: ItemUse;
 	/** It holds other items; copied from bundled containers, or set by the player on a custom one. */
 	container?: ItemContainer;
+	/** Coins kept in this container. */
+	coins?: Coins;
 	/** The container entry it's in. Its contents always share the container's `stash`. */
 	inside?: string;
 	/** The stash it's kept in (a place or the party's Bag of Holding); absent when the character carries it. */
@@ -263,8 +265,13 @@ export interface Stash {
 	id: string;
 	/** "Guild hall", "Bank", "Party Bag of Holding". */
 	name: string;
-	/** 'bag': the party's Bag of Holding, carried by someone else (500 lb); 'place': a guild hall, safe house or bank. */
-	kind: 'bag' | 'place';
+	/**
+	 * 'bag': the party's Bag of Holding, carried by someone else (500 lb); 'mount': a horse, mule or other animal
+	 * carrying things for the character; 'place': a guild hall, safe house or bank.
+	 */
+	kind: 'bag' | 'mount' | 'place';
+	/** A mount's carrying capacity in pounds. */
+	lb?: number;
 	coins: Coins;
 }
 
@@ -372,7 +379,10 @@ export interface Character {
 	items: InventoryItem[];
 	/** Which `ITEM_DATA_VERSION` the bundled-item copies on `items` were last filled in from (see data/content.ts). */
 	itemDataVersion?: number;
-	/** Coins on the character. */
+	/**
+	 * Coins on the character that aren't in a container: from before coins went in containers, or change with nowhere
+	 * to go. Coins in containers are on the container entries (`InventoryItem.coins`).
+	 */
 	coins: Coins;
 	/** The party's Bag of Holding and places where the character keeps things. */
 	stashes: Stash[];

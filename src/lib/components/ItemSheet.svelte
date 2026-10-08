@@ -212,13 +212,14 @@
 			...(weight ? { weight } : {}),
 			...(armor ? { armor } : {}),
 			...(weapon ? { weapon } : {}),
-			...(armor || weapon ? { equipped: !!item?.equipped } : {}),
+			...(armor || weapon || container ? { equipped: !!item?.equipped } : {}),
 			effects,
 			...(max > 0
 				? { charges: { max, used: Math.min(item?.charges?.used ?? 0, max), ...(regain.trim() ? { regain: regain.trim() } : {}) } }
 				: {}),
 			...(item?.use ? { use: item.use } : {}),
 			...(container ? { container } : {}),
+			...(container && item?.coins ? { coins: item.coins } : {}),
 			...(item?.inside ? { inside: item.inside } : {}),
 			...(item?.stash ? { stash: item.stash } : {}),
 			notes

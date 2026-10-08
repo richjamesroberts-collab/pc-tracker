@@ -38,16 +38,6 @@ export function spendCoins(c: Character, coin: Coin, n: number, stash?: string):
 	return true;
 }
 
-/** Move `n` coins of one kind between the character and a stash, or two stashes, as they are (no change-making). */
-export function moveCoins(c: Character, coin: Coin, n: number, from: string | undefined, to: string | undefined): boolean {
-	const a = purseOf(c, from);
-	const b = purseOf(c, to);
-	if (!a || !b || a === b || !Number.isInteger(n) || n <= 0 || a[coin] < n) return false;
-	a[coin] -= n;
-	b[coin] += n;
-	return true;
-}
-
 /**
  * Pay `n` coins of a kind, the way you would at a shop: first with that coin and smaller ones,
  * then by breaking bigger coins and taking change back in coins no bigger than the one asked for
