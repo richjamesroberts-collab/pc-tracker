@@ -2,6 +2,7 @@ import type { Ability, Character } from '$lib/types';
 import { abilityMod } from './abilities';
 import { proficiencyBonus } from './spellcasting';
 import { abilityScores } from './stats';
+import type { UseFx } from './usable';
 
 export { proficiencyBonus };
 
@@ -20,6 +21,8 @@ export interface ResourceDef {
 	die?(c: Character): string;
 	/** Spent in amounts and shown as a number (Lay on Hands). */
 	pool?: true;
+	/** The feature, trait or class option its rules are under, when not its own name (Psionic Energy: Psionic Power). */
+	feature?: string;
 }
 
 type Steps = [level: number, value: number][];
@@ -120,8 +123,8 @@ export const RESOURCES: ResourceDef[] = [
 	}),
 	sub('fighter/arcane-archer', { key: 'arcane-shot', name: 'Arcane Shot', max: (c) => byLevel(c.level, [[3, 2]]), reset: short }),
 	sub('fighter/rune-knight', { key: 'giants-might', name: "Giant's Might", max: (c) => (c.level >= 3 ? prof(c) : 0), reset: long }),
-	sub('fighter/psi-warrior', { key: 'psionic-energy', name: 'Psionic Energy', max: (c) => (c.level >= 3 ? 2 * prof(c) : 0), reset: long, die: psiDie }),
-	sub('rogue/soulknife', { key: 'soulknife-psionic-energy', name: 'Psionic Energy', max: (c) => (c.level >= 3 ? 2 * prof(c) : 0), reset: long, die: psiDie }),
+	sub('fighter/psi-warrior', { key: 'psionic-energy', name: 'Psionic Energy', feature: 'Psionic Power', max: (c) => (c.level >= 3 ? 2 * prof(c) : 0), reset: long, die: psiDie }),
+	sub('rogue/soulknife', { key: 'soulknife-psionic-energy', name: 'Psionic Energy', feature: 'Psionic Power', max: (c) => (c.level >= 3 ? 2 * prof(c) : 0), reset: long, die: psiDie }),
 	sub('barbarian/wild-magic', { key: 'bolstering-magic', name: 'Bolstering Magic', max: (c) => (c.level >= 6 ? prof(c) : 0), reset: long }),
 	sub('sorcerer/wild-magic', { key: 'tides-of-chaos', name: 'Tides of Chaos', max: () => 1, reset: long }),
 	sub('sorcerer/divine-soul', { key: 'favored-by-the-gods', name: 'Favored by the Gods', max: () => 1, reset: short }),
@@ -131,7 +134,7 @@ export const RESOURCES: ResourceDef[] = [
 	sub('cleric/tempest', { key: 'wrath-of-the-storm', name: 'Wrath of the Storm', max: mod1, reset: long }),
 	sub('cleric/war', { key: 'war-priest', name: 'War Priest', max: mod1, reset: long }),
 	sub('cleric/peace', { key: 'emboldening-bond', name: 'Emboldening Bond', max: prof, reset: long }),
-	sub('druid/stars', { key: 'starry-guiding-bolt', name: 'Guiding Bolt (Star Map)', max: (c) => (c.level >= 2 ? prof(c) : 0), reset: long }),
+	sub('druid/stars', { key: 'starry-guiding-bolt', name: 'Guiding Bolt (Star Map)', feature: 'Star Map', max: (c) => (c.level >= 2 ? prof(c) : 0), reset: long }),
 	sub('ranger/fey-wanderer', { key: 'fey-reinforcements', name: 'Fey Reinforcements', max: (c) => byLevel(c.level, [[11, 1]]), reset: long }),
 	sub('ranger/fey-wanderer', { key: 'misty-wanderer', name: 'Misty Wanderer', max: (c) => (c.level >= 15 ? mod1(c) : 0), reset: long }),
 	sub('ranger/swarmkeeper', { key: 'writhing-tide', name: 'Writhing Tide', max: (c) => (c.level >= 7 ? prof(c) : 0), reset: long }),
@@ -140,7 +143,7 @@ export const RESOURCES: ResourceDef[] = [
 	sub('warlock/genie', { key: 'bottled-respite', name: 'Bottled Respite', max: () => 1, reset: long }),
 
 	sub('artificer/alchemist', { key: 'experimental-elixir', name: 'Experimental Elixir', max: (c) => byLevel(c.level, [[3, 1], [6, 2], [15, 3]]), reset: long }),
-	sub('artificer/armorer', { key: 'defensive-field', name: 'Defensive Field (Guardian)', max: profAt(3), reset: long }),
+	sub('artificer/armorer', { key: 'defensive-field', name: 'Defensive Field (Guardian)', feature: 'Guardian', max: profAt(3), reset: long }),
 	sub('artificer/artillerist', { key: 'eldritch-cannon', name: 'Eldritch Cannon', max: oneAt(3), reset: long }),
 	sub('artificer/battle-smith', { key: 'arcane-jolt', name: 'Arcane Jolt', max: modAt(9, 'int'), reset: long }),
 	sub('barbarian/beast', { key: 'infectious-fury', name: 'Infectious Fury', max: profAt(10), reset: long }),
@@ -231,56 +234,56 @@ export const RESOURCES: ResourceDef[] = [
 		die: (c) => dieByLevel(c.level, [[1, '2d6'], [6, '3d6'], [11, '4d6'], [16, '5d6']])
 	}),
 	race('half-orc', { key: 'relentless-endurance', name: 'Relentless Endurance', max: () => 1, reset: long }),
-	race('tiefling', { key: 'hellish-rebuke', name: 'Hellish Rebuke', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
-	race('tiefling', { key: 'infernal-darkness', name: 'Darkness', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
-	subrace('elf/drow', { key: 'faerie-fire', name: 'Faerie Fire', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
-	subrace('elf/drow', { key: 'drow-darkness', name: 'Darkness', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
+	race('tiefling', { key: 'hellish-rebuke', name: 'Hellish Rebuke', feature: 'Infernal Legacy', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
+	race('tiefling', { key: 'infernal-darkness', name: 'Darkness', feature: 'Infernal Legacy', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
+	subrace('elf/drow', { key: 'faerie-fire', name: 'Faerie Fire', feature: 'Drow Magic', max: (c) => byLevel(c.level, [[3, 1]]), reset: long }),
+	subrace('elf/drow', { key: 'drow-darkness', name: 'Darkness', feature: 'Drow Magic', max: (c) => byLevel(c.level, [[5, 1]]), reset: long }),
 
 	// Volo's Guide to Monsters. Keys get -vgm where the MPMM version has the same trait.
 	race('aasimar-vgm', { key: 'healing-hands-vgm', name: 'Healing Hands', max: one, reset: long }),
 	subrace('aasimar-vgm/protector', { key: 'radiant-soul', name: 'Radiant Soul', max: at3, reset: long }),
 	subrace('aasimar-vgm/scourge', { key: 'radiant-consumption', name: 'Radiant Consumption', max: at3, reset: long }),
 	subrace('aasimar-vgm/fallen', { key: 'necrotic-shroud', name: 'Necrotic Shroud', max: at3, reset: long }),
-	race('firbolg-vgm', { key: 'firbolg-vgm-detect-magic', name: 'Detect Magic', max: one, reset: short }),
-	race('firbolg-vgm', { key: 'firbolg-vgm-disguise-self', name: 'Disguise Self', max: one, reset: short }),
+	race('firbolg-vgm', { key: 'firbolg-vgm-detect-magic', name: 'Detect Magic', feature: 'Firbolg Magic', max: one, reset: short }),
+	race('firbolg-vgm', { key: 'firbolg-vgm-disguise-self', name: 'Disguise Self', feature: 'Firbolg Magic', max: one, reset: short }),
 	race('firbolg-vgm', { key: 'hidden-step-vgm', name: 'Hidden Step', max: one, reset: short }),
 	race('goblin-vgm', { key: 'fury-of-the-small-vgm', name: 'Fury of the Small', max: one, reset: short }),
 	race('goliath-vgm', { key: 'stones-endurance-vgm', name: "Stone's Endurance", max: one, reset: short, die: () => 'd12' }),
 	race('hobgoblin-vgm', { key: 'saving-face', name: 'Saving Face', max: one, reset: short }),
 	race('kobold-vgm', { key: 'grovel-cower-and-beg', name: 'Grovel, Cower, and Beg', max: one, reset: short }),
 	race('lizardfolk-vgm', { key: 'hungry-jaws-vgm', name: 'Hungry Jaws', max: one, reset: short }),
-	race('triton-vgm', { key: 'triton-vgm-fog-cloud', name: 'Fog Cloud', max: one, reset: long }),
-	race('triton-vgm', { key: 'triton-vgm-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
-	race('triton-vgm', { key: 'triton-vgm-wall-of-water', name: 'Wall of Water', max: at5, reset: long }),
-	race('yuan-ti-pureblood-vgm', { key: 'yuan-ti-pureblood-vgm-suggestion', name: 'Suggestion', max: at3, reset: long }),
+	race('triton-vgm', { key: 'triton-vgm-fog-cloud', name: 'Fog Cloud', feature: 'Control Air and Water', max: one, reset: long }),
+	race('triton-vgm', { key: 'triton-vgm-gust-of-wind', name: 'Gust of Wind', feature: 'Control Air and Water', max: at3, reset: long }),
+	race('triton-vgm', { key: 'triton-vgm-wall-of-water', name: 'Wall of Water', feature: 'Control Air and Water', max: at5, reset: long }),
+	race('yuan-ti-pureblood-vgm', { key: 'yuan-ti-pureblood-vgm-suggestion', name: 'Suggestion', feature: 'Innate Spellcasting', max: at3, reset: long }),
 
 	// Monsters of the Multiverse. Racial spells are keyed '<race>-<spell>'; each can be cast once per long rest.
-	race('aarakocra', { key: 'aarakocra-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
+	race('aarakocra', { key: 'aarakocra-gust-of-wind', name: 'Gust of Wind', feature: 'Wind Caller', max: at3, reset: long }),
 	race('aasimar', { key: 'healing-hands', name: 'Healing Hands', max: one, reset: long, die: (c) => `${prof(c)}d4` }),
 	race('aasimar', { key: 'celestial-revelation', name: 'Celestial Revelation', max: at3, reset: long }),
-	race('deep-gnome', { key: 'deep-gnome-disguise-self', name: 'Disguise Self', max: at3, reset: long }),
-	race('deep-gnome', { key: 'deep-gnome-nondetection', name: 'Nondetection', max: at5, reset: long }),
+	race('deep-gnome', { key: 'deep-gnome-disguise-self', name: 'Disguise Self', feature: 'Gift of the Svirfneblin', max: at3, reset: long }),
+	race('deep-gnome', { key: 'deep-gnome-nondetection', name: 'Nondetection', feature: 'Gift of the Svirfneblin', max: at5, reset: long }),
 	race('deep-gnome', { key: 'svirfneblin-camouflage', name: 'Svirfneblin Camouflage', max: prof, reset: long }),
-	race('duergar', { key: 'duergar-enlarge-reduce', name: 'Enlarge/Reduce', max: at3, reset: long }),
-	race('duergar', { key: 'duergar-invisibility', name: 'Invisibility', max: at5, reset: long }),
+	race('duergar', { key: 'duergar-enlarge-reduce', name: 'Enlarge/Reduce', feature: 'Duergar Magic', max: at3, reset: long }),
+	race('duergar', { key: 'duergar-invisibility', name: 'Invisibility', feature: 'Duergar Magic', max: at5, reset: long }),
 	race('eladrin', { key: 'fey-step', name: 'Fey Step', max: prof, reset: long }),
-	race('fairy', { key: 'fairy-faerie-fire', name: 'Faerie Fire', max: at3, reset: long }),
-	race('fairy', { key: 'fairy-enlarge-reduce', name: 'Enlarge/Reduce', max: at5, reset: long }),
-	race('firbolg', { key: 'firbolg-detect-magic', name: 'Detect Magic', max: one, reset: long }),
-	race('firbolg', { key: 'firbolg-disguise-self', name: 'Disguise Self', max: one, reset: long }),
+	race('fairy', { key: 'fairy-faerie-fire', name: 'Faerie Fire', feature: 'Fairy Magic', max: at3, reset: long }),
+	race('fairy', { key: 'fairy-enlarge-reduce', name: 'Enlarge/Reduce', feature: 'Fairy Magic', max: at5, reset: long }),
+	race('firbolg', { key: 'firbolg-detect-magic', name: 'Detect Magic', feature: 'Firbolg Magic', max: one, reset: long }),
+	race('firbolg', { key: 'firbolg-disguise-self', name: 'Disguise Self', feature: 'Firbolg Magic', max: one, reset: long }),
 	race('firbolg', { key: 'hidden-step', name: 'Hidden Step', max: prof, reset: long }),
-	subrace('genasi/air', { key: 'genasi-feather-fall', name: 'Feather Fall', max: at3, reset: long }),
-	subrace('genasi/air', { key: 'genasi-levitate', name: 'Levitate', max: at5, reset: long }),
-	subrace('genasi/earth', { key: 'merge-with-stone', name: 'Blade Ward (bonus action)', max: prof, reset: long }),
-	subrace('genasi/earth', { key: 'genasi-pass-without-trace', name: 'Pass without Trace', max: at5, reset: long }),
-	subrace('genasi/fire', { key: 'genasi-burning-hands', name: 'Burning Hands', max: at3, reset: long }),
-	subrace('genasi/fire', { key: 'genasi-flame-blade', name: 'Flame Blade', max: at5, reset: long }),
-	subrace('genasi/water', { key: 'genasi-create-or-destroy-water', name: 'Create or Destroy Water', max: at3, reset: long }),
-	subrace('genasi/water', { key: 'genasi-water-walk', name: 'Water Walk', max: at5, reset: long }),
-	race('githyanki', { key: 'githyanki-jump', name: 'Jump', max: at3, reset: long }),
-	race('githyanki', { key: 'githyanki-misty-step', name: 'Misty Step', max: at5, reset: long }),
-	race('githzerai', { key: 'githzerai-shield', name: 'Shield', max: at3, reset: long }),
-	race('githzerai', { key: 'githzerai-detect-thoughts', name: 'Detect Thoughts', max: at5, reset: long }),
+	subrace('genasi/air', { key: 'genasi-feather-fall', name: 'Feather Fall', feature: 'Mingle with the Wind', max: at3, reset: long }),
+	subrace('genasi/air', { key: 'genasi-levitate', name: 'Levitate', feature: 'Mingle with the Wind', max: at5, reset: long }),
+	subrace('genasi/earth', { key: 'merge-with-stone', name: 'Blade Ward (bonus action)', feature: 'Merge with Stone', max: prof, reset: long }),
+	subrace('genasi/earth', { key: 'genasi-pass-without-trace', name: 'Pass without Trace', feature: 'Merge with Stone', max: at5, reset: long }),
+	subrace('genasi/fire', { key: 'genasi-burning-hands', name: 'Burning Hands', feature: 'Reach to the Blaze', max: at3, reset: long }),
+	subrace('genasi/fire', { key: 'genasi-flame-blade', name: 'Flame Blade', feature: 'Reach to the Blaze', max: at5, reset: long }),
+	subrace('genasi/water', { key: 'genasi-create-or-destroy-water', name: 'Create or Destroy Water', feature: 'Call to the Wave', max: at3, reset: long }),
+	subrace('genasi/water', { key: 'genasi-water-walk', name: 'Water Walk', feature: 'Call to the Wave', max: at5, reset: long }),
+	race('githyanki', { key: 'githyanki-jump', name: 'Jump', feature: 'Githyanki Psionics', max: at3, reset: long }),
+	race('githyanki', { key: 'githyanki-misty-step', name: 'Misty Step', feature: 'Githyanki Psionics', max: at5, reset: long }),
+	race('githzerai', { key: 'githzerai-shield', name: 'Shield', feature: 'Githzerai Psionics', max: at3, reset: long }),
+	race('githzerai', { key: 'githzerai-detect-thoughts', name: 'Detect Thoughts', feature: 'Githzerai Psionics', max: at5, reset: long }),
 	race('goblin', { key: 'fury-of-the-small', name: 'Fury of the Small', max: prof, reset: long }),
 	race('goliath', { key: 'stones-endurance', name: "Stone's Endurance", max: prof, reset: long, die: () => 'd12' }),
 	race('harengon', { key: 'rabbit-hop', name: 'Rabbit Hop', max: prof, reset: long }),
@@ -293,10 +296,10 @@ export const RESOURCES: ResourceDef[] = [
 	race('orc', { key: 'orc-relentless-endurance', name: 'Relentless Endurance', max: one, reset: long }),
 	race('shadar-kai', { key: 'blessing-of-the-raven-queen', name: 'Blessing of the Raven Queen', max: prof, reset: long }),
 	race('shifter', { key: 'shifting', name: 'Shifting', max: prof, reset: long }),
-	race('triton', { key: 'triton-fog-cloud', name: 'Fog Cloud', max: one, reset: long }),
-	race('triton', { key: 'triton-gust-of-wind', name: 'Gust of Wind', max: at3, reset: long }),
-	race('triton', { key: 'triton-water-walk', name: 'Water Walk', max: at5, reset: long }),
-	race('yuan-ti', { key: 'yuan-ti-suggestion', name: 'Suggestion', max: at3, reset: long })
+	race('triton', { key: 'triton-fog-cloud', name: 'Fog Cloud', feature: 'Control Air and Water', max: one, reset: long }),
+	race('triton', { key: 'triton-gust-of-wind', name: 'Gust of Wind', feature: 'Control Air and Water', max: at3, reset: long }),
+	race('triton', { key: 'triton-water-walk', name: 'Water Walk', feature: 'Control Air and Water', max: at5, reset: long }),
+	race('yuan-ti', { key: 'yuan-ti-suggestion', name: 'Suggestion', feature: 'Serpentine Spellcasting', max: at3, reset: long })
 ];
 
 function owns(c: Character, def: ResourceDef): boolean {
@@ -368,4 +371,89 @@ export function restoreCustom(c: Character, id: string): void {
 	const r = c.customResources.find((x) => x.id === id);
 	if (!r) return;
 	r.used = Math.max(0, Math.min(r.used, r.max) - 1);
+}
+
+/** What one use of a counter is called: a Ki point, a superiority die, else a use. */
+export function resourceUnit(def: Pick<ResourceDef, 'key' | 'pool'>): [one: string, many: string] {
+	if (DICE.has(def.key)) return ['die', 'dice'];
+	if (def.pool || def.key === 'ki') return ['point', 'points'];
+	return ['use', 'uses'];
+}
+
+const DICE = new Set(['superiority-dice', 'psionic-energy', 'soulknife-psionic-energy', 'healing-light', 'balm-of-the-summer-court']);
+
+/** The animation Vitals plays when a feature is used, by what it does. Features not listed get arcane. */
+export const FEATURE_FX: Partial<Record<UseFx, string[]>> = {
+	heal: [
+		'second-wind', 'lay-on-hands', 'healing-light', 'healing-hands', 'healing-hands-vgm', 'balm-of-the-summer-court', 'wholeness-of-body',
+		'hand-of-ultimate-mercy', 'relentless-endurance', 'orc-relentless-endurance', 'unearthly-recovery', 'experimental-elixir', 'undying-sentinel'
+	],
+	radiant: [
+		'channel-divinity', 'paladin-channel-divinity', 'harness-divine-power', 'paladin-harness-divine-power', 'divine-intervention', 'cleansing-touch',
+		'radiant-soul', 'radiant-consumption', 'searing-vengeance', 'celestial-revelation', 'holy-nimbus', 'elder-champion', 'avenging-angel',
+		'living-legend', 'glorious-defense', 'mortal-bulwark', 'emboldening-bond', 'favored-by-the-gods', 'starry-guiding-bolt'
+	],
+	light: [
+		'divine-sense', 'warding-flare', 'eyes-of-night', 'cosmic-omen', 'magic-awareness', 'detect-portal', 'hunters-sense',
+		'firbolg-detect-magic', 'firbolg-vgm-detect-magic', 'faerie-fire', 'fairy-faerie-fire'
+	],
+	necrotic: [
+		'necrotic-shroud', 'form-of-dread', 'necrotic-husk', 'spirit-projection', 'wails-from-the-grave', 'strength-of-the-grave', 'dread-lord',
+		'eyes-of-the-grave', 'sentinel-at-deaths-door', 'blessing-of-the-raven-queen', 'hexblades-curse', 'accursed-specter', 'hurl-through-hell',
+		'infernal-darkness', 'drow-darkness'
+	],
+	fire: ['fire-rune', 'cauterizing-flames', 'blessing-of-the-forge', 'genasi-burning-hands', 'genasi-flame-blade', 'hellish-rebuke'],
+	lightning: ['wrath-of-the-storm', 'storm-rune', 'arcane-jolt'],
+	frost: ['frost-rune'],
+	music: [
+		'bardic-inspiration', 'infectious-inspiration', 'mantle-of-majesty', 'unbreakable-majesty', 'universal-speech', 'mantle-of-whispers',
+		'draconic-cry', 'fey-presence', 'yuan-ti-suggestion', 'yuan-ti-pureblood-vgm-suggestion'
+	],
+	strike: [
+		'rage', 'action-surge', 'favored-foe', 'superiority-dice', 'arcane-shot', 'giants-might', 'unwavering-mark', 'fighting-spirit',
+		'strength-before-death', 'war-priest', 'infectious-fury', 'invincible-conqueror', 'stroke-of-luck', 'fury-of-the-small', 'fury-of-the-small-vgm',
+		'hungry-jaws', 'hungry-jaws-vgm', 'saving-face', 'fortune-from-the-many'
+	],
+	force: [
+		'indomitable', 'arcane-ward', 'runic-shield', 'defensive-field', 'warding-maneuver', 'entropic-ward', 'psionic-energy', 'soulknife-psionic-energy',
+		'restore-balance', 'trance-of-order', 'clockwork-cavalcade', 'warping-implosion', 'hill-rune', 'stones-endurance', 'stones-endurance-vgm',
+		'githzerai-shield', 'merge-with-stone', 'bolstering-magic'
+	],
+	vanish: [
+		'wild-shape', 'misty-escape', 'misty-wanderer', 'fey-step', 'benign-transposition', 'illusory-self', 'hidden-step', 'hidden-step-vgm',
+		'steps-of-night', 'natures-veil', 'shadow-lore', 'fathomless-plunge', 'shapechanger', 'shifting', 'walker-in-dreams', 'hidden-paths',
+		'dark-delirium', 'svirfneblin-camouflage', 'githyanki-misty-step', 'duergar-invisibility', 'deep-gnome-disguise-self', 'deep-gnome-nondetection',
+		'firbolg-disguise-self', 'firbolg-vgm-disguise-self', 'grovel-cower-and-beg', 'fey-gift'
+	],
+	summon: [
+		'eldritch-cannon', 'fey-reinforcements', 'spirit-totem', 'animating-performance', 'performance-of-creation', 'manifest-mind',
+		'tentacle-of-the-deeps', 'triton-fog-cloud', 'triton-vgm-fog-cloud', 'bottled-respite'
+	],
+	wind: [
+		'cloud-rune', 'elemental-gift', 'writhing-tide', 'rabbit-hop', 'adrenaline-rush', 'githyanki-jump', 'aarakocra-gust-of-wind', 'triton-gust-of-wind',
+		'triton-vgm-gust-of-wind', 'genasi-feather-fall', 'genasi-levitate', 'bladesong'
+	],
+	scroll: ['one-with-the-word', 'kenku-recall', 'spell-storing-item']
+};
+
+const FX_BY_KEY = new Map(Object.entries(FEATURE_FX).flatMap(([fx, keys]) => keys.map((k) => [k, fx as UseFx])));
+
+/** A dragonborn's breath by ancestry (the subrace key is the dragon's colour). */
+const BREATH: Record<string, UseFx> = {
+	black: 'poison',
+	copper: 'poison',
+	green: 'poison',
+	blue: 'lightning',
+	bronze: 'lightning',
+	brass: 'fire',
+	gold: 'fire',
+	red: 'fire',
+	silver: 'frost',
+	white: 'frost'
+};
+
+/** The animation for using a feature: a dragonborn's breath by ancestry, else by what the feature does. */
+export function featureFx(c: Pick<Character, 'subraceKey'>, def: Pick<ResourceDef, 'key'>): UseFx {
+	if (def.key === 'breath-weapon') return BREATH[c.subraceKey ?? ''] ?? 'fire';
+	return FX_BY_KEY.get(def.key) ?? 'arcane';
 }

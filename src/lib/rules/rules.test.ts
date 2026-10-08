@@ -25,8 +25,11 @@ import {
 	spendSlot
 } from './resources';
 import {
+	FEATURE_FX,
 	RESOURCES,
+	featureFx,
 	proficiencyBonus,
+	resourceUnit,
 	resourceLeft,
 	resourcesFor,
 	restoreCustom,
@@ -229,6 +232,35 @@ describe('limited-use features', () => {
 	it('action surge hidden before 2', () => {
 		expect(resourcesFor(pc({ classKey: 'fighter', level: 1 })).map((r) => r.key)).toEqual(['second-wind']);
 		expect(max(pc({ classKey: 'fighter', level: 17 }), 'action-surge')).toBe(2);
+	});
+	it('names what one use is', () => {
+		const unit = (key: string) => resourceUnit(RESOURCES.find((r) => r.key === key)!);
+		expect(['bardic-inspiration', 'ki', 'lay-on-hands', 'superiority-dice', 'healing-light'].map(unit)).toEqual([
+			['use', 'uses'],
+			['point', 'points'],
+			['point', 'points'],
+			['die', 'dice'],
+			['die', 'dice']
+		]);
+	});
+	it('animates a feature by what it does', () => {
+		const fx = (key: string, subraceKey?: string) => featureFx({ subraceKey }, { key });
+		expect([fx('bardic-inspiration'), fx('healing-hands'), fx('radiant-soul'), fx('necrotic-shroud'), fx('misty-escape'), fx('portent')]).toEqual([
+			'music',
+			'heal',
+			'radiant',
+			'necrotic',
+			'vanish',
+			'arcane'
+		]);
+		expect([fx('breath-weapon', 'red'), fx('breath-weapon', 'blue'), fx('breath-weapon', 'white'), fx('breath-weapon', 'green')]).toEqual([
+			'fire',
+			'lightning',
+			'frost',
+			'poison'
+		]);
+		const keys = new Set(RESOURCES.map((r) => r.key));
+		expect(Object.values(FEATURE_FX).flat().filter((k) => !keys.has(k))).toEqual([]);
 	});
 	it('ki equals level from 2', () => expect([1, 2, 11].map((level) => max(pc({ classKey: 'monk', level }), 'ki'))).toEqual([0, 2, 11]));
 	it('bardic inspiration die and reset', () => {
