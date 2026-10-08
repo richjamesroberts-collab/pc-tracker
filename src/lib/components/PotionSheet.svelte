@@ -30,7 +30,7 @@
 	let roll = $state<number | null>(null);
 	/** Kept while the sheet closes, so the title doesn't flip. */
 	let shown = $state<'healing' | 'other'>('healing');
-	const potions = $derived(c.items.filter((i) => isPotion(i) && (shown === 'healing') === !!healingDice(i)));
+	const potions = $derived(c.items.filter((i) => isPotion(i) && !i.stash && (shown === 'healing') === !!healingDice(i)));
 
 	$effect(() => {
 		if (!group) return;

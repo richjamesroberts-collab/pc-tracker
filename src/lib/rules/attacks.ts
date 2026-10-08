@@ -296,7 +296,7 @@ export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBre
 			: `Melee ${has('reach') ? '10 ft (reach)' : '5 ft'}${has('thrown') && w.range ? ` · thrown ${w.range[0]}/${w.range[1]} ft` : ''}`;
 
 		const ammoDef = has('ammunition') ? AMMO[w.base] : undefined;
-		const ammoItems = ammoDef ? (c.items ?? []).filter((x) => x.ref === ammoDef.ref) : [];
+		const ammoItems = ammoDef ? (c.items ?? []).filter((x) => x.ref === ammoDef.ref && !x.stash) : [];
 
 		out.push({
 			id: i.id,

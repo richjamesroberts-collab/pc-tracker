@@ -312,3 +312,42 @@ describe('feats and class options', () => {
 		expect(c.classOptions.map((o) => o.name)).toEqual(['Agonizing Blast', 'Pact of the Blade']);
 	});
 });
+
+describe('containers and stashes', () => {
+	const thing = (id: string, extra: object = {}) => ({ id, kind: 'gear', name: id, type: '', rarity: '', quantity: 1, notes: '', ...extra });
+
+	it('fills them in when importing an old backup', () => {
+		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
+		expect(c.stashes).toEqual([]);
+		expect(c.encumbranceRule).toBeUndefined();
+	});
+
+	it('keeps where things are, bringing back anything left somewhere that no longer exists', () => {
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: {
+				id: 'a',
+				name: 'X',
+				classKey: 'fighter',
+				encumbranceRule: 'variant',
+				stashes: [{ id: 'hall', name: ' Guild hall ', kind: 'place', coins: { gp: 40, sp: -2 } }, { id: 'x', name: '' }],
+				items: [
+					thing('chest', { stash: 'hall', container: { lb: 300, coins: true, weightless: 'yes' } }),
+					thing('rope', { stash: 'hall', inside: 'chest' }),
+					thing('lamp', { stash: 'gone', inside: 'chest' }),
+					thing('torch', { inside: 'rope' })
+				]
+			}
+		});
+		expect(c.encumbranceRule).toBe('variant');
+		expect(c.stashes).toEqual([{ id: 'hall', name: 'Guild hall', kind: 'place', coins: { cp: 0, sp: 0, ep: 0, gp: 40, pp: 0 } }]);
+		expect(c.items.map((i) => [i.id, i.stash, i.inside])).toEqual([
+			['chest', 'hall', undefined],
+			['rope', 'hall', 'chest'],
+			['lamp', undefined, undefined],
+			['torch', undefined, undefined]
+		]);
+		expect(c.items[0].container).toEqual({ lb: 300, coins: true });
+	});
+});

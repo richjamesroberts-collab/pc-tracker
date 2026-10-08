@@ -88,6 +88,13 @@ class PcTrackerDB extends Dexie {
 				.toCollection()
 				.modify((c: Character) => migrateToBaseStats(c))
 		);
+		// Stashes: the party's Bag of Holding and places where things are kept.
+		this.version(12).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
+		);
 	}
 }
 

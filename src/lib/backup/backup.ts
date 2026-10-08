@@ -16,11 +16,13 @@ import type {
 	CustomSense,
 	InventoryItem,
 	ItemArmor,
+	ItemContainer,
 	ItemEffects,
 	ItemUse,
 	ItemWeapon,
 	Skill,
 	Spell,
+	Stash,
 	UseTime,
 	WeaponProperty
 } from '$lib/types';
@@ -109,10 +111,42 @@ function items(v: unknown): InventoryItem[] {
 					}
 				: {}),
 			...(itemUse(i.use) ? { use: itemUse(i.use) } : {}),
+			...(container(i.container) ? { container: container(i.container) } : {}),
+			...(typeof i.inside === 'string' && i.inside ? { inside: i.inside } : {}),
+			...(typeof i.stash === 'string' && i.stash ? { stash: i.stash } : {}),
 			notes: str(i.notes)
 		});
 	}
 	return out;
+}
+
+function container(v: unknown): ItemContainer | undefined {
+	if (!isObj(v)) return undefined;
+	const lb = num(v.lb, 0);
+	return {
+		...(lb > 0 ? { lb: Math.min(99_999, lb) } : {}),
+		...(v.weightless === true ? { weightless: true } : {}),
+		...(v.coins === true ? { coins: true } : {})
+	};
+}
+
+function stashes(v: unknown): Stash[] {
+	if (!Array.isArray(v)) return [];
+	return v
+		.filter((x) => isObj(x) && typeof x.id === 'string' && x.id && typeof x.name === 'string' && x.name.trim())
+		.map((x) => ({ id: x.id as string, name: (x.name as string).trim(), kind: x.kind === 'bag' ? 'bag' : 'place', coins: coins(x.coins) }));
+}
+
+/** Items in a stash or container that no longer exists (or a container somewhere else) come back loose. */
+function placeItems(c: Character): Character {
+	const stashIds = new Set(c.stashes.map((x) => x.id));
+	for (const i of c.items) if (i.stash && !stashIds.has(i.stash)) delete i.stash;
+	const byId = new Map(c.items.map((i) => [i.id, i]));
+	for (const i of c.items) {
+		const box = i.inside ? byId.get(i.inside) : undefined;
+		if (!box?.container || box === i || box.stash !== i.stash) delete i.inside;
+	}
+	return c;
 }
 
 const USE_TIMES: UseTime[] = ['action', 'bonus', 'reaction'];
@@ -363,6 +397,8 @@ export function readBackup(data: unknown): Character {
 		items: items(raw.items),
 		itemDataVersion: optionalNum(raw.itemDataVersion),
 		coins: coins(raw.coins),
+		stashes: stashes(raw.stashes),
+		...(raw.encumbranceRule === 'variant' ? { encumbranceRule: 'variant' as const } : {}),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),
@@ -372,7 +408,7 @@ export function readBackup(data: unknown): Character {
 	// AC and max HP already fall back to what was typed; the spellcasting modifier and initiative become overrides.
 	if (raw.hpBase === undefined) legacyToBase(c);
 	c.hitDiceUsed = Math.min(c.hitDiceUsed, c.level);
-	return recompute(c);
+	return recompute(placeItems(c));
 }
 
 export function parseBackupText(text: string): Character {

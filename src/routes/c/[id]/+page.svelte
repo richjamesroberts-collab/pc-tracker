@@ -45,6 +45,7 @@
 	import { senses } from '$lib/rules/senses';
 	import { healingDice, isPotion } from '$lib/rules/potions';
 	import { isUsable, type UseFx as UseFxKind } from '$lib/rules/usable';
+	import { CARRY_STATUS, carrySpeed, encumbrance } from '$lib/rules/carry';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -58,12 +59,15 @@
 	const pact = $derived(pactSlots(c));
 	const spMax = $derived(sorceryPointsMax(c));
 
+	const load = $derived(encumbrance(c));
+	const slowed = $derived(load.status !== 'light');
+
 	const stats = $derived(
 		[
-			c.speed != null && { k: 'Speed', v: `${c.speed}` },
+			c.speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(c.speed, load.status)}`, warn: slowed },
 			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
 			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
-		].filter((s): s is { k: string; v: string } => !!s)
+		].filter((s): s is { k: string; v: string; warn?: boolean } => !!s)
 	);
 
 	const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
@@ -91,7 +95,7 @@
 	let backupOpen = $state(false);
 
 	const potions = $derived.by(() => {
-		const all = c.items.filter(isPotion);
+		const all = c.items.filter((i) => isPotion(i) && !i.stash);
 		const group = (healing: boolean) => {
 			const list = all.filter((i) => !!healingDice(i) === healing);
 			return {
@@ -285,9 +289,19 @@
 {#if stats.length}
 	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
 		{#each stats as s (s.k)}
-			<div class="stat"><strong>{s.v}</strong><span>{s.k}</span></div>
+			<div class="stat" class:warn={s.warn}><strong>{s.v}</strong><span>{s.k}</span></div>
 		{/each}
 	</div>
+{/if}
+
+{#if slowed}
+	<a class="card load" href={resolve('/c/[id]/inventory', { id: c.id })}>
+		<span class="load-head">
+			<b>{CARRY_STATUS[load.status].label}</b>
+			<span>{load.carried} / {load.capacity} lb</span>
+		</span>
+		<span class="load-note">{CARRY_STATUS[load.status].note} Tap to lighten the load in Inventory.</span>
+	</a>
 {/if}
 
 {#if potions.healing.count || potions.other.count}
@@ -1062,6 +1076,44 @@
 		font-family: var(--font-display);
 		font-size: 20px;
 		font-weight: 900;
+	}
+
+	.stat.warn strong,
+	.stat.warn span {
+		color: var(--color-warning);
+	}
+
+	.load {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-top: 8px;
+		padding: 10px 14px;
+		border-left: 4px solid var(--color-warning);
+		color: var(--color-text);
+		text-decoration: none;
+	}
+
+	.load-head {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		font-size: 15px;
+	}
+
+	.load-head b {
+		color: var(--color-warning);
+	}
+
+	.load-head span {
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.load-note {
+		font-size: 13px;
+		line-height: 1.4;
+		color: var(--color-text-muted);
 	}
 
 	.stat span {

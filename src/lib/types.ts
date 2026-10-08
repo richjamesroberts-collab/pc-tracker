@@ -138,6 +138,16 @@ export interface ItemWeapon {
 	range?: [number, number];
 }
 
+/** Something that holds gear: a pouch, a backpack, a Bag of Holding. */
+export interface ItemContainer {
+	/** Pounds of gear it holds, coins at 50 to the pound; absent when no limit is given (Portable Hole). */
+	lb?: number;
+	/** What's inside adds nothing to the weight carried; only the container's own weight counts (Bag of Holding). */
+	weightless?: boolean;
+	/** The character keeps coins in it (pouches and sacks start out this way). */
+	coins?: boolean;
+}
+
 /** Something the character carries. Bundled items copy their name, type, rarity, weight and charges when added. */
 export interface InventoryItem {
 	/** Unique per entry, so two +1 Weapons can be a longsword and a dagger. */
@@ -169,6 +179,12 @@ export interface InventoryItem {
 	charges?: ItemCharges;
 	/** How a bundled item is used, copied from its description; custom items' are read from `notes` instead. */
 	use?: ItemUse;
+	/** It holds other items; copied from bundled containers, or set by the player on a custom one. */
+	container?: ItemContainer;
+	/** The container entry it's in. Its contents always share the container's `stash`. */
+	inside?: string;
+	/** The stash it's kept in (a place or the party's Bag of Holding); absent when the character carries it. */
+	stash?: string;
 	/** The description for custom items; the player's own notes for bundled ones. */
 	notes: string;
 }
@@ -241,6 +257,16 @@ export interface ClassOption {
 
 export type Coin = 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
 export type Coins = Record<Coin, number>;
+
+/** Somewhere the character keeps things they aren't carrying. */
+export interface Stash {
+	id: string;
+	/** "Guild hall", "Bank", "Party Bag of Holding". */
+	name: string;
+	/** 'bag': the party's Bag of Holding, carried by someone else (500 lb); 'place': a guild hall, safe house or bank. */
+	kind: 'bag' | 'place';
+	coins: Coins;
+}
 
 export interface Character {
 	id: string;
@@ -346,7 +372,12 @@ export interface Character {
 	items: InventoryItem[];
 	/** Which `ITEM_DATA_VERSION` the bundled-item copies on `items` were last filled in from (see data/content.ts). */
 	itemDataVersion?: number;
+	/** Coins on the character. */
 	coins: Coins;
+	/** The party's Bag of Holding and places where the character keeps things. */
+	stashes: Stash[];
+	/** 'variant': the PHB's variant encumbrance (speed drops at 5 and 10 × STR); otherwise only carrying capacity counts. */
+	encumbranceRule?: 'variant';
 
 	notes: string;
 	createdAt: string;
