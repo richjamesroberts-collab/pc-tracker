@@ -9,8 +9,21 @@
 	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { BAG_OF_HOLDING_LB, CARRY_STATUS, PLACE_IDEAS, carryState, containersOf, encumbrance, samePlace, worse } from '$lib/rules/carry';
-	import type { Character, InventoryItem } from '$lib/types';
+	import {
+		CARRY_STATUS,
+		PLACE_IDEAS,
+		carryState,
+		coinRoom,
+		containersOf,
+		encumbrance,
+		overLimit,
+		samePlace,
+		stashCapacity,
+		wornContainers,
+		worse
+	} from '$lib/rules/carry';
+	import { coinCount } from '$lib/rules/coins';
+	import type { Character, InventoryItem, Stash } from '$lib/types';
 
 	let {
 		open,
@@ -18,6 +31,7 @@
 		message = '',
 		max = 1,
 		split = false,
+		coins = false,
 		from,
 		simulate,
 		onpick,
@@ -30,6 +44,8 @@
 		/** How many there are; with `split`, the player can move fewer. */
 		max?: number;
 		split?: boolean;
+		/** Placing coins: only coin containers on the character, and stashes. */
+		coins?: boolean;
 		/** Where it is now, when moving; shown but not offered. */
 		from?: Place;
 		/** The character with it there, or null if it can't go there (a bag into itself). */
@@ -53,6 +69,7 @@
 
 	const before = $derived(encumbrance(c));
 	const lb = (n: number) => `${Math.round(n * 100) / 100} lb`;
+	const num = (n: number) => n.toLocaleString('en');
 
 	interface Row {
 		key: string;
@@ -65,8 +82,8 @@
 		here: boolean;
 	}
 
-	/** Containers in a place, each followed by the ones inside it. */
-	function boxesIn(stash: string | undefined): { item: InventoryItem; depth: number }[] {
+	/** Containers in a stash, each followed by the ones inside it. */
+	function boxesIn(stash: string): { item: InventoryItem; depth: number }[] {
 		const parents = containersOf(c);
 		const boxes = c.items.filter((i) => i.container && i.stash === stash);
 		const out: { item: InventoryItem; depth: number }[] = [];
@@ -81,7 +98,7 @@
 		return out;
 	}
 
-	function row(key: string, to: Place, label: string, depth: number): Row | null {
+	function row(key: string, to: Place, label: string, depth = 0): Row | null {
 		const here = !!from && samePlace(from, to);
 		if (here) return { key, to, label, depth, detail: 'Here now', warn: '', disabled: true, here };
 		const after = simulate(to, count);
@@ -89,45 +106,54 @@
 		const state = carryState(after);
 		const enc = encumbrance(after, state.carried);
 		const box = to.inside ? after.items.find((i) => i.id === to.inside) : undefined;
-		const stash = box ? box.stash : to.stash;
-		const bag = stash ? after.stashes.find((s) => s.id === stash)?.kind === 'bag' : false;
+		const stashId = box ? box.stash : to.stash;
+		const stash = stashId ? after.stashes.find((s) => s.id === stashId) : undefined;
+		const problem = overLimit(c, after, to);
 		let detail = '';
-		let disabled = false;
 		if (box?.container) {
-			const load = state.itemLoads.get(box.id) ?? 0;
+			const load = state.loads.get(box.id) ?? 0;
 			const cap = box.container.lb;
-			disabled = cap !== undefined && load > cap;
-			detail = disabled
-				? `Won't fit: ${lb(Math.max(0, cap! - (carryState(c).itemLoads.get(box.id) ?? 0)))} of room`
-				: `${cap !== undefined ? `${lb(load)} of ${lb(cap)}` : `${lb(load)} inside`}${box.container.weightless ? ' · weightless' : ''}`;
+			if (coins) {
+				const room = coinRoom(state, box);
+				detail = `${num(box.coins ? coinCount(box.coins) : 0)} coins${Number.isFinite(room) ? ` · room for ${num(room)} more` : ''}`;
+			} else detail = `${cap !== undefined ? `${lb(load)} of ${lb(cap)}` : `${lb(load)} inside`}${box.container.weightless ? ' · weightless' : ''}`;
 		} else if (stash) {
-			const load = state.stashLoads.get(stash) ?? 0;
-			disabled = bag && load > BAG_OF_HOLDING_LB;
-			detail = bag ? (disabled ? `Too full: ${lb(BAG_OF_HOLDING_LB)} at most` : `${lb(load)} of ${lb(BAG_OF_HOLDING_LB)}`) : `${lb(load)} kept here`;
+			const load = state.stashLoads.get(stash.id) ?? 0;
+			const cap = stashCapacity(stash);
+			detail = cap !== undefined ? `${lb(load)} of ${lb(cap)}` : `${lb(load)} kept here`;
 		} else {
 			detail = `Carrying ${lb(enc.carried)} of ${lb(enc.capacity)}`;
 		}
+		if (problem) {
+			const was = box && c.items.find((i) => i.id === box.id);
+			detail = coins && was ? `Only room for ${num(coinRoom(carryState(c), was))} more coins` : `Won't fit: ${problem}`;
+		}
 		// Anything that ends up on the character can slow them down.
-		const warn = !disabled && !stash && enc.status !== 'light' && (worse(enc.status, before.status) || enc.carried > before.carried) ? CARRY_STATUS[enc.status].label : '';
-		return { key, to, label: key === 'carry' && warn ? 'Carry it anyway' : label, depth, detail, warn, disabled, here };
+		const warn = !problem && !stash && enc.status !== 'light' && (worse(enc.status, before.status) || enc.carried > before.carried) ? CARRY_STATUS[enc.status].label : '';
+		return { key, to, label, depth, detail, warn, disabled: !!problem, here };
 	}
+
+	const KIND_TITLE: Record<Stash['kind'], string> = { mount: 'Mount', bag: 'Party bag', place: 'Place' };
 
 	const groups = $derived.by(() => {
 		if (!open) return [];
 		const keep = (r: Row | null): r is Row => !!r;
-		const out: { title: string; rows: Row[] }[] = [
+		const worn = wornContainers(c).filter((i) => !coins || i.container!.coins);
+		const person = coins
+			? []
+			: [row('carry', {}, from?.inside && !from.stash ? 'Take it out: worn, held or strapped on' : 'On you: worn, held or strapped on')];
+		const out: { title: string; rows: Row[]; empty?: string }[] = [
 			{
 				title: 'With you',
-				rows: [row('carry', {}, from?.inside && !from.stash ? 'Take it out' : from?.stash ? 'Bring it with you' : 'Carry it', 0), ...boxesIn(undefined).map(({ item, depth }) => row(item.id, { inside: item.id }, `In ${item.name}`, depth))].filter(keep)
+				rows: [...person, ...worn.map((i) => row(i.id, { inside: i.id }, `In ${i.name}`))].filter(keep),
+				empty: coins ? 'Nothing to keep coins in. Equip a pouch or sack (or mark a container for coins).' : undefined
 			}
 		];
-		for (const s of c.stashes) {
+		for (const s of [...c.stashes].sort((a, b) => ['mount', 'bag', 'place'].indexOf(a.kind) - ['mount', 'bag', 'place'].indexOf(b.kind))) {
+			const label = s.kind === 'place' ? `Leave it at ${s.name}` : s.kind === 'mount' ? `On ${s.name}` : 'In the bag';
 			out.push({
-				title: s.name,
-				rows: [
-					row(s.id, { stash: s.id }, s.kind === 'bag' ? 'In the bag' : `Leave it at ${s.name}`, 0),
-					...boxesIn(s.id).map(({ item, depth }) => row(item.id, { inside: item.id }, `In ${item.name}`, depth))
-				].filter(keep)
+				title: `${s.name} · ${KIND_TITLE[s.kind]}`,
+				rows: [row(s.id, { stash: s.id }, label), ...(coins ? [] : boxesIn(s.id).map(({ item, depth }) => row(item.id, { inside: item.id }, `In ${item.name}`, depth)))].filter(keep)
 			});
 		}
 		return out;
@@ -158,6 +184,7 @@
 	{#each groups as g (g.title)}
 		<h3 class="label">{g.title}</h3>
 		<div class="card list">
+			{#if !g.rows.length && g.empty}<p class="empty">{g.empty}</p>{/if}
 			{#each g.rows as r (r.key)}
 				<button type="button" class="dest" class:here={r.here} style:--depth={r.depth} disabled={r.disabled} onclick={() => pick(r.to)}>
 					<span class="name">{r.label}</span>
@@ -259,6 +286,13 @@
 		color: var(--color-text);
 		text-align: left;
 		font-weight: 400;
+	}
+
+	.empty {
+		padding: 12px 14px;
+		font-size: 14px;
+		color: var(--color-warning);
+		font-weight: 700;
 	}
 
 	.dest + .dest {

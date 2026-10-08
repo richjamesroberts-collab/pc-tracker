@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
 import type { Character, InventoryItem } from '$lib/types';
-import { addStash, carrySpeed, carryState, containersOf, encumbrance, moveItem, partyBag, placed, removeStash, roomAt } from './carry';
-import { isActive, removeItem } from './items';
-import { moveCoins, spendCoins } from './coins';
+import {
+	addStash,
+	carriedCoins,
+	carrySpeed,
+	carryState,
+	coinRoom,
+	containersOf,
+	encumbrance,
+	gainCoinsAt,
+	moveCoinsTo,
+	moveItem,
+	overLimit,
+	partyBag,
+	placed,
+	putCoinsAway,
+	removeStash,
+	spendCarried,
+	wornContainers
+} from './carry';
+import { isActive, removeItem, setEquipped } from './items';
+import { spendCoins } from './coins';
 import { savingThrows } from './saves';
 import { skillChecks } from './skills';
 
@@ -43,22 +61,22 @@ describe('carried weight', () => {
 		expect(s.looseCoins).toBe(100);
 	});
 
-	it('keeps coins in coin containers up to their room, and only the bag counts in a Bag of Holding', () => {
-		const c = pc({ items: [pouch(), gear('Chalk', 1, { inside: 'pouch' })], coins: coins(400) });
+	it('weighs coins in containers, and only the bag counts in a Bag of Holding', () => {
+		const c = pc({ items: [pouch({ coins: coins(100), equipped: true }), gear('Chalk', 1, { inside: 'pouch' })] });
 		const s = carryState(c);
-		// The chalk leaves 5 lb, 250 coins; the other 150 have nowhere to go.
-		expect(s.coinRoom).toBe(250);
-		expect(s.purses.get('pouch')).toBe(250);
-		expect(s.looseCoins).toBe(150);
-		expect(s.carried).toBe(10);
+		// The chalk and 100 coins leave 3 lb: 150 more coins.
+		expect(s.loads.get('pouch')).toBe(3);
+		expect(coinRoom(s, c.items[0])).toBe(150);
+		expect(s.carried).toBe(4);
+		expect(s.onPerson).toBe(1);
 
-		const d = pc({ items: [bag({ container: { lb: 500, weightless: true, coins: true } }), gear('Anvil', 200, { inside: 'bag-of-holding' })], coins: coins(1000) });
+		const d = pc({ items: [bag({ coins: coins(1000) }), gear('Anvil', 200, { inside: 'bag-of-holding' })] });
 		expect(carryState(d).carried).toBe(15);
 		expect(carryState(d).loads.get('bag-of-holding')).toBe(220);
 	});
 
 	it('nests: a pouch in a backpack adds to the backpack', () => {
-		const c = pc({ items: [backpack(), pouch({ inside: 'backpack' })], coins: coins(50) });
+		const c = pc({ items: [backpack(), pouch({ inside: 'backpack', coins: coins(50) })] });
 		const s = carryState(c);
 		expect(s.loads.get('pouch')).toBe(1);
 		expect(s.loads.get('backpack')).toBe(2);
@@ -117,13 +135,43 @@ describe('encumbrance', () => {
 });
 
 describe('moving things', () => {
-	it('puts things in containers, with room checked by the caller', () => {
-		const c = pc({ items: [backpack(), gear('Rope', 10)] });
-		expect(roomAt(c, carryState(c), { inside: 'backpack' })).toBe(30);
+	it('puts things in containers, and says when something is over its limit', () => {
+		const c = pc({ items: [backpack({ equipped: true }), gear('Rope', 10), gear('Anvil', 25)] });
+		const before = structuredClone(c);
 		expect(moveItem(c, 'rope', { inside: 'backpack' })).toBe('rope');
-		expect(roomAt(c, carryState(c), { inside: 'backpack' })).toBe(20);
+		expect(carryState(c).loads.get('backpack')).toBe(10);
 		expect(moveItem(c, 'backpack', { inside: 'backpack' })).toBeNull();
 		expect(moveItem(c, 'rope', { inside: 'backpack' })).toBeNull();
+		expect(overLimit(before, c, { inside: 'backpack' })).toBe('');
+		moveItem(c, 'anvil', { inside: 'backpack' });
+		expect(overLimit(before, c, { inside: 'backpack' })).toBe('Backpack holds 30 lb');
+	});
+
+	it('stops the character carrying more than their capacity, but not keeping what they had', () => {
+		const weak = { str: 4, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+		const c = pc({ abilities: weak, items: [gear('Rope', 50)] });
+		const more = structuredClone(c);
+		more.items.push(gear('Torch', 20));
+		expect(overLimit(c, more, {})).toBe("you'd carry 70 of 60 lb");
+		const horse = addStash(more, 'mount', 'Pony', 225);
+		moveItem(more, 'torch', { stash: horse });
+		expect(overLimit(c, more, { stash: horse })).toBe('');
+		const heavier = structuredClone(c);
+		heavier.items[0].weight = 70;
+		const lighter = structuredClone(heavier);
+		lighter.items[0].weight = 65;
+		expect(overLimit(heavier, lighter, {})).toBe('');
+	});
+
+	it('equips containers on the character, and only those are ways to carry things', () => {
+		const c = pc({ items: [pouch(), backpack({ equipped: true }), gear('Sack', 0.5, { container: { lb: 30 }, inside: 'backpack' })] });
+		expect(wornContainers(c).map((i) => i.name)).toEqual(['Backpack']);
+		expect(setEquipped(c, 'sack', true)).toBe(true);
+		expect(c.items[2].inside).toBeUndefined();
+		moveItem(c, 'sack', { inside: 'backpack' });
+		expect(c.items[2].equipped).toBe(false);
+		expect(placed(c, pouch(), {}).equipped).toBe(true);
+		expect(placed(c, pouch(), { inside: 'backpack' }).equipped).toBe(false);
 	});
 
 	it('places new things in a container wherever it is', () => {
@@ -155,21 +203,55 @@ describe('moving things', () => {
 		moveItem(c, 'backpack', { stash: bagId });
 		expect(c.items.map((i) => i.stash)).toEqual([bagId, bagId]);
 		expect(c.items[1]).toMatchObject({ inside: 'backpack', equipped: false });
-		expect(roomAt(c, carryState(c), { stash: bagId })).toBe(492);
+		expect(carryState(c).stashLoads.get(bagId)).toBe(8);
 		expect(isActive({ ...sword, stash: bagId })).toBe(false);
 	});
 
-	it('brings everything back when a stash goes, and lets go of a removed container’s contents', () => {
-		const c = pc({ items: [backpack(), gear('Rope', 10, { inside: 'backpack' })], coins: coins(5) });
+	it('brings everything back when a stash goes, and lets go of a removed container’s contents and coins', () => {
+		const c = pc({ items: [backpack({ coins: coins(5) }), gear('Rope', 10, { inside: 'backpack' })] });
 		const hall = addStash(c, 'place', 'Bank');
+		expect(moveCoinsTo(c, 'gp', 5, undefined, { stash: hall })).toBe(true);
+		expect(c.items[0].coins!.gp).toBe(0);
 		moveItem(c, 'backpack', { stash: hall });
-		expect(moveCoins(c, 'gp', 5, undefined, hall)).toBe(true);
 		expect(spendCoins(c, 'gp', 2, hall)).toBe(true);
 		removeStash(c, hall);
 		expect(c.items.every((i) => !i.stash)).toBe(true);
 		expect(c.coins.gp).toBe(3);
+		c.items[0].coins = coins(4);
 		removeItem(c, 'backpack');
 		expect(c.items).toEqual([expect.objectContaining({ name: 'Rope' })]);
 		expect(c.items[0].inside).toBeUndefined();
+		expect(c.coins.gp).toBe(7);
+	});
+});
+
+describe('coins', () => {
+	it('gains coins in a chosen container or stash', () => {
+		const c = pc({ items: [pouch({ equipped: true })] });
+		expect(gainCoinsAt(c, 'gp', 50, { inside: 'pouch' })).toBe(true);
+		const hall = addStash(c, 'place', 'Bank');
+		expect(gainCoinsAt(c, 'sp', 10, { stash: hall })).toBe(true);
+		expect(c.items[0].coins!.gp).toBe(50);
+		expect(c.stashes[0].coins.sp).toBe(10);
+		expect(carriedCoins(c).gp).toBe(50);
+	});
+
+	it('spends what the character carries, loose coins first, change back where it was paid from', () => {
+		const c = pc({ coins: coins(1), items: [pouch({ equipped: true, coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 1 } }), gear('Sack', 0.5, { container: { lb: 30, coins: true }, equipped: true, coins: coins(3) })] });
+		expect(spendCarried(c, 'gp', 3)).toBe(true);
+		expect(c.coins.gp).toBe(0);
+		expect(c.items[1].coins!.gp).toBe(1);
+		expect(spendCarried(c, 'gp', 3)).toBe(true);
+		// The platinum piece pays 3 gp; 7 gp change goes back in the pouch, and the sack's gold isn't needed.
+		expect(c.items[0].coins).toMatchObject({ pp: 0, gp: 7 });
+		expect(c.items[1].coins!.gp).toBe(1);
+		expect(spendCarried(c, 'pp', 1)).toBe(false);
+	});
+
+	it('puts loose coins away in coin containers, as many as fit', () => {
+		const c = pc({ coins: { cp: 0, sp: 0, ep: 0, gp: 400, pp: 2 }, items: [pouch({ equipped: true }), backpack({ equipped: true })] });
+		expect(putCoinsAway(c)).toBe(300);
+		expect(c.items[0].coins).toMatchObject({ pp: 2, gp: 298 });
+		expect(c.coins).toMatchObject({ pp: 0, gp: 102 });
 	});
 });

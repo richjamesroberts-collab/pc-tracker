@@ -22,16 +22,19 @@
 	} from '$lib/data/content';
 	import { COINS, coinCount, coinWorth, formatGp, purseOf } from '$lib/rules/coins';
 	import {
-		BAG_OF_HOLDING_LB,
 		CARRY_STATUS,
-		COINS_PER_LB,
 		addStash,
+		carriedCoins,
 		carryState,
+		coinRoom,
 		encumbrance,
 		moveItem,
+		overLimit,
 		placed,
+		putCoinsAway,
 		samePlace,
-		worse,
+		stashCapacity,
+		wornContainers,
 		type Place
 	} from '$lib/rules/carry';
 	import {
@@ -51,7 +54,7 @@
 		stacks
 	} from '$lib/rules/items';
 	import { describeEffects } from '$lib/rules/stats';
-	import type { Character, InventoryItem } from '$lib/types';
+	import type { Character, InventoryItem, Stash } from '$lib/types';
 
 	type Kind = InventoryItem['kind'];
 
@@ -75,9 +78,12 @@
 	const carry = $derived(carryState(c));
 	const load = $derived(encumbrance(c, carry.carried));
 	const variant = $derived(c.encumbranceRule === 'variant');
-	const purse = $derived(purseOf(c, here ?? undefined) ?? c.coins);
-	const coinBoxes = $derived(c.items.filter((i) => !i.stash && i.container?.coins));
-	const carried = $derived(coinCount(c.coins));
+	const purse = $derived(here ? (purseOf(c, here) ?? c.coins) : carriedCoins(c));
+	const worn = $derived(wornContainers(c));
+	const coinBoxes = $derived(worn.filter((i) => i.container!.coins));
+	const loose = $derived(coinCount(c.coins));
+	const carriers = $derived(c.stashes.filter((s) => s.kind !== 'place'));
+	const cap = (s: Stash) => stashCapacity(s);
 	let carryOpen = $state(false);
 
 	let library = $state<MagicItem[] | null>(null);
@@ -161,7 +167,7 @@
 	function holds(i: InventoryItem): string {
 		const cap = i.container?.lb;
 		const inside = carry.loads.get(i.id) ?? 0;
-		const coins = carry.purses.get(i.id);
+		const coins = i.coins ? coinCount(i.coins) : 0;
 		return [
 			cap !== undefined ? `${lb(inside)} of ${lb(cap)}` : `${lb(inside)} inside`,
 			coins ? `${coins.toLocaleString('en')} coins` : '',
@@ -175,62 +181,67 @@
 	const placeName = (to: Place) =>
 		to.inside ? `${c.items.find((i) => i.id === to.inside)?.name ?? 'the container'}` : to.stash ? (c.stashes.find((s) => s.id === to.stash)?.name ?? 'the stash') : 'you';
 
-	/** Things to add, waiting for the player to say where they go because they don't fit where they were going. */
+	/** Things to add, waiting for the player to say where they go. */
 	interface Pending {
 		label: string;
+		/** What's being added, for the sheet's title ("Pouch", "3 × Torch"). */
+		what: string;
 		items: InventoryItem[];
+		/** Why the sheet opened by itself, if it wasn't just asking. */
 		message: string;
 		/** One more of this entry: if it stays where that entry is, its count goes up instead. */
 		more?: string;
+		/** An equipment pack: its container (by item id) and the items that go in it. */
+		pack?: { box: string; inside: string[] };
 	}
 	let pending = $state<Pending | null>(null);
 
-	/** The character with `items` added at `to`. */
-	function withAdded(items: InventoryItem[], to: Place): Character {
+	/** Add a pending lot at `to`. A pack's contents go in its own container, wherever that ends up. */
+	function addAll(d: Character, p: Pending, to: Place): string | undefined {
+		let last: string | undefined;
+		const box = p.pack && p.items.find((i) => i.id === p.pack!.box);
+		if (box) addItem(d, placed(d, box, to));
+		for (const it of p.items) {
+			if (it === box) continue;
+			last = addItem(d, placed(d, it, box && p.pack!.inside.includes(it.id) ? { inside: box.id } : to));
+		}
+		return box && p.items.length === 1 ? box.id : last;
+	}
+
+	/** The character with a pending lot added at `to`. */
+	function withAdded(p: Pending, to: Place): Character {
 		const next = copy();
-		for (const it of items) addItem(next, placed(next, it, to));
+		addAll(next, p, to);
 		return next;
 	}
 
-	/** Why `items` can't simply go to `to`: too heavy to carry, or too much for the party's bag. Empty if they can. */
-	function problem(items: InventoryItem[], to: Place, what: string): string {
-		const next = withAdded(items, to);
-		const state = carryState(next);
-		if (to.stash) {
-			const bag = c.stashes.find((s) => s.id === to.stash && s.kind === 'bag');
-			const over = bag && (state.stashLoads.get(bag.id) ?? 0) > BAG_OF_HOLDING_LB;
-			return over ? `${what} won't fit: ${bag.name} holds ${BAG_OF_HOLDING_LB} lb at most, and it has ${carry.stashLoads.get(bag.id) ?? 0} lb of your things.` : '';
+	/**
+	 * Add things. On the With you tab the player always says how they're carrying them; in a stash they go there unless
+	 * it can't take them. One more of a stack goes where the stack is, if there's room.
+	 */
+	function place(label: string, items: InventoryItem[], what: string, extra: Partial<Pending> = {}): string | undefined {
+		const p: Pending = { label, what, items, message: '', ...extra };
+		const at: Place | null = p.more ? placeOf(c.items.find((i) => i.id === p.more)!) : here ? herePlace : null;
+		if (at) {
+			const problem = overLimit(c, withAdded(p, at), at);
+			if (!problem) return commit(p, at);
+			p.message = `${what} won't fit: ${problem}. Where should ${items.length > 1 || /^\d/.test(what) ? 'they' : 'it'} go?`;
 		}
-		const after = encumbrance(next, state.carried);
-		if (after.carried <= load.carried) return '';
-		if (after.status === 'over' || after.status === 'stuck') {
-			return `You can't carry ${what}: that's ${lb(after.carried)}, and you can carry ${lb(after.capacity)}. Leave it somewhere, or carry it anyway at a crawl.`;
-		}
-		if (worse(after.status, load.status)) return `${what} would leave you ${CARRY_STATUS[after.status].label.toLowerCase()} (${lb(after.carried)} of ${lb(after.capacity)}). ${CARRY_STATUS[after.status].note}`;
-		return '';
+		pending = p;
+		return undefined;
 	}
 
-	/** Add things where the player is looking, or ask where they go if they don't fit. Returns the entry added. */
-	function place(label: string, items: InventoryItem[], what: string, more?: string): string | undefined {
-		const message = problem(items, herePlace, what);
-		if (message) {
-			pending = { label, items, message, more };
-			return undefined;
-		}
-		return commit({ label, items, message, more }, herePlace);
-	}
+	const placeOf = (i: InventoryItem): Place => ({ stash: i.stash, inside: carry.parents.get(i.id)?.id });
 
 	function commit(p: Pending, to: Destination): string | undefined {
 		const same = p.more ? c.items.find((i) => i.id === p.more) : undefined;
 		return session.mutate(to.newPlace ? `${p.label} (left at ${to.newPlace})` : p.label, (d) => {
 			const target: Place = to.newPlace ? { stash: addStash(d, 'place', to.newPlace) } : to;
-			if (same && samePlace(target, { stash: same.stash, inside: carry.parents.get(same.id)?.id })) {
+			if (same && samePlace(target, placeOf(same))) {
 				changeQuantity(d, same.id, 1);
 				return same.id;
 			}
-			let last: string | undefined;
-			for (const it of p.items) last = addItem(d, placed(d, it, target));
-			return last;
+			return addAll(d, p, target);
 		});
 	}
 
@@ -240,7 +251,29 @@
 		pending = null;
 		if (!p) return;
 		const added = commit(p, to);
-		if (added && p.items.length === 1) expanded = added;
+		if (added && (p.items.length === 1 || p.pack)) expanded = added;
+	}
+
+	/** Pack contents that fit in the pack's own container (a backpack's 30 lb), in order; the rest is strapped on. */
+	function packPlan(items: InventoryItem[]): Pending['pack'] {
+		const box = items.find((i) => i.container);
+		if (!box) return undefined;
+		let room = box.container!.lb ?? Infinity;
+		const inside: string[] = [];
+		for (const i of items) {
+			const w = (i.weight ?? 0) * i.quantity;
+			if (i === box || w > room) continue;
+			inside.push(i.id);
+			room -= w;
+		}
+		return { box: box.id, inside };
+	}
+
+	function putAway() {
+		session.mutate(null, (d) => {
+			const moved = putCoinsAway(d);
+			session.notify(moved ? `${moved.toLocaleString('en')} coins put away` : 'No room: equip a pouch or sack', { canUndo: !!moved, tone: moved ? undefined : 'warn' });
+		});
 	}
 
 	/** The entry being moved. */
@@ -287,7 +320,7 @@
 		if (!g) return;
 		if (g.contents) {
 			const items = unpack(g, gearById);
-			place(`Unpacked ${g.name}: ${items.length} items`, items, `everything in the ${g.name}`);
+			place(`Unpacked ${g.name}: ${items.length} items`, items, `everything in the ${g.name}`, { pack: packPlan(items) });
 			return;
 		}
 		const item = gearInventoryItem(g);
@@ -312,7 +345,12 @@
 		if (editing) {
 			session.mutate(`${item.name} saved`, (d) => {
 				const index = d.items.findIndex((x) => x.id === item.id);
-				if (index >= 0) d.items[index] = item;
+				if (index < 0) return;
+				// No longer a container: its coins come out, loose where it is.
+				const coins = d.items[index].coins;
+				const purse = item.stash ? d.stashes.find((x) => x.id === item.stash)?.coins : d.coins;
+				if (coins && !item.container && purse) for (const k of COINS) purse[k] += coins[k];
+				d.items[index] = item;
 			});
 		} else {
 			const added = place(`Added ${item.name}`, [item], item.name);
@@ -335,7 +373,11 @@
 	}
 
 	function toggleWorn(i: InventoryItem) {
-		const label = i.weapon
+		const label = i.container
+			? i.equipped
+				? `Stopped using ${i.name}: it's carried as it is`
+				: `Equipped ${i.name}: you can carry things in it`
+			: i.weapon
 			? i.equipped
 				? `Put away ${i.name}`
 				: `Equipped ${i.name}: it's under Attacks on Vitals`
@@ -376,14 +418,10 @@
 	function quantity(i: InventoryItem, delta: number) {
 		const label = i.quantity + delta < 1 ? `${i.name} removed` : `${i.name}: ${i.quantity + delta}`;
 		if (delta > 0 && !i.container) {
-			const { id: _id, ...rest } = i;
+			const { id: _id, coins: _coins, ...rest } = i;
 			const one = { ...structuredClone($state.snapshot(rest)), id: crypto.randomUUID(), quantity: delta } as InventoryItem;
-			const at: Place = { stash: i.stash, inside: carry.parents.get(i.id)?.id };
-			const message = problem([one], at, `another ${i.name}`);
-			if (message) {
-				pending = { label, items: [one], message, more: i.id };
-				return;
-			}
+			place(label, [one], `Another ${i.name}`, { more: i.id });
+			return;
 		}
 		session.mutate(label, (d) => changeQuantity(d, i.id, delta));
 	}
@@ -500,8 +538,11 @@
 							</div>
 						{/if}
 						{#if i.container && !i.stash}
+							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
+								{i.equipped ? 'Equipped' : 'Equip'}
+							</button>
 							<button type="button" class="purse" class:on={!!i.container.coins} aria-pressed={!!i.container.coins} onclick={() => toggleCoins(i)}>
-								{i.container.coins ? 'Keeps coins' : 'Keep coins'}
+								{i.container.coins ? 'For coins' : 'Not for coins'}
 							</button>
 						{/if}
 						<button type="button" class="edit" onclick={() => (moving = i.id)}>Move</button>
@@ -552,21 +593,26 @@
 </div>
 
 {#if stash}
-	<button type="button" class="card load" onclick={() => (carryOpen = true)}>
+	{@const most = cap(stash)}
+	{@const kept = carry.stashLoads.get(stash.id) ?? 0}
+	<button type="button" class="card load" class:warn={most !== undefined && kept > most} onclick={() => (carryOpen = true)}>
 		<span class="load-top">
-			<b>{lb(carry.stashLoads.get(stash.id) ?? 0)}</b>
-			{#if stash.kind === 'bag'}of {lb(BAG_OF_HOLDING_LB)}{:else}kept here{/if}
+			<b>{lb(kept)}</b>
+			{#if most !== undefined}of {lb(most)}{:else}kept here{/if}
 		</span>
-		{#if stash.kind === 'bag'}
-			<span class="bar" aria-hidden="true"><span class="fill" style:width="{Math.min(100, ((carry.stashLoads.get(stash.id) ?? 0) / BAG_OF_HOLDING_LB) * 100)}%"></span></span>
+		{#if most !== undefined}
+			<span class="bar" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (kept / most) * 100)}%"></span></span>
 		{/if}
 		<span class="load-note">
 			{stash.kind === 'bag'
 				? 'Carried by someone else in the party: your things here weigh nothing on you. Fetching something takes an action.'
-				: `Not with you: things kept at ${stash.name} don't weigh on you, and can't be used until you fetch them.`}
+				: stash.kind === 'mount'
+					? `Carried by ${stash.name}, up to its carrying capacity. Nothing here weighs on you, or can be used until you take it.`
+					: `Not with you: things kept at ${stash.name} don't weigh on you, and can't be used until you fetch them.`}
 		</span>
 	</button>
 {:else}
+	<h2 class="label group">Carrying capacity</h2>
 	<button type="button" class="card load" class:warn={load.status !== 'light'} aria-label="Carrying {lb(load.carried)} of {lb(load.capacity)}. Tap for details." onclick={() => (carryOpen = true)}>
 		<span class="load-top">
 			<b>{lb(load.carried)}</b> of {lb(load.capacity)}
@@ -581,12 +627,48 @@
 		</span>
 		{#if load.status !== 'light'}<span class="load-note">{CARRY_STATUS[load.status].note}</span>{/if}
 	</button>
+
+	<h2 class="label group">Carrying on</h2>
+	<div class="card carriers">
+		<div class="carrier">
+			<span class="what"><b>Person</b><small>Worn, held or strapped on</small></span>
+			<span class="amount">{lb(carry.onPerson)}</span>
+		</div>
+		{#each worn as box (box.id)}
+			{@const used = carry.loads.get(box.id) ?? 0}
+			{@const max = box.container!.lb}
+			<button type="button" class="carrier" onclick={() => (expanded = box.id)}>
+				<span class="what">
+					<b>{box.name}</b>
+					<small>
+						{[box.coins && coinCount(box.coins) ? `${coinCount(box.coins).toLocaleString('en')} coins` : '', box.container!.coins && Number.isFinite(coinRoom(carry, box)) ? `room for ${coinRoom(carry, box).toLocaleString('en')} more coins` : '', box.container!.weightless ? 'weightless inside' : '']
+							.filter(Boolean)
+							.join(' · ') || 'Equipped'}
+					</small>
+				</span>
+				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
+				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
+			</button>
+		{/each}
+		{#each carriers as s (s.id)}
+			{@const used = carry.stashLoads.get(s.id) ?? 0}
+			{@const max = cap(s)}
+			<button type="button" class="carrier" onclick={() => (at = s.id)}>
+				<span class="what"><b>{s.name}</b><small>{s.kind === 'mount' ? 'Mount' : 'Carried by someone else'}</small></span>
+				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
+				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
+			</button>
+		{/each}
+		{#if !coinBoxes.length}
+			<p class="carrier-hint">No pouch or sack equipped, so there's nowhere to keep coins. Add one under Gear, or equip one you have.</p>
+		{/if}
+	</div>
 	<p class="summary">
 		<span class:full={attuned >= limit}>Attuned <b>{attuned} / {limit}</b></span>
 	</p>
 {/if}
 
-<h2 class="label group">Coins{stash ? ` at ${stash.name}` : ''}</h2>
+<h2 class="label group">Coins{stash ? ` at ${stash.name}` : ' with you'}</h2>
 <button type="button" class="card coins" aria-label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)}>
 	{#each COINS as k (k)}
 		<span class="coin" class:empty={!purse[k]}>
@@ -595,15 +677,13 @@
 		</span>
 	{/each}
 </button>
-{#if !stash && (carry.looseCoins || coinBoxes.length)}
-	<p class="coin-note" class:warn={carry.looseCoins > 0}>
-		{#if carry.looseCoins && !coinBoxes.length}
-			{carry.looseCoins.toLocaleString('en')} coins and nothing to keep them in. Add a pouch (300 coins) or a sack (1,500), or tap Keep coins on a container.
-		{:else if carry.looseCoins}
-			{carry.looseCoins.toLocaleString('en')} coins don't fit in {coinBoxes.map((b) => b.name).join(' or ')}. Add a pouch or sack, or leave some coins somewhere.
+{#if !stash && loose}
+	<p class="coin-note warn">
+		{loose.toLocaleString('en')} coins aren't in anything.
+		{#if coinBoxes.length}
+			<button type="button" class="put-away" onclick={putAway}>Put them in {coinBoxes.map((b) => b.name).join(' or ')}</button>
 		{:else}
-			In {coinBoxes.map((b) => b.name).join(', ')}: {carried.toLocaleString('en')} coins ({lb(carried / COINS_PER_LB)}), room for
-			{Number.isFinite(carry.coinRoom) ? `${(carry.coinRoom - carried).toLocaleString('en')} more` : 'as many more as you like'}.
+			Equip a pouch or sack to keep them in.
 		{/if}
 	</p>
 {/if}
@@ -663,9 +743,9 @@
 
 <PlaceSheet
 	open={!!pending}
-	title="Where should it go?"
+	title={pending?.message ? 'Where should it go?' : `How will you carry ${pending?.what ?? 'it'}?`}
 	message={pending?.message}
-	simulate={(to) => (pending ? withAdded(pending.items, to) : null)}
+	simulate={(to) => (pending ? withAdded(pending, to) : null)}
 	onpick={pickPending}
 	onclose={() => (pending = null)}
 />
@@ -831,6 +911,78 @@
 	.coin-note.warn {
 		color: var(--color-warning);
 		font-weight: 700;
+	}
+
+	.put-away {
+		display: block;
+		margin-top: 6px;
+		min-height: 38px;
+		padding: 0 14px;
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-accent);
+		color: var(--color-accent);
+		font-weight: 800;
+	}
+
+	.carriers {
+		overflow: hidden;
+	}
+
+	.carrier {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 2px 10px;
+		width: 100%;
+		min-height: 54px;
+		padding: 8px 14px;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		text-align: left;
+		font-weight: 400;
+	}
+
+	.carrier + .carrier,
+	.carrier + .carrier-hint {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.carrier .what {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.carrier b {
+		font-size: 15px;
+		overflow-wrap: anywhere;
+	}
+
+	.carrier small {
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.carrier .amount {
+		font-size: 14px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-effect-ink);
+	}
+
+	.bar.mini {
+		grid-column: 1 / -1;
+		height: 4px;
+	}
+
+	.carrier-hint {
+		padding: 10px 14px;
+		font-size: 13px;
+		line-height: 1.4;
+		font-weight: 700;
+		color: var(--color-warning);
 	}
 
 	.actions .purse {

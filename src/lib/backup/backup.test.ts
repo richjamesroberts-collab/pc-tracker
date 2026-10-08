@@ -350,4 +350,25 @@ describe('containers and stashes', () => {
 		]);
 		expect(c.items[0].container).toEqual({ lb: 300, coins: true });
 	});
+
+	it('keeps coins in containers, equipped containers and mounts', () => {
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: {
+				id: 'a',
+				name: 'X',
+				classKey: 'fighter',
+				stashes: [{ id: 'pony', name: 'Pony', kind: 'mount', lb: 225 }],
+				items: [
+					thing('pouch', { container: { lb: 6, coins: true }, equipped: true, coins: { gp: 40, pp: -1 } }),
+					thing('rope', { equipped: true, coins: { gp: 5 } })
+				]
+			}
+		});
+		expect(c.stashes[0]).toMatchObject({ kind: 'mount', lb: 225 });
+		expect(c.items[0]).toMatchObject({ equipped: true, coins: { cp: 0, sp: 0, ep: 0, gp: 40, pp: 0 } });
+		expect(c.items[1]).not.toHaveProperty('equipped');
+		expect(c.items[1]).not.toHaveProperty('coins');
+	});
 });

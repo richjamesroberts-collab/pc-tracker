@@ -270,6 +270,15 @@ describe('item effects and armor', () => {
 		expect(c.itemDataVersion).toBe(ITEM_DATA_VERSION);
 		expect(needsItemData(c)).toBe(false);
 	});
+	it('equips containers the character had before equipping, and puts their coins in coin containers', () => {
+		const pouch = { ...gearInventoryItem(gearById.get('pouch|phb')!), container: undefined };
+		const chest = { ...gearInventoryItem(gearById.get('chest|phb')!), stash: 'hall' };
+		const c = { ...newCharacter(), items: [pouch, chest], coins: { cp: 0, sp: 0, ep: 0, gp: 350, pp: 0 }, itemDataVersion: 7 };
+		fillItemData(c, magicById, gearById);
+		expect(c.items[0]).toMatchObject({ container: { lb: 6, coins: true }, equipped: true, coins: { gp: 300 } });
+		expect(c.items[1].equipped).toBeUndefined();
+		expect(c.coins.gp).toBe(50);
+	});
 	it('names generic magic weapons already picked as a weapon for it, unless renamed', () => {
 		const longsword = gearById.get('longsword|phb')!.weapon!;
 		const plus1 = { ...inventoryItem(magicById.get('+1 weapon|dmg')!), weapon: { ...longsword } };

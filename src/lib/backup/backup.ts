@@ -97,7 +97,7 @@ function items(v: unknown): InventoryItem[] {
 			attuned: !!i.attunement && !!i.attuned,
 			quantity: Math.max(1, Math.floor(num(i.quantity, 1))),
 			...(weight > 0 ? { weight } : {}),
-			...(armor(i.armor) || weapon(i.weapon) ? { equipped: !!i.equipped } : {}),
+			...(armor(i.armor) || weapon(i.weapon) || container(i.container) ? { equipped: !!i.equipped } : {}),
 			...(armor(i.armor) ? { armor: armor(i.armor) } : {}),
 			...(weapon(i.weapon) ? { weapon: weapon(i.weapon) } : {}),
 			...(effects(i.effects) ? { effects: effects(i.effects) } : {}),
@@ -112,6 +112,7 @@ function items(v: unknown): InventoryItem[] {
 				: {}),
 			...(itemUse(i.use) ? { use: itemUse(i.use) } : {}),
 			...(container(i.container) ? { container: container(i.container) } : {}),
+			...(container(i.container) && isObj(i.coins) ? { coins: coins(i.coins) } : {}),
 			...(typeof i.inside === 'string' && i.inside ? { inside: i.inside } : {}),
 			...(typeof i.stash === 'string' && i.stash ? { stash: i.stash } : {}),
 			notes: str(i.notes)
@@ -134,7 +135,11 @@ function stashes(v: unknown): Stash[] {
 	if (!Array.isArray(v)) return [];
 	return v
 		.filter((x) => isObj(x) && typeof x.id === 'string' && x.id && typeof x.name === 'string' && x.name.trim())
-		.map((x) => ({ id: x.id as string, name: (x.name as string).trim(), kind: x.kind === 'bag' ? 'bag' : 'place', coins: coins(x.coins) }));
+		.map((x) => {
+			const kind: Stash['kind'] = x.kind === 'bag' || x.kind === 'mount' ? x.kind : 'place';
+			const lb = Math.round(num(x.lb, 0));
+			return { id: x.id as string, name: (x.name as string).trim(), kind, ...(kind === 'mount' && lb > 0 ? { lb } : {}), coins: coins(x.coins) };
+		});
 }
 
 /** Items in a stash or container that no longer exists (or a container somewhere else) come back loose. */

@@ -123,11 +123,13 @@ export function changeQuantity(c: Character, id: string, delta: number): void {
 	else item.quantity = Math.min(9999, next);
 }
 
-/** Remove an entry. Whatever was in it stays where the container was, loose. */
+/** Remove an entry. Whatever was in it stays where the container was, loose; its coins go loose there too. */
 export function removeItem(c: Character, id: string): void {
 	const item = c.items.find((i) => i.id === id);
 	if (!item) return;
 	for (const i of c.items) if (i.inside === id) i.inside = item.inside;
+	const purse = item.stash ? c.stashes.find((s) => s.id === item.stash)?.coins : c.coins;
+	if (item.coins && purse) for (const k of Object.keys(purse) as (keyof typeof purse)[]) purse[k] += item.coins[k] ?? 0;
 	c.items = c.items.filter((i) => i.id !== id);
 }
 
@@ -155,13 +157,15 @@ export function itemSpellBonus(c: Pick<Character, 'items'>): { attack: number; d
 }
 
 /**
- * Put armor or a shield on or take it off, or ready a weapon or put it away. Wearing one suit of armor
- * (or shield) takes off any other; any number of weapons can be at hand. Nothing in a stash can be equipped.
+ * Put armor or a shield on or take it off, ready a weapon or put it away, or start or stop using a container to carry
+ * things. Wearing one suit of armor (or shield) takes off any other; any number of weapons can be at hand. An equipped
+ * container comes out of any container it was in. Nothing in a stash can be equipped.
  */
 export function setEquipped(c: Character, id: string, on: boolean): boolean {
 	const item = c.items.find((i) => i.id === id);
-	if (!item?.armor && !item?.weapon) return false;
+	if (!item?.armor && !item?.weapon && !item?.container) return false;
 	if (on && item.stash) return false;
+	if (on && item.container) delete item.inside;
 	if (on && item.armor) {
 		const shield = item.armor.type === 'shield';
 		for (const other of c.items) if (other.armor && other.equipped && (other.armor.type === 'shield') === shield) other.equipped = false;

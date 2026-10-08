@@ -16,7 +16,7 @@ import type {
 import { GEAR_USES, readItemUse } from '$lib/rules/usable';
 import { CLASS_MAP } from './classes';
 import { specificName } from '$lib/rules/items';
-import { COIN_CONTAINERS } from '$lib/rules/carry';
+import { COIN_CONTAINERS, putCoinsAway } from '$lib/rules/carry';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
 import type { ResourceDef } from '$lib/rules/features';
@@ -374,8 +374,9 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
  * 5: armor and shields of a set kind get their bundled AC back (the item sheet let a +1 Shield's 2 be typed over as 1).
  * 6: how an item is used (the actions its description names, and whether it's used up), and a healer's kit's ten uses.
  * 7: containers (what a pouch, sack or Bag of Holding holds), and weights on entries saved without one.
+ * 8: containers on the character are equipped (only equipped ones take things), and coin containers keep their coins.
  */
-export const ITEM_DATA_VERSION = 7;
+export const ITEM_DATA_VERSION = 8;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
@@ -385,6 +386,7 @@ export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_D
  * and mark the character as up to date. Entries the player already changed are left alone.
  */
 export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: Map<string, GearItem>): void {
+	const first = (c.itemDataVersion ?? 0) < 8;
 	for (const i of c.items) {
 		const data = i.ref ? (i.kind === 'gear' ? gear : magic).get(i.ref) : undefined;
 		if (!data) continue;
@@ -409,6 +411,10 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 		if (!i.container) Object.assign(i, containerOf(data));
 		if (i.weight === undefined && data.weight) i.weight = data.weight;
 	}
+	// Containers on the character from before equipping: they were all in use, and only loose ones can be worn.
+	for (const i of c.items) if (first && i.container && !i.stash && !i.inside && i.equipped === undefined) i.equipped = true;
+	// Coins used to fill pouches and sacks by themselves; now they're kept in them.
+	if (first) putCoinsAway(c);
 	c.itemDataVersion = ITEM_DATA_VERSION;
 }
 
