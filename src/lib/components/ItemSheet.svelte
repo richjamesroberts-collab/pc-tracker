@@ -4,7 +4,7 @@
 	import { ITEM_TYPES, RARITIES, copyWeapon, loadGear, rarityLabel, type GearItem } from '$lib/data/content';
 	import { armorFits, parseRegain, picksArmor, specificName, weaponFits } from '$lib/rules/items';
 	import { WEAPONS, proficiencyLabel } from '$lib/rules/proficiency';
-	import type { ArmorType, InventoryItem, ItemArmor, ItemEffects, ItemWeapon } from '$lib/types';
+	import type { ArmorType, InventoryItem, ItemArmor, ItemContainer, ItemEffects, ItemWeapon } from '$lib/types';
 
 	let {
 		open,
@@ -46,6 +46,9 @@
 	let gearList = $state<GearItem[] | null>(null);
 	let charges = $state(0);
 	let regain = $state('');
+	/** Custom items only: pounds it holds as a container, and whether what's inside weighs nothing. */
+	let holds = $state<number | null>(null);
+	let weightless = $state(false);
 	let notes = $state('');
 	// Fixed when the sheet opens, so the title doesn't change while it closes after a delete.
 	let editing = $state(false);
@@ -73,6 +76,8 @@
 			weaponBonus = item?.effects?.attack ?? null;
 			charges = item?.charges?.max ?? 0;
 			regain = item?.charges?.regain ?? '';
+			holds = item?.container?.lb ?? null;
+			weightless = !!item?.container?.weightless;
 			notes = item?.notes ?? '';
 		});
 	});
@@ -163,6 +168,7 @@
 			quantity >= 1 &&
 			quantity <= 9999 &&
 			(weight === null || (Number.isFinite(weight) && weight >= 0)) &&
+			(holds === null || (Number.isFinite(holds) && holds >= 0 && holds <= 99_999)) &&
 			(!armorType || (Number.isInteger(armorAc) && armorAc! >= 0 && armorAc! <= 30)) &&
 			(acBonus === null || Number.isInteger(acBonus)) &&
 			(weaponBonus === null || Number.isInteger(weaponBonus)) &&
@@ -179,6 +185,11 @@
 		const weapon = pickWeapon ? weaponFor(weaponBase) : item?.weapon;
 		const armor = pickArmor ? armorFor(armorBase) : armorType && armorAc !== null ? { type: armorType, ac: armorAc } : undefined;
 		const effects: ItemEffects = { ...(item?.effects ?? {}) };
+		const container: ItemContainer | undefined = !custom
+			? item?.container
+			: holds || weightless
+				? { ...(holds ? { lb: holds } : {}), ...(weightless ? { weightless: true } : {}), ...(item?.container?.coins ? { coins: true } : {}) }
+				: undefined;
 		if (custom) {
 			if (acBonus) effects.ac = acBonus;
 			else delete effects.ac;
@@ -206,6 +217,10 @@
 			...(max > 0
 				? { charges: { max, used: Math.min(item?.charges?.used ?? 0, max), ...(regain.trim() ? { regain: regain.trim() } : {}) } }
 				: {}),
+			...(item?.use ? { use: item.use } : {}),
+			...(container ? { container } : {}),
+			...(item?.inside ? { inside: item.inside } : {}),
+			...(item?.stash ? { stash: item.stash } : {}),
 			notes
 		});
 		onclose();
@@ -354,6 +369,17 @@
 				<input type="number" inputmode="numeric" min="0" max="99" step="1" bind:value={charges} />
 			</label>
 		</div>
+		{#if custom}
+			<div class="two">
+				<label class="field">
+					<span>Holds (lb)</span>
+					<input type="number" inputmode="decimal" min="0" step="any" bind:value={holds} placeholder="Not a container" />
+				</label>
+				<label class="check holds">
+					<input type="checkbox" bind:checked={weightless} /> Weightless inside
+				</label>
+			</div>
+		{/if}
 		{#if charges > 0}
 			<label class="field">
 				<span>{gear ? 'Uses back at dawn' : 'Regains at dawn'}</span>
@@ -452,6 +478,11 @@
 		gap: 8px;
 		min-height: 40px;
 		font-weight: 600;
+	}
+
+	.check.holds {
+		align-self: end;
+		min-height: 46px;
 	}
 
 	.check input {

@@ -1,5 +1,4 @@
 import type { Character, InventoryItem, ItemArmor, ItemWeapon } from '$lib/types';
-import { coinCount } from './coins';
 
 /** Three items, or more for artificers (Magic Item Adept, Savant and Master). */
 export function attunementLimit(c: Pick<Character, 'classKey' | 'level'>): number {
@@ -88,11 +87,24 @@ export function stacks(item: Pick<InventoryItem, 'kind' | 'type'>): boolean {
 	return item.kind === 'gear' || /^(Potion|Scroll|Ammunition)/.test(item.type);
 }
 
-/** Add an item, or more of a matching unrenamed stack. Returns the entry's id. */
+/** Another entry `item` would pile onto: same thing, unrenamed, in the same place. */
+export function sameStack(c: Pick<Character, 'items'>, item: InventoryItem): InventoryItem | undefined {
+	if (!stacks(item)) return undefined;
+	return c.items.find(
+		(i) =>
+			i.id !== item.id &&
+			i.kind === item.kind &&
+			i.ref === item.ref &&
+			i.name === item.name &&
+			i.stash === item.stash &&
+			i.inside === item.inside &&
+			!i.container
+	);
+}
+
+/** Add an item, or more of a matching unrenamed stack in the same place. Returns the entry's id. */
 export function addItem(c: Character, item: InventoryItem): string {
-	const same = stacks(item)
-		? c.items.find((i) => i.kind === item.kind && i.ref === item.ref && i.name === item.name)
-		: undefined;
+	const same = sameStack(c, item);
 	if (same) {
 		same.quantity = Math.min(9999, same.quantity + item.quantity);
 		return same.id;
@@ -107,18 +119,24 @@ export function changeQuantity(c: Character, id: string, delta: number): void {
 	if (index < 0) return;
 	const item = c.items[index];
 	const next = item.quantity + delta;
-	if (next < 1) c.items.splice(index, 1);
+	if (next < 1) removeItem(c, id);
 	else item.quantity = Math.min(9999, next);
 }
 
-/** Pounds carried, coins included (50 to the pound). `weightOf` can fill in weights missing from older entries. */
-export function carriedWeight(c: Character, weightOf: (i: InventoryItem) => number = (i) => i.weight ?? 0): number {
-	const items = c.items.reduce((n, i) => n + i.quantity * weightOf(i), 0);
-	return Math.round((items + coinCount(c.coins) / 50) * 100) / 100;
+/** Remove an entry. Whatever was in it stays where the container was, loose. */
+export function removeItem(c: Character, id: string): void {
+	const item = c.items.find((i) => i.id === id);
+	if (!item) return;
+	for (const i of c.items) if (i.inside === id) i.inside = item.inside;
+	c.items = c.items.filter((i) => i.id !== id);
 }
 
-/** An item's effects count while it's attuned (if it needs attunement) and worn (if it's armor or a shield). */
+/**
+ * An item's effects count while the character has it with them (not in a stash), it's attuned (if it needs
+ * attunement) and worn (if it's armor or a shield).
+ */
 export function isActive(item: InventoryItem): boolean {
+	if (item.stash) return false;
 	if (item.attunement && !item.attuned) return false;
 	if (item.armor && !item.equipped) return false;
 	return true;
@@ -138,11 +156,12 @@ export function itemSpellBonus(c: Pick<Character, 'items'>): { attack: number; d
 
 /**
  * Put armor or a shield on or take it off, or ready a weapon or put it away. Wearing one suit of armor
- * (or shield) takes off any other; any number of weapons can be at hand.
+ * (or shield) takes off any other; any number of weapons can be at hand. Nothing in a stash can be equipped.
  */
 export function setEquipped(c: Character, id: string, on: boolean): boolean {
 	const item = c.items.find((i) => i.id === id);
 	if (!item?.armor && !item?.weapon) return false;
+	if (on && item.stash) return false;
 	if (on && item.armor) {
 		const shield = item.armor.type === 'shield';
 		for (const other of c.items) if (other.armor && other.equipped && (other.armor.type === 'shield') === shield) other.equipped = false;

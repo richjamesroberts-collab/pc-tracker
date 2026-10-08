@@ -2,6 +2,7 @@ import type { Ability, Character, InventoryItem, Skill } from '$lib/types';
 import { CLASS_MAP } from '$lib/data/classes';
 import { RACE_MAP } from '$lib/data/races';
 import { ABILITY_SHORT, abilityMod, signedMod } from './abilities';
+import { heavyLoadNote } from './carry';
 import { isActive } from './items';
 import { proficiencyBonus } from './spellcasting';
 import { abilityBreakdown, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
@@ -157,7 +158,8 @@ type SkillInput = Pick<
 	| 'items'
 	| 'skillProficiencies'
 	| 'skillExpertise'
->;
+> &
+	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule'>>;
 
 /**
  * Every skill's modifier with how it was worked out: ability modifier, proficiency (the player's picks or
@@ -172,6 +174,7 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 	const subclass = cls?.subclasses.find((s) => s.key === c.subclassKey)?.name;
 	const items = (c.items ?? []).filter((i) => i.ref && ITEM_SKILLS[i.ref] && isActive(i));
 	const noisy = (c.items ?? []).filter(noisyArmor);
+	const heavy = heavyLoadNote(c);
 
 	return SKILLS.map((s) => {
 		const mod = abilityMod(breakdown.scores[s.ability]);
@@ -220,6 +223,7 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 		}
 
 		if (s.key === 'stealth') for (const a of noisy) notes.push(`${a.name}: disadvantage`);
+		if (heavy && (s.ability === 'str' || s.ability === 'dex' || s.ability === 'con')) notes.push(heavy);
 		if (c.classKey === 'rogue' && c.level >= 11 && level !== 'none' && level !== 'half') {
 			notes.push(`Reliable Talent: a d20 roll of 9 or lower counts as 10 (at least ${total + 10})`);
 		}

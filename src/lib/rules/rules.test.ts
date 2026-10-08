@@ -45,7 +45,6 @@ import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
 	attunementLimit,
-	carriedWeight,
 	changeQuantity,
 	chargesLeft,
 	dawn,
@@ -585,12 +584,6 @@ describe('gear', () => {
 			['Torch', 15],
 			['Censer', 2]
 		]);
-	});
-
-	it('weighs everything carried, coins at 50 to the pound', () => {
-		const c = pc({ items: [gear({ quantity: 10 }), item({ weight: 3 })], coins: { cp: 0, sp: 0, ep: 0, gp: 100, pp: 0 } });
-		expect(carriedWeight(c)).toBe(15);
-		expect(carriedWeight(c, (i) => (i.kind === 'gear' ? 2 : 0))).toBe(22);
 	});
 });
 

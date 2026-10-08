@@ -17,23 +17,48 @@ export function formatGp(cp: number): string {
 	return `${Number.isInteger(gp) ? gp : gp.toFixed(2).replace(/0$/, '')} gp`;
 }
 
-export function gainCoins(c: Character, coin: Coin, n: number): boolean {
-	if (!Number.isInteger(n) || n <= 0) return false;
-	c.coins[coin] += n;
+/** The coins on the character, or kept in a stash (by id). Undefined for a stash that doesn't exist. */
+export function purseOf(c: Pick<Character, 'coins' | 'stashes'>, stash?: string): Coins | undefined {
+	return stash ? c.stashes?.find((x) => x.id === stash)?.coins : c.coins;
+}
+
+export function gainCoins(c: Character, coin: Coin, n: number, stash?: string): boolean {
+	const purse = purseOf(c, stash);
+	if (!purse || !Number.isInteger(n) || n <= 0) return false;
+	purse[coin] += n;
+	return true;
+}
+
+/** Spend `n` coins of a kind from the character's coins or a stash's; see `pay`. */
+export function spendCoins(c: Character, coin: Coin, n: number, stash?: string): boolean {
+	const purse = purseOf(c, stash);
+	const after = purse && pay(purse, coin, n);
+	if (!purse || !after) return false;
+	Object.assign(purse, after);
+	return true;
+}
+
+/** Move `n` coins of one kind between the character and a stash, or two stashes, as they are (no change-making). */
+export function moveCoins(c: Character, coin: Coin, n: number, from: string | undefined, to: string | undefined): boolean {
+	const a = purseOf(c, from);
+	const b = purseOf(c, to);
+	if (!a || !b || a === b || !Number.isInteger(n) || n <= 0 || a[coin] < n) return false;
+	a[coin] -= n;
+	b[coin] += n;
 	return true;
 }
 
 /**
  * Pay `n` coins of a kind, the way you would at a shop: first with that coin and smaller ones,
  * then by breaking bigger coins and taking change back in coins no bigger than the one asked for
- * (skipping electrum unless that's what was asked for). Fails, changing nothing, if the character
- * can't afford it.
+ * (skipping electrum unless that's what was asked for). Returns the coins left, or null if they
+ * can't cover it.
  */
-export function spendCoins(c: Character, coin: Coin, n: number): boolean {
-	if (!Number.isInteger(n) || n <= 0) return false;
+export function pay(coins: Coins, coin: Coin, n: number): Coins | null {
+	if (!Number.isInteger(n) || n <= 0) return null;
 	let due = n * COIN_VALUE[coin];
-	if (coinWorth(c.coins) < due) return false;
-	const purse = { ...c.coins };
+	if (coinWorth(coins) < due) return null;
+	const purse = { ...coins };
 
 	// Same coin or smaller, biggest first, never overpaying.
 	for (const k of COINS.filter((k) => COIN_VALUE[k] <= COIN_VALUE[coin])) {
@@ -53,7 +78,7 @@ export function spendCoins(c: Character, coin: Coin, n: number): boolean {
 	// Safety net if the coins taken so far can't make the amount exactly: one more coin that covers it.
 	if (due > 0) {
 		const k = [...COINS].reverse().find((k) => purse[k] > 0 && COIN_VALUE[k] >= due);
-		if (!k) return false;
+		if (!k) return null;
 		purse[k] -= 1;
 		due -= COIN_VALUE[k];
 	}
@@ -64,6 +89,5 @@ export function spendCoins(c: Character, coin: Coin, n: number): boolean {
 		purse[k] += give;
 		change -= give * COIN_VALUE[k];
 	}
-	c.coins = purse;
-	return true;
+	return purse;
 }

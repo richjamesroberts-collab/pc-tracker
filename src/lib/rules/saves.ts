@@ -2,6 +2,7 @@ import type { Ability, Character } from '$lib/types';
 import { CLASS_MAP } from '$lib/data/classes';
 import { RACE_MAP } from '$lib/data/races';
 import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from './abilities';
+import { heavyLoadNote } from './carry';
 import { isActive } from './items';
 import { proficiencyBonus } from './spellcasting';
 import { abilityBreakdown, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
@@ -64,7 +65,8 @@ export interface SaveCheck {
 type SaveInput = Pick<
 	Character,
 	'abilities' | 'raceKey' | 'subraceKey' | 'raceAbilityChoices' | 'classKey' | 'subclassKey' | 'level' | 'items' | 'saveProficiencies'
->;
+> &
+	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule'>>;
 
 /** Where proficiency in a save comes from, if anywhere: the class, a class feature or the player's pick (Resilient). */
 export function saveProficiencySource(c: Pick<Character, 'classKey' | 'level' | 'saveProficiencies'>, a: Ability): string | undefined {
@@ -86,6 +88,7 @@ export function savingThrows(c: SaveInput, breakdown: AbilityBreakdown = ability
 	const race = c.raceKey ? RACE_MAP.get(c.raceKey) : undefined;
 	const raceNotes = [...(RACE_SAVE_NOTES[c.raceKey ?? ''] ?? []), ...(RACE_SAVE_NOTES[`${c.raceKey}/${c.subraceKey}`] ?? [])];
 	const cha = abilityMod(breakdown.scores.cha);
+	const heavy = heavyLoadNote(c);
 
 	return ABILITIES.map(({ key: a, name }) => {
 		const mod = abilityMod(breakdown.scores[a]);
@@ -114,6 +117,7 @@ export function savingThrows(c: SaveInput, breakdown: AbilityBreakdown = ability
 		}
 
 		for (const r of raceNotes) if (r.abilities.includes(a)) notes.push(`${r.trait} (${race?.name ?? c.raceKey}): ${r.text}`);
+		if (heavy && (a === 'str' || a === 'dex' || a === 'con')) notes.push(heavy);
 		if (c.classKey === 'barbarian' && a === 'str') notes.push('Raging: advantage');
 		if (c.classKey === 'barbarian' && c.level >= 2 && a === 'dex') {
 			notes.push('Danger Sense: advantage against effects you can see, unless blinded, deafened or incapacitated');

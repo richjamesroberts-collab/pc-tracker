@@ -31,6 +31,8 @@ interface RaceAbilities extends RaceDefenses {
 	asi?: RaceAsi;
 	/** Feet; a subrace's own darkvision replaces it. */
 	darkvision?: number;
+	/** Counts as one size larger for carrying capacity (Powerful Build, Little Giant, Equine Build). */
+	powerfulBuild?: true;
 	subraces: Record<string, { asi?: RaceAsi; replaces?: true; darkvision?: number } & RaceDefenses>;
 }
 

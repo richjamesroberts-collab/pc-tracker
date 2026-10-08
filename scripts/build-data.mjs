@@ -605,7 +605,7 @@ const racesOut = raceList.map((r) => {
 	};
 });
 
-// Racial ability score increases, darkvision and damage resistances and immunities, by race key then subrace
+// Racial ability score increases, darkvision, damage resistances and immunities and Powerful Build, by race key then subrace
 // key. `replaces` marks subraces whose increase is instead of the race's (Variant Human), not on top of it.
 // `resist`, `immune` and `conditionImmune` are lowercase damage types and conditions, on top of the race's.
 function asiOf(ability) {
@@ -638,6 +638,9 @@ for (const r of raceList) {
 	// Custom Lineage's darkvision is one of two choices, so the player adds it themselves.
 	if (r.darkvision && r.name !== 'Custom Lineage') entry.darkvision = r.darkvision;
 	Object.assign(entry, defensesOf(r));
+	// Powerful Build, Little Giant, Equine Build: one size larger for carrying capacity.
+	const traits = racesOut.find((x) => x.key === raceKey(r)).traits;
+	if (traits.some((t) => /count as one size larger when determining your carrying/.test(t.text))) entry.powerfulBuild = true;
 	for (const s of subraces.filter((s) => s.name && (s.ability || s.darkvision || Object.keys(defensesOf(s)).length))) {
 		entry.subraces[subraceKey(s)] = {
 			...(s.ability ? { asi: asiOf(s.ability) } : {}),
@@ -767,6 +770,20 @@ const WEAPON_BASE = { staff: 'quarterstaff', 'wooden staff': 'quarterstaff' };
  * Structured weapon stats for attacks: `{ base, category, ranged, damage, damageType, properties, versatile?, range? }`.
  * `base` is the PHB weapon's lowercase name, which proficiency is checked against.
  */
+/**
+ * What a container holds: `lb` of gear (coins at 50 to the pound) and whether its contents weigh nothing
+ * (Bag of Holding). Containers that only list item counts (quivers, map cases) are left out unless weightless.
+ * A Portable Hole has no listed limit, just room.
+ */
+function containerOf(i) {
+	if (i.name === 'Portable Hole') return { weightless: true };
+	const cap = i.containerCapacity;
+	if (!cap) return undefined;
+	const lb = (cap.weight ?? []).reduce((n, w) => n + w, 0);
+	if (!lb && !cap.weightless) return undefined;
+	return { ...(lb ? { lb } : {}), ...(cap.weightless ? { weightless: true } : {}) };
+}
+
 function weaponOf(i) {
 	if (!i.weaponCategory) return undefined;
 	const code = i.type?.split('|')[0];
@@ -851,6 +868,7 @@ function convertItem(i, type) {
 		...(Object.keys(effects).length ? { effects } : {}),
 		...(armor ? { armor } : {}),
 		...(weapon ? { weapon: { ...weapon } } : {}),
+		...(containerOf(i) ? { container: containerOf(i) } : {}),
 		text
 	};
 }
@@ -990,6 +1008,7 @@ const gearOut = gearSource
 			...(armorOf(i) ? { armor: armorOf(i) } : {}),
 			...(weaponOf(i) ? { weapon: weaponOf(i) } : {}),
 			...(bundle ? { bundle } : {}),
+			...(containerOf(i) ? { container: containerOf(i) } : {}),
 			...(isPack
 				? {
 						contents: i.packContents.map((c) => {

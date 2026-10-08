@@ -43,10 +43,10 @@ export const itemUse = (i: InventoryItem): ItemUse | undefined => (i.ref ? i.use
 
 /**
  * Items the character can use now: ones whose description says they're used, plus anything with charges.
- * Items that need attunement count only while attuned, and armor only while worn.
+ * Items that need attunement count only while attuned, armor only while worn, and nothing in a stash.
  */
 export function isUsable(i: InventoryItem): boolean {
-	if (isPotion(i)) return false;
+	if (isPotion(i) || i.stash) return false;
 	if (i.attunement && !i.attuned) return false;
 	if (i.armor && !i.equipped) return false;
 	return !!i.charges?.max || !!itemUse(i);

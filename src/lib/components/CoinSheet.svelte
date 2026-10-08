@@ -2,16 +2,22 @@
 	import { untrack } from 'svelte';
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { COINS, coinWorth, formatGp, gainCoins, spendCoins } from '$lib/rules/coins';
+	import { BAG_OF_HOLDING_LB, CARRY_STATUS, carryState, encumbrance, worse } from '$lib/rules/carry';
+	import { COINS, coinWorth, formatGp, gainCoins, moveCoins, purseOf, spendCoins } from '$lib/rules/coins';
 	import type { Character, Coin, Coins } from '$lib/types';
 
-	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
+	let { open, stash, onclose }: { open: boolean; /** Coins kept in this stash; the character's own when absent. */ stash?: string; onclose: () => void } = $props();
 
+	const EMPTY: Coins = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
 	const c = $derived(session.character as Character);
+	const place = $derived(stash ? c.stashes.find((s) => s.id === stash) : undefined);
+	const purse = $derived(purseOf(c, stash) ?? EMPTY);
 
 	let coin = $state<Coin>('gp');
 	let amount = $state<number | null>(null);
-	let counts = $state<Coins>({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 });
+	let counts = $state<Coins>({ ...EMPTY });
+	/** Where Move sends coins: '' for the character, else a stash id. */
+	let target = $state('');
 
 	// Seed when the sheet opens; reading the coins untracked keeps typed counts if Undo runs underneath.
 	$effect(() => {
@@ -19,38 +25,71 @@
 		untrack(() => {
 			coin = 'gp';
 			amount = null;
-			counts = { ...c.coins };
+			counts = { ...purse };
+			target = stash ? '' : (c.stashes[0]?.id ?? '');
 		});
 	});
 
 	const n = $derived(amount !== null && Number.isInteger(amount) && amount > 0 ? amount : 0);
+	const copy = () => structuredClone($state.snapshot(c)) as Character;
 
-	/** Coins after spending, or null if the character can't afford it. */
+	/** Coins after spending, or null if they can't cover it. */
 	const afterSpend = $derived.by(() => {
 		if (!n) return null;
-		const next = structuredClone($state.snapshot(c)) as Character;
-		return spendCoins(next, coin, n) ? next.coins : null;
+		const next = copy();
+		return spendCoins(next, coin, n, stash) ? purseOf(next, stash)! : null;
 	});
 
 	const preview = $derived.by(() => {
 		if (!n) return '';
-		if (!afterSpend) return `Spending needs more than you have (${formatGp(coinWorth(c.coins))} in all).`;
-		const changes = COINS.filter((k) => afterSpend[k] !== c.coins[k]).map((k) => `${k} ${c.coins[k]} → ${afterSpend[k]}`);
+		if (!afterSpend) return `Spending needs more than ${stash ? 'is here' : 'you have'} (${formatGp(coinWorth(purse))} in all).`;
+		const changes = COINS.filter((k) => afterSpend[k] !== purse[k]).map((k) => `${k} ${purse[k]} → ${afterSpend[k]}`);
 		return `Spend: ${changes.join(', ')}`;
 	});
 
+	/** What gaining these coins would mean for carrying them: no pouch to put them in, or too heavy. */
+	const gainWarning = $derived.by(() => {
+		if (!n) return '';
+		const next = copy();
+		gainCoins(next, coin, n, stash);
+		const state = carryState(next);
+		if (place?.kind === 'bag') {
+			return (state.stashLoads.get(place.id) ?? 0) > BAG_OF_HOLDING_LB ? `More than the bag's ${BAG_OF_HOLDING_LB} lb.` : '';
+		}
+		if (stash) return '';
+		const was = encumbrance(c);
+		const now = encumbrance(next, state.carried);
+		const parts: string[] = [];
+		const loose = state.looseCoins - carryState(c).looseCoins;
+		if (loose > 0) parts.push(`${loose.toLocaleString('en')} of them won't fit in a pouch or sack.`);
+		if (worse(now.status, was.status)) parts.push(`You'd be ${CARRY_STATUS[now.status].label.toLowerCase()} (${now.carried} of ${now.capacity} lb).`);
+		return parts.join(' ');
+	});
+
+	const purses = $derived([{ id: '', name: 'You' }, ...c.stashes.map((s) => ({ id: s.id, name: s.name }))].filter((p) => p.id !== (stash ?? '')));
+	const canMove = $derived(!!n && purse[coin] >= n && purses.some((p) => p.id === target));
+	const targetName = $derived(purses.find((p) => p.id === target)?.name ?? '');
+
 	const countsValid = $derived(COINS.every((k) => Number.isInteger(counts[k]) && counts[k] >= 0 && counts[k] <= 9_999_999));
-	const countsChanged = $derived(COINS.some((k) => counts[k] !== c.coins[k]));
+	const countsChanged = $derived(COINS.some((k) => counts[k] !== purse[k]));
+	const where = $derived(place ? ` at ${place.name}` : '');
 
 	function spend() {
 		if (!afterSpend) return;
-		session.mutate(`Spent ${n} ${coin}`, (d) => spendCoins(d, coin, n));
+		session.mutate(`Spent ${n} ${coin}${where}`, (d) => spendCoins(d, coin, n, stash));
 		onclose();
 	}
 
 	function gain() {
 		if (!n) return;
-		session.mutate(`Gained ${n} ${coin}`, (d) => gainCoins(d, coin, n));
+		session.mutate(`Gained ${n} ${coin}${where}`, (d) => gainCoins(d, coin, n, stash));
+		onclose();
+	}
+
+	function move() {
+		if (!canMove) return;
+		const to = target || undefined;
+		session.mutate(to ? `Left ${n} ${coin} at ${targetName}` : `Took ${n} ${coin} from ${place?.name ?? 'the stash'}`, (d) => moveCoins(d, coin, n, stash, to));
 		onclose();
 	}
 
@@ -58,8 +97,9 @@
 		e.preventDefault();
 		if (!countsValid || !countsChanged) return;
 		const next = $state.snapshot(counts) as Coins;
-		session.mutate('Coins updated', (d) => {
-			d.coins = next;
+		session.mutate(`Coins updated${where}`, (d) => {
+			const p = purseOf(d, stash);
+			if (p) Object.assign(p, next);
 		});
 		onclose();
 	}
@@ -67,15 +107,15 @@
 
 <Sheet {open} {onclose} label="Coins">
 	<div class="title">
-		<h2>Coins</h2>
-		<span class="worth">{formatGp(coinWorth(c.coins))} in all</span>
+		<h2>{place ? `Coins at ${place.name}` : 'Coins'}</h2>
+		<span class="worth">{formatGp(coinWorth(purse))} in all</span>
 	</div>
 
 	<div class="coins" role="radiogroup" aria-label="Coin">
 		{#each COINS as k (k)}
 			<button type="button" role="radio" aria-checked={coin === k} onclick={() => (coin = k)}>
 				<span class="code">{k}</span>
-				<span class="have">{c.coins[k].toLocaleString('en')}</span>
+				<span class="have">{purse[k].toLocaleString('en')}</span>
 			</button>
 		{/each}
 	</div>
@@ -85,11 +125,27 @@
 		<input type="number" inputmode="numeric" min="1" step="1" bind:value={amount} placeholder="0" />
 	</label>
 	<p class="preview" class:warn={!!n && !afterSpend}>{preview || ' '}</p>
+	{#if gainWarning}<p class="preview caution">If gained: {gainWarning}</p>{/if}
 
 	<div class="actions">
 		<button type="button" class="spend" disabled={!afterSpend} onclick={spend}>Spend {n || ''} {coin}</button>
 		<button type="button" class="gain" disabled={!n} onclick={gain}>Gain {n || ''} {coin}</button>
 	</div>
+
+	{#if purses.length}
+		<div class="move">
+			<label class="field">
+				<span>{stash ? 'Move to' : 'Leave with'}</span>
+				<select bind:value={target}>
+					{#each purses as p (p.id)}
+						<option value={p.id}>{p.name}</option>
+					{/each}
+				</select>
+			</label>
+			<button type="button" disabled={!canMove} onclick={move}>Move {n || ''} {coin}</button>
+		</div>
+		{#if n && purse[coin] < n}<p class="preview">Only {purse[coin].toLocaleString('en')} {coin} {stash ? 'here' : 'on you'} to move.</p>{/if}
+	{/if}
 
 	<form class="exact" onsubmit={saveCounts}>
 		<h3 class="label">Exact counts</h3>
@@ -198,6 +254,43 @@
 
 	.preview.warn {
 		color: var(--color-danger);
+	}
+
+	.preview.caution {
+		min-height: 0;
+		margin-top: 0;
+		color: var(--color-warning);
+	}
+
+	.move {
+		display: flex;
+		align-items: flex-end;
+		gap: 8px;
+		margin-top: 4px;
+	}
+
+	.move .field {
+		flex: 1;
+	}
+
+	.move select {
+		height: 46px;
+		border-radius: 12px;
+		width: 100%;
+	}
+
+	.move button {
+		flex-shrink: 0;
+		height: 46px;
+		border-radius: 12px;
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-accent);
+		color: var(--color-accent);
+		font-weight: 800;
+	}
+
+	.move button:disabled {
+		opacity: 0.45;
 	}
 
 	.actions {

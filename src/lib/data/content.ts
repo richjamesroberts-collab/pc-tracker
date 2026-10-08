@@ -1,7 +1,22 @@
-import type { Ability, AbilityScores, Character, CharacterFeat, ClassOption, ClassOptionKind, InventoryItem, ItemArmor, ItemEffects, ItemUse, ItemWeapon, Skill } from '$lib/types';
+import type {
+	Ability,
+	AbilityScores,
+	Character,
+	CharacterFeat,
+	ClassOption,
+	ClassOptionKind,
+	InventoryItem,
+	ItemArmor,
+	ItemContainer,
+	ItemEffects,
+	ItemUse,
+	ItemWeapon,
+	Skill
+} from '$lib/types';
 import { GEAR_USES, readItemUse } from '$lib/rules/usable';
 import { CLASS_MAP } from './classes';
 import { specificName } from '$lib/rules/items';
+import { COIN_CONTAINERS } from '$lib/rules/carry';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
 import type { ResourceDef } from '$lib/rules/features';
@@ -122,6 +137,8 @@ export interface MagicItem {
 	armor?: ItemArmor;
 	/** Magic weapons of a set kind (Dagger of Venom); generic ones (+1 Weapon) have none until the player picks. */
 	weapon?: ItemWeapon;
+	/** Bag of Holding, Handy Haversack, Portable Hole. */
+	container?: Omit<ItemContainer, 'coins'>;
 	/** Plain paragraphs joined by `\n`. */
 	text: string;
 }
@@ -193,6 +210,12 @@ export const copyWeapon = (w: ItemWeapon): ItemWeapon => ({
 	...(w.range ? { range: [w.range[0], w.range[1]] as [number, number] } : {})
 });
 
+/** `{ container }` for spreading onto an entry: what it holds, and whether it keeps coins (pouches and sacks do). */
+function containerOf(data: { id: string; container?: Omit<ItemContainer, 'coins'> }): { container?: ItemContainer } {
+	if (!data.container) return {};
+	return { container: { ...data.container, ...(COIN_CONTAINERS.includes(data.id) ? { coins: true } : {}) } };
+}
+
 /** `{ use }` for spreading onto an entry, or nothing when the description doesn't say it's used. */
 function useOf(i: Pick<InventoryItem, 'kind' | 'type' | 'ref'>, text: string): { use?: ItemUse } {
 	const use = readItemUse(i, text);
@@ -217,6 +240,7 @@ export function inventoryItem(m: MagicItem): InventoryItem {
 		effects: copyEffects(m.effects),
 		...(m.charges ? { charges: { max: m.charges, used: 0, ...(m.regain ? { regain: m.regain } : {}) } } : {}),
 		...useOf({ kind: 'magic', type: m.type, ref: m.id }, m.text),
+		...containerOf(m),
 		notes: ''
 	};
 }
@@ -250,6 +274,8 @@ export interface GearItem {
 	weapon?: ItemWeapon;
 	/** Usually bought this many at a time (20 arrows). */
 	bundle?: number;
+	/** Pouch, sack, backpack, basket, chest. */
+	container?: Omit<ItemContainer, 'coins'>;
 	/** What an equipment pack holds: bundled gear by `ref`, or a plain name for things not on the list. */
 	contents?: { ref?: string; name?: string; quantity: number }[];
 	/** Plain paragraphs joined by `\n`; often empty for weapons. */
@@ -288,6 +314,7 @@ export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): Invent
 		effects: {},
 		...(GEAR_USES[g.id] ? { charges: { max: GEAR_USES[g.id], used: 0 } } : {}),
 		...useOf({ kind: 'gear', type: g.type, ref: g.id }, g.text),
+		...containerOf(g),
 		notes: ''
 	};
 }
@@ -346,14 +373,15 @@ export function fillItemDetails(c: Character, magic: Map<string, MagicItem>, gea
  * 4: generic magic weapons already picked as a weapon are named for it ("+1 Weapon" becomes "+1 Longsword").
  * 5: armor and shields of a set kind get their bundled AC back (the item sheet let a +1 Shield's 2 be typed over as 1).
  * 6: how an item is used (the actions its description names, and whether it's used up), and a healer's kit's ten uses.
+ * 7: containers (what a pouch, sack or Bag of Holding holds), and weights on entries saved without one.
  */
-export const ITEM_DATA_VERSION = 6;
+export const ITEM_DATA_VERSION = 7;
 
 /** Whether the character has bundled items whose copies may be missing fields added since. */
 export const needsItemData = (c: Character) => (c.itemDataVersion ?? 0) < ITEM_DATA_VERSION && c.items.some((i) => i.ref);
 
 /**
- * Fill in weapon stats, magic weapon bonuses and defenses on bundled items added before they were tracked,
+ * Fill in weapon stats, magic weapon bonuses, defenses, containers and weights on bundled items added before they were tracked,
  * and mark the character as up to date. Entries the player already changed are left alone.
  */
 export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: Map<string, GearItem>): void {
@@ -378,6 +406,8 @@ export function fillItemData(c: Character, magic: Map<string, MagicItem>, gear: 
 		}
 		if (!i.use) Object.assign(i, useOf(i, data.text));
 		if (i.kind === 'gear' && !i.charges && GEAR_USES[data.id]) i.charges = { max: GEAR_USES[data.id], used: 0 };
+		if (!i.container) Object.assign(i, containerOf(data));
+		if (i.weight === undefined && data.weight) i.weight = data.weight;
 	}
 	c.itemDataVersion = ITEM_DATA_VERSION;
 }
