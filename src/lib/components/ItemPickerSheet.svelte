@@ -4,12 +4,23 @@
 		name: string;
 		/** Second line: type, rarity, price… */
 		meta: string;
-		/** Key of the filter chip it belongs to. */
+		/** Key of the kind it is ('magic', 'gear'). */
+		kind: string;
+		/** Key of the filter chip it belongs to, within its kind. */
 		group: string;
 		/** Present when it needs attunement ('' for anyone). */
 		attunement?: string;
 		stats?: string;
 		text: string;
+	}
+
+	/** A kind of thing to add, with its own filter chips. */
+	export interface PickerKind {
+		key: string;
+		label: string;
+		/** "magic items", "gear": used in the search box and messages. */
+		noun: string;
+		filters: { key: string; label: string }[];
 	}
 </script>
 
@@ -20,9 +31,8 @@
 	let {
 		open,
 		title,
-		noun,
+		kinds,
 		entries,
-		filters,
 		failed = false,
 		onretry,
 		onpick,
@@ -31,19 +41,20 @@
 	}: {
 		open: boolean;
 		title: string;
-		/** "magic items", "gear": used in the search box and messages. */
-		noun: string;
+		kinds: PickerKind[];
 		/** Null while loading. */
 		entries: PickerEntry[] | null;
-		filters: { key: string; label: string }[];
 		failed?: boolean;
 		onretry: () => void;
 		onpick: (id: string) => void;
-		oncustom: () => void;
+		/** A custom item, of the kind being looked at (undefined for everything). */
+		oncustom: (kind?: string) => void;
 		onclose: () => void;
 	} = $props();
 
 	let query = $state('');
+	/** The kind being looked at, or null for everything. */
+	let kind = $state<string | null>(null);
 	let filter = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
 
@@ -51,13 +62,24 @@
 	$effect(() => {
 		if (!open) return;
 		query = '';
+		kind = null;
 		filter = null;
 		expanded = null;
 	});
 
+	const active = $derived(kinds.find((k) => k.key === kind));
+	const noun = $derived(active?.noun ?? 'items');
+
+	function pickKind(key: string | null) {
+		kind = key;
+		filter = null;
+	}
+
 	const results = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		return (entries ?? []).filter((i) => (filter === null || i.group === filter) && (!q || i.name.toLowerCase().includes(q)));
+		return (entries ?? []).filter(
+			(i) => (kind === null || i.kind === kind) && (filter === null || i.group === filter) && (!q || i.name.toLowerCase().includes(q))
+		);
 	});
 </script>
 
@@ -66,7 +88,14 @@
 	<div class="body">
 		<div class="head">
 			<h2>{title}</h2>
-			<button type="button" class="custom" onclick={oncustom}>+ Custom</button>
+			<button type="button" class="custom" onclick={() => oncustom(kind ?? undefined)}>+ Custom</button>
+		</div>
+
+		<div class="kinds" role="radiogroup" aria-label="Kind">
+			<button type="button" role="radio" aria-checked={kind === null} onclick={() => pickKind(null)}>Everything</button>
+			{#each kinds as k (k.key)}
+				<button type="button" role="radio" aria-checked={kind === k.key} onclick={() => pickKind(k.key)}>{k.label}</button>
+			{/each}
 		</div>
 
 		<label class="search">
@@ -74,12 +103,14 @@
 			<input type="search" placeholder="Search {noun}" aria-label="Search {noun}" bind:value={query} autocomplete="off" />
 		</label>
 
-		<div class="filters" role="radiogroup" aria-label="Filter">
-			<button type="button" role="radio" aria-checked={filter === null} onclick={() => (filter = null)}>All</button>
-			{#each filters as f (f.key)}
-				<button type="button" role="radio" aria-checked={filter === f.key} onclick={() => (filter = f.key)}>{f.label}</button>
-			{/each}
-		</div>
+		{#if active}
+			<div class="filters" role="radiogroup" aria-label="Filter">
+				<button type="button" role="radio" aria-checked={filter === null} onclick={() => (filter = null)}>All</button>
+				{#each active.filters as f (f.key)}
+					<button type="button" role="radio" aria-checked={filter === f.key} onclick={() => (filter = f.key)}>{f.label}</button>
+				{/each}
+			</div>
+		{/if}
 
 		{#if failed}
 			<div class="status" role="alert">
@@ -137,6 +168,33 @@
 		color: var(--color-text);
 		font-size: 13px;
 		font-weight: 700;
+	}
+
+	.kinds {
+		display: grid;
+		grid-auto-columns: minmax(0, 1fr);
+		grid-auto-flow: column;
+		gap: 4px;
+		margin-top: 12px;
+		padding: 4px;
+		background: var(--color-chip);
+		border-radius: 14px;
+	}
+
+	.kinds button {
+		height: 40px;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 14px;
+		font-weight: 800;
+	}
+
+	.kinds button[aria-checked='true'] {
+		background: var(--color-surface);
+		color: var(--color-text);
+		box-shadow: var(--shadow-sm);
 	}
 
 	.search {

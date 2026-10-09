@@ -97,6 +97,13 @@
 		untrack(() => (problem = ''));
 	});
 
+	/** Switch a new custom item between magic item and gear. */
+	function setGear(on: boolean) {
+		if (gear === on) return;
+		gear = on;
+		type = ITEM_TYPES[on ? 'gear' : 'magic'][0];
+	}
+
 	/** The dropdown's choices, keeping a type typed before it was a dropdown. */
 	const typeOptions = $derived.by(() => {
 		const list = ITEM_TYPES[gear ? 'gear' : 'magic'];
@@ -258,6 +265,10 @@
 <Sheet {open} {onclose} label={editing ? 'Edit item' : 'Add a custom item'}>
 	<h2>{editing ? 'Edit item' : 'Custom item'}</h2>
 	{#if custom && !editing}
+		<div class="kinds" role="radiogroup" aria-label="Kind">
+			<button type="button" role="radio" aria-checked={!gear} onclick={() => setGear(false)}>Magic item</button>
+			<button type="button" role="radio" aria-checked={gear} onclick={() => setGear(true)}>Gear</button>
+		</div>
 		<p class="muted">{gear ? 'For anything not on the list: loot, keepsakes, homebrew.' : 'For items from other books, homebrew, or anything missing from the list.'}</p>
 	{/if}
 	<form onsubmit={save}>
@@ -430,6 +441,36 @@
 </Sheet>
 
 <style>
+	.kinds {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 4px;
+		margin-top: 12px;
+		padding: 4px;
+		background: var(--color-chip);
+		border-radius: 14px;
+	}
+
+	.kinds button {
+		height: 40px;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 14px;
+		font-weight: 800;
+	}
+
+	.kinds button[aria-checked='true'] {
+		background: var(--color-surface);
+		color: var(--color-text);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.kinds + .muted {
+		margin-top: 8px;
+	}
+
 	h2 {
 		font-size: 22px;
 	}
