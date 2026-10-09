@@ -9,8 +9,8 @@
 		{ href: resolve('/c/[id]', { id }), routes: ['/c/[id]'], label: 'Vitals', icon: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z' },
 		{ href: resolve('/c/[id]/spells', { id }), routes: ['/c/[id]/spells', '/c/[id]/book'], label: 'Spells', icon: 'M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z' },
 		{ href: resolve('/c/[id]/stats', { id }), routes: ['/c/[id]/stats'], label: 'Stats', icon: 'M6 20v-7M12 20V5M18 20v-10M4 20h16' },
-		{ href: resolve('/c/[id]/features', { id }), routes: ['/c/[id]/features'], label: 'Features', icon: 'M4 6h16M4 12h16M4 18h10' },
-		{ href: resolve('/c/[id]/inventory', { id }), routes: ['/c/[id]/inventory'], label: 'Inventory', icon: 'M5 8h14l-1.2 12H6.2zM9 8V6.5a3 3 0 0 1 6 0V8' }
+		{ href: resolve('/c/[id]/inventory', { id }), routes: ['/c/[id]/inventory'], label: 'Inventory', icon: 'M5 8h14l-1.2 12H6.2zM9 8V6.5a3 3 0 0 1 6 0V8' },
+		{ href: resolve('/c/[id]/features', { id }), routes: ['/c/[id]/features'], label: 'PC Log', icon: 'M4 6h16M4 12h16M4 18h10' }
 	]);
 	// The Spells tab only makes sense for casters.
 	const tabs = $derived(caster ? all : all.filter((t) => t.label !== 'Spells'));
