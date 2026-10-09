@@ -74,6 +74,14 @@
 	--color-effect-edge:    #e9b464;
 	--color-effect-ink:     #693e16;
 
+	/* Coins (the coin animation on Inventory) */
+	--color-coin-pp:        #b9c3cc;
+	--color-coin-gp:        #e0a91f;
+	--color-coin-ep:        #c9c17a;
+	--color-coin-sp:        #a7adb3;
+	--color-coin-cp:        #c0703d;
+	--color-coin-rim:       rgba(60, 40, 10, 0.35);
+
 	/* Alerts / notifications */
 	--color-alert-bg:       #fff1df;
 	--color-alert-edge:     #e8bf8e;
@@ -162,6 +170,13 @@
 	--color-effect-bg:      #624524;
 	--color-effect-edge:    #7d5a30;
 	--color-effect-ink:     #ffe0af;
+
+	--color-coin-pp:        #d6dee5;
+	--color-coin-gp:        #f2bf3a;
+	--color-coin-ep:        #ddd593;
+	--color-coin-sp:        #c3c9ce;
+	--color-coin-cp:        #db8a54;
+	--color-coin-rim:       rgba(0, 0, 0, 0.4);
 
 	--color-alert-bg:       #3d2c18;
 	--color-alert-edge:     #7d5a30;

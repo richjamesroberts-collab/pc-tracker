@@ -4,6 +4,8 @@
 	import SpellNav from '$lib/components/SpellNav.svelte';
 	import CastSheet from '$lib/components/CastSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
+	import CastHud from '$lib/components/CastHud.svelte';
+	import UseFx from '$lib/components/UseFx.svelte';
 	import { session } from '$lib/session.svelte';
 	import { characterSpells, missingSpellIds, nameFromId, spellMeta } from '$lib/library.svelte';
 	import { longRest, restoreSlot, shortRest, sorceryPointsLeft, sorceryPointsMax, spendSlot } from '$lib/rules/resources';
@@ -19,6 +21,8 @@
 		spellSaveDC
 	} from '$lib/rules/spellcasting';
 	import { castSummary, grantedSpells } from '$lib/rules/grants';
+	import { spellFx, type Spent } from '$lib/rules/castfx';
+	import type { UseFx as UseFxKind } from '$lib/rules/usable';
 	import type { Character, Spell } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -42,6 +46,42 @@
 	let preparing = $state(false);
 	let casting = $state<Spell | null>(null);
 	let fontOpen = $state(false);
+
+	/** The spell just cast: its row plays the spell's animation with what it used floating up. */
+	let castFx = $state<{ id: string; kind: UseFxKind; label: string; n: number } | null>(null);
+	/** What it used, at the top of the screen when the slots card is out of view. */
+	let hud = $state<{ spell: string; spent: Spent[]; n: number } | null>(null);
+	let fxTimer: ReturnType<typeof setTimeout> | undefined;
+	let hudTimer: ReturnType<typeof setTimeout> | undefined;
+	let slotsEl = $state<HTMLElement>();
+	const rowEls: Record<string, HTMLElement> = {};
+
+	/** All of it on screen, clear of the nav and the toast. */
+	const clear = (el: HTMLElement) => {
+		const r = el.getBoundingClientRect();
+		return r.top >= 0 && r.bottom <= window.innerHeight - 160;
+	};
+
+	function onCast({ spell, spent, how }: { spell: Spell; spent: Spent[]; how: string }) {
+		const label = spent.length ? spent.map((s) => `−${s.tag}`).join(' ') : how === 'cantrip' ? '' : how.charAt(0).toUpperCase() + how.slice(1);
+		clearTimeout(fxTimer);
+		castFx = { id: spell.id, kind: spellFx(spell), label, n: (castFx?.n ?? 0) + 1 };
+		fxTimer = setTimeout(() => (castFx = null), 1900);
+		// The sheet covered the bottom of the screen: bring the row back into view, then show what was used at the
+		// top unless the whole slots card (whose pips drain) is on screen.
+		requestAnimationFrame(() => {
+			const row = rowEls[spell.id];
+			const scroll = !!row && !clear(row);
+			if (scroll) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			if (!spent.length) return;
+			setTimeout(() => {
+				if (slotsEl && clear(slotsEl)) return;
+				clearTimeout(hudTimer);
+				hud = { spell: spell.name, spent, n: (hud?.n ?? 0) + 1 };
+				hudTimer = setTimeout(() => (hud = null), 2400);
+			}, scroll ? 380 : 0);
+		});
+	}
 
 	const shown = $derived(preparing || !prepares ? levelled : levelled.filter((x) => x.prepared));
 	const groups = $derived.by(() => {
@@ -69,7 +109,7 @@
 <SpellNav id={c.id} />
 
 {#if hasSlots}
-	<section class="card slots">
+	<section class="card slots" bind:this={slotsEl}>
 		<div class="head">
 			<h2 class="label">Spell slots</h2>
 			<span class="label">+{spellAttack(c)} to hit · DC {spellSaveDC(c)}</span>
@@ -84,6 +124,7 @@
 					label="{ordinal(level)}-level slot"
 					max={total}
 					left={slotsLeft(c, level)}
+					fx
 					onspend={() => session.mutate(`Used a ${ordinal(level)}-level slot`, (ch) => spendSlot(ch, level))}
 					onrestore={() => session.mutate(`Got a ${ordinal(level)}-level slot back`, (ch) => restoreSlot(ch, level))}
 				/>
@@ -98,6 +139,7 @@
 					label="pact slot"
 					max={pact.count}
 					left={pact.count - c.pactSlotsUsed}
+					fx
 					onspend={() => session.mutate('Used a pact slot', (ch) => (ch.pactSlotsUsed += 1))}
 					onrestore={() => session.mutate('Got a pact slot back', (ch) => (ch.pactSlotsUsed = Math.max(0, ch.pactSlotsUsed - 1)))}
 				/>
@@ -113,6 +155,7 @@
 					label="{ordinal(level)}-level Mystic Arcanum"
 					max={1}
 					left={used ? 0 : 1}
+					fx
 					onspend={() => session.mutate(`Used ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = [...ch.arcanumUsed, level]))}
 					onrestore={() => session.mutate(`Restored ${ordinal(level)}-level arcanum`, (ch) => (ch.arcanumUsed = ch.arcanumUsed.filter((l) => l !== level)))}
 				/>
@@ -131,6 +174,7 @@
 					shape="diamond"
 					max={spMax}
 					left={sorceryPointsLeft(c)}
+					fx
 					onspend={() => session.mutate('Spent a sorcery point', (ch) => (ch.sorceryPointsUsed += 1))}
 					onrestore={() => session.mutate('Got a sorcery point back', (ch) => (ch.sorceryPointsUsed = Math.max(0, ch.sorceryPointsUsed - 1)))}
 				/>
@@ -171,7 +215,7 @@
 		<h2 class="label group">Cantrips</h2>
 		<ul class="card list">
 			{#each cantrips as { spell, grant } (spell.id)}
-				<li>
+				<li bind:this={rowEls[spell.id]}>
 					<button type="button" class="spell" onclick={() => (casting = spell)}>
 						<span class="info">
 							<span class="name">
@@ -181,8 +225,9 @@
 							</span>
 							<span class="meta">{[spellMeta(spell), castWays.get(spell.id)].filter(Boolean).join(' · ')}</span>
 						</span>
-						<span class="cast">Cast</span>
+						<span class="cast" class:pop={castFx?.id === spell.id}>Cast</span>
 					</button>
+					{@render played(spell.id)}
 				</li>
 			{/each}
 		</ul>
@@ -201,7 +246,7 @@
 		<h2 class="label group">{ordinal(level)} level</h2>
 		<ul class="card list">
 			{#each list as { spell, prepared, grant } (spell.id)}
-				<li>
+				<li bind:this={rowEls[spell.id]}>
 					{#if preparing}
 						<label class="spell prep-row">
 							<input type="checkbox" checked={prepared} disabled={!!grant?.free} onchange={() => togglePrepared(spell.id)} />
@@ -224,8 +269,9 @@
 								</span>
 								<span class="meta">{[spellMeta(spell), castWays.get(spell.id)].filter(Boolean).join(' · ')}</span>
 							</span>
-							<span class="cast">Cast</span>
+							<span class="cast" class:pop={castFx?.id === spell.id}>Cast</span>
 						</button>
+						{@render played(spell.id)}
 					{/if}
 				</li>
 			{/each}
@@ -237,7 +283,20 @@
 	{/if}
 {/if}
 
-<CastSheet spell={casting} onclose={() => (casting = null)} />
+{#snippet played(id: string)}
+	{#if castFx?.id === id}
+		{#key castFx.n}
+			<UseFx kind={castFx.kind} label={castFx.label} />
+		{/key}
+	{/if}
+{/snippet}
+
+<CastSheet spell={casting} onclose={() => (casting = null)} oncast={onCast} />
+{#if hud}
+	{#key hud.n}
+		<CastHud spell={hud.spell} spent={hud.spent} />
+	{/key}
+{/if}
 <FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
 
 <style>
@@ -383,6 +442,14 @@
 		overflow: hidden;
 	}
 
+	/* A cast plays over its row (UseFx): from the left, with what it used floating up beside Cast. */
+	.list li {
+		position: relative;
+		--fx-ox: 28px;
+		--fx-radius: 0;
+		--fx-tag-right: 92px;
+	}
+
 	.list li + li {
 		border-top: 1px solid var(--color-border);
 	}
@@ -451,6 +518,31 @@
 		color: var(--color-bg);
 		font-size: 14px;
 		font-weight: 800;
+	}
+
+	.cast.pop {
+		animation: pop 0.4s ease-out;
+	}
+
+	@keyframes pop {
+		0% {
+			transform: scale(1);
+		}
+		30% {
+			transform: scale(0.88);
+		}
+		65% {
+			transform: scale(1.06);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cast.pop {
+			animation: none;
+		}
 	}
 
 	.missing {
