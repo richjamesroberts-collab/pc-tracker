@@ -4,7 +4,7 @@
 	import CoinsCard from '$lib/components/CoinsCard.svelte';
 	import ItemSheet from '$lib/components/ItemSheet.svelte';
 	import ItemText from '$lib/components/ItemText.svelte';
-	import ItemPickerSheet, { type PickerEntry } from '$lib/components/ItemPickerSheet.svelte';
+	import ItemPickerSheet, { type PickerEntry, type PickerKind } from '$lib/components/ItemPickerSheet.svelte';
 	import PlaceSheet, { type Destination } from '$lib/components/PlaceSheet.svelte';
 	import CarrySheet from '$lib/components/CarrySheet.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
@@ -29,7 +29,6 @@
 		addStash,
 		carriedCoins,
 		carryState,
-		coinRoom,
 		editProblem,
 		encumbrance,
 		moveItem,
@@ -62,6 +61,7 @@
 	import type { Character, InventoryItem, Stash } from '$lib/types';
 
 	type Kind = InventoryItem['kind'];
+	type Where = 'in' | 'all' | 'none';
 
 	/** Rows with more charges than this show as a number with −/+ buttons instead. */
 	const MAX_PIPS = 10;
@@ -71,14 +71,22 @@
 	const limit = $derived(attunementLimit(c));
 	const recharges = $derived(c.items.some((i) => i.charges?.regain));
 
-	/** The stash being looked at, or null for what the character has with them. */
-	let at = $state<string | null>(null);
-	const here = $derived(at && c.stashes.some((s) => s.id === at) ? at : null);
+	/** The tab: everything ('all'), what's equipped and attuned ('equipped'), or a stash's id. */
+	let tab = $state('all');
+	/** The stash being looked at, if it's a stash's tab. */
+	const here = $derived(c.stashes.some((s) => s.id === tab) ? tab : null);
+	const view = $derived(here ? 'stash' : tab === 'equipped' ? 'equipped' : 'all');
 	const stash = $derived(here ? c.stashes.find((s) => s.id === here) : undefined);
 	const herePlace = $derived<Place>(here ? { stash: here } : {});
-	const shown = $derived(c.items.filter((i) => (i.stash ?? null) === here));
-	const magicItems = $derived(shown.filter((i) => i.kind === 'magic'));
-	const gearItems = $derived(shown.filter((i) => i.kind === 'gear'));
+
+	/** Magic items first, then gear. */
+	const byKind = (list: InventoryItem[]) => [...list.filter((i) => i.kind === 'magic'), ...list.filter((i) => i.kind === 'gear')];
+	const shown = $derived(here ? byKind(c.items.filter((i) => i.stash === here)) : []);
+	const carried = $derived(c.items.filter((i) => !i.stash));
+	/** Equipped or attuned: attunement counts wherever the item is. */
+	const inUse = $derived(byKind(c.items.filter((i) => (i.equipped && !i.stash) || i.attuned)));
+	/** Carried things that could be equipped or attuned, but aren't. */
+	const canUse = $derived(byKind(carried.filter((i) => !i.equipped && !i.attuned && (i.weapon || i.armor || i.container || i.attunement))));
 
 	const carry = $derived(carryState(c));
 	const load = $derived(encumbrance(c, carry.carried));
@@ -86,8 +94,68 @@
 	const purse = $derived(here ? (purseOf(c, here) ?? c.coins) : carriedCoins(c));
 	const worn = $derived(wornContainers(c));
 	const loose = $derived(coinCount(c.coins));
-	const carriers = $derived(c.stashes.filter((s) => s.kind !== 'place'));
 	const cap = (s: Stash) => stashCapacity(s);
+
+	/** A section of the All tab: what's on the character, in each carried container, and at each stash. */
+	interface Group {
+		id: string;
+		title: string;
+		sub: string;
+		/** Weight carried, "12 of 30 lb", coins… */
+		amount?: string;
+		/** How full it is, 0 to 1, when it has a limit. */
+		full?: number;
+		items: InventoryItem[];
+		none: string;
+		/** The person: shows attunement. */
+		person?: boolean;
+		/** A stash's id: the heading opens its tab. */
+		stash?: string;
+	}
+
+	const groups = $derived.by(() => {
+		const out: Group[] = [
+			{
+				id: 'person',
+				title: 'On you',
+				sub: `Worn, held or strapped on · ${lb(carry.onPerson)}`,
+				items: byKind(carried.filter((i) => !carry.parents.has(i.id))),
+				none: 'Nothing on you yet.',
+				person: true
+			}
+		];
+		for (const box of carried.filter((i) => i.container)) {
+			const items = carried.filter((i) => carry.parents.get(i.id)?.id === box.id);
+			if (!box.equipped && !items.length && !(box.coins && coinCount(box.coins))) continue;
+			const parent = carry.parents.get(box.id);
+			const max = box.container!.lb;
+			const coins = box.coins ? coinCount(box.coins) : 0;
+			out.push({
+				id: box.id,
+				title: box.name,
+				sub: [box.equipped ? 'Equipped' : 'Not equipped', parent ? `in ${parent.name}` : ''].filter(Boolean).join(' · '),
+				amount: holds(box),
+				full: max !== undefined ? (carry.loads.get(box.id) ?? 0) / max : undefined,
+				items: byKind(items),
+				none: coins ? `Just coins: ${coins.toLocaleString('en')}.` : 'Empty.'
+			});
+		}
+		for (const s of c.stashes) {
+			const most = cap(s);
+			const kept = carry.stashLoads.get(s.id) ?? 0;
+			out.push({
+				id: s.id,
+				title: s.name,
+				sub: s.kind === 'mount' ? 'Mount' : s.kind === 'bag' ? 'Carried by someone else' : 'Not with you',
+				amount: most !== undefined ? `${lb(kept)} of ${lb(most)}` : lb(kept),
+				full: most !== undefined ? kept / most : undefined,
+				items: byKind(c.items.filter((i) => i.stash === s.id)),
+				none: 'Nothing here yet.',
+				stash: s.id
+			});
+		}
+		return out;
+	});
 	let carryOpen = $state(false);
 
 	let library = $state<MagicItem[] | null>(null);
@@ -118,11 +186,12 @@
 
 	const magicEntries = $derived<PickerEntry[] | null>(
 		library?.map((m) => ({
-			id: m.id,
+			id: `magic:${m.id}`,
 			name: m.name,
 			meta: [m.type, rarityLabel(m.rarity), m.attunement !== undefined ? 'Attunement' : '', m.source !== 'DMG' ? m.source : '']
 				.filter(Boolean)
 				.join(' · '),
+			kind: 'magic',
 			group: m.rarity,
 			attunement: m.attunement,
 			text: m.text
@@ -131,17 +200,25 @@
 
 	const gearEntries = $derived<PickerEntry[] | null>(
 		gear?.map((g) => ({
-			id: g.id,
+			id: `gear:${g.id}`,
 			name: g.bundle ? `${g.name} ×${g.bundle}` : g.name,
 			meta: [g.type, g.weight ? `${g.weight} lb` : '', g.value ? priceLabel(g.value) : ''].filter(Boolean).join(' · '),
+			kind: 'gear',
 			group: g.category,
 			stats: g.stats,
 			text: g.text
 		})) ?? null
 	);
 
+	/** Magic items and gear in one list, once both have loaded. */
+	const entries = $derived(magicEntries && gearEntries ? [...magicEntries, ...gearEntries].sort((a, b) => a.name.localeCompare(b.name)) : null);
+	const KINDS: PickerKind[] = [
+		{ key: 'magic', label: 'Magic', noun: 'magic items', filters: RARITIES.map((r) => ({ key: r, label: rarityLabel(r) })) },
+		{ key: 'gear', label: 'Gear', noun: 'gear', filters: GEAR_CATEGORIES }
+	];
+
 	let expanded = $state<string | null>(null);
-	let picker = $state<Kind | null>(null);
+	let picker = $state(false);
 	let coinsOpen = $state(false);
 	let sheetOpen = $state(false);
 	/** Id of the item being edited; null for a new custom item of `customKind`. */
@@ -151,11 +228,16 @@
 
 	const lb = (n: number) => `${Math.round(n * 100) / 100} lb`;
 
-	function meta(i: InventoryItem) {
-		const box = carry.parents.get(i.id);
+	/**
+	 * The row's second line. `where` says what it tells of where the item is: 'in' a container, 'all' (in a container
+	 * or at a stash), or 'none' when the section already says.
+	 */
+	function meta(i: InventoryItem, where: Where) {
+		const box = where === 'none' ? undefined : carry.parents.get(i.id);
+		const away = where === 'all' && i.stash && !box ? placeName({ stash: i.stash }) : '';
 		return (
 			[
-				box ? `In ${box.name}` : '',
+				box ? `In ${box.name}` : away ? `At ${away}` : '',
 				i.type,
 				rarityLabel(i.rarity),
 				i.attunement && !i.attuned ? 'Attunement' : '',
@@ -300,9 +382,11 @@
 		session.mutate(label, (d) => moveItem(d, item.id, to.newPlace ? { stash: addStash(d, 'place', to.newPlace) } : to, n));
 	}
 
-	function pick(id: string) {
-		const kind = picker;
-		picker = null;
+	function pick(key: string) {
+		picker = false;
+		const split = key.indexOf(':');
+		const kind = key.slice(0, split);
+		const id = key.slice(split + 1);
 		if (kind === 'magic') {
 			const m = magicById.get(id);
 			if (!m) return;
@@ -323,9 +407,9 @@
 		if (added) expanded = added;
 	}
 
-	function openCustom() {
-		customKind = picker ?? 'magic';
-		picker = null;
+	function openCustom(kind?: string) {
+		customKind = kind === 'gear' ? 'gear' : 'magic';
+		picker = false;
 		editing = null;
 		sheetOpen = true;
 	}
@@ -474,8 +558,7 @@
 	}
 </script>
 
-{#snippet itemList(list: InventoryItem[], kind: Kind)}
-	<div class="card list">
+{#snippet itemList(list: InventoryItem[], none: string, where: Where)}
 		{#each list as i (i.id)}
 			{@const open = expanded === i.id}
 			{@const data = dataFor(i)}
@@ -487,7 +570,7 @@
 							<span class="name">{i.name}</span>
 							{#if i.quantity > 1}<span class="qty">×{i.quantity}</span>{/if}
 						</span>
-						<span class="meta">{meta(i)}</span>
+						<span class="meta">{meta(i, where)}</span>
 					</button>
 					<div class="badges">
 						{#if i.equipped}<span class="tag worn">{i.armor && i.armor.type !== 'shield' ? 'Worn' : 'Equipped'}</span>{/if}
@@ -592,10 +675,27 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="none">{kind === 'gear' ? 'No gear yet.' : 'No magic items yet.'}</p>
+			{#if none}<p class="none">{none}</p>{/if}
 		{/each}
-		<button type="button" class="add" onclick={() => (picker = kind)}>{kind === 'gear' ? 'Add gear' : 'Add magic item'}</button>
-	</div>
+{/snippet}
+
+{#snippet addButton()}
+	<button type="button" class="add-item" onclick={() => (picker = true)}>
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+		Add item
+	</button>
+{/snippet}
+
+{#snippet attunement()}
+	<span class="attuned-count" class:full={attuned >= limit} aria-label="Attuned to {attuned} of {limit}">
+		Attuned
+		<span class="gems" aria-hidden="true">
+			{#each Array.from({ length: limit }, (_, n) => n) as n (n)}
+				<span class="gem" class:on={n < attuned}></span>
+			{/each}
+		</span>
+		<b>{attuned} / {limit}</b>
+	</span>
 {/snippet}
 
 <div class="top">
@@ -608,17 +708,33 @@
 	{/if}
 </div>
 
-<div class="places" role="tablist" aria-label="Where things are">
-	<button type="button" role="tab" aria-selected={!here} onclick={() => (at = null)}>With you</button>
+<div class="places" role="tablist" aria-label="Inventory">
+	<button type="button" role="tab" aria-selected={view === 'all'} onclick={() => (tab = 'all')}>All</button>
+	<button type="button" role="tab" aria-selected={view === 'equipped'} onclick={() => (tab = 'equipped')}>PC Equipped</button>
 	{#each c.stashes as p (p.id)}
-		<button type="button" role="tab" aria-selected={here === p.id} onclick={() => (at = p.id)}>{p.name}</button>
+		<button type="button" role="tab" aria-selected={here === p.id} onclick={() => (tab = p.id)}>{p.name}</button>
 	{/each}
 	<button type="button" class="more" aria-label="Places, the party's Bag of Holding and encumbrance" onclick={() => (carryOpen = true)}>
 		{c.stashes.length ? '•••' : '+ Place or party bag'}
 	</button>
 </div>
 
-{#if stash}
+{#if view === 'equipped'}
+	<h2 class="label group heading">
+		<span>Equipped &amp; attuned{inUse.length ? ` · ${inUse.length}` : ''}</span>
+		{@render attunement()}
+	</h2>
+	<div class="card list">
+		{@render itemList(inUse, 'Nothing equipped or attuned yet. Equip weapons, armor and containers, or attune to magic items, from here or All.', 'all')}
+	</div>
+
+	{#if canUse.length}
+		<h2 class="label group">Can equip or attune · {canUse.length}</h2>
+		<div class="card list">
+			{@render itemList(canUse, '', 'in')}
+		</div>
+	{/if}
+{:else if stash}
 	{@const most = cap(stash)}
 	{@const kept = carry.stashLoads.get(stash.id) ?? 0}
 	<button type="button" class="card load" class:warn={most !== undefined && kept > most} onclick={() => (carryOpen = true)}>
@@ -637,6 +753,16 @@
 					: `Not with you: things kept at ${stash.name} don't weigh on you, and can't be used until you fetch them.`}
 		</span>
 	</button>
+
+	<h2 class="label group">Coins at {stash.name}</h2>
+	<CoinsCard {purse} scope={here ?? ''} label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)} />
+
+	{@render addButton()}
+
+	<h2 class="label group">Kept here{shown.length ? ` · ${shown.length}` : ''}</h2>
+	<div class="card list">
+		{@render itemList(shown, `Nothing at ${stash.name} yet.`, 'in')}
+	</div>
 {:else}
 	<h2 class="label group">Carrying capacity</h2>
 	<button type="button" class="card load" class:warn={load.status !== 'light'} aria-label="Carrying {lb(load.carried)} of {lb(load.capacity)}. Tap for details." onclick={() => (carryOpen = true)}>
@@ -654,89 +780,62 @@
 		{#if load.status !== 'light'}<span class="load-note">{CARRY_STATUS[load.status].note}</span>{/if}
 	</button>
 
-	<h2 class="label group">Carrying on</h2>
-	<div class="card carriers">
-		<div class="carrier">
-			<span class="what"><b>Person</b><small>Worn, held or strapped on</small></span>
-			<span class="amount">{lb(carry.onPerson)}</span>
-		</div>
-		{#each worn as box (box.id)}
-			{@const used = carry.loads.get(box.id) ?? 0}
-			{@const max = box.container!.lb}
-			<button type="button" class="carrier" onclick={() => (expanded = box.id)}>
-				<span class="what">
-					<b>{box.name}</b>
-					<small>
-						{[box.coins && coinCount(box.coins) ? `${coinCount(box.coins).toLocaleString('en')} coins` : '', Number.isFinite(coinRoom(carry, box)) ? `room for ${coinRoom(carry, box).toLocaleString('en')} more coins` : '', box.container!.weightless ? 'weightless inside' : '']
-							.filter(Boolean)
-							.join(' · ') || 'Equipped'}
-					</small>
-				</span>
-				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
-				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
-			</button>
-		{/each}
-		{#each carriers as s (s.id)}
-			{@const used = carry.stashLoads.get(s.id) ?? 0}
-			{@const max = cap(s)}
-			<button type="button" class="carrier" onclick={() => (at = s.id)}>
-				<span class="what"><b>{s.name}</b><small>{s.kind === 'mount' ? 'Mount' : 'Carried by someone else'}</small></span>
-				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
-				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
-			</button>
-		{/each}
-		{#if !worn.length}
-			<p class="carrier-hint">No container equipped, so there's nowhere to keep coins. Add a pouch or sack under Gear, or equip one you have.</p>
-		{/if}
-	</div>
+	<h2 class="label group">Coins with you</h2>
+	<CoinsCard {purse} scope="" label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)} />
+	{#if loose}
+		<p class="coin-note warn">
+			{loose.toLocaleString('en')} coins aren't in anything.
+			{#if worn.length}
+				<button type="button" class="put-away" onclick={putAway}>Put them in {worn.map((b) => b.name).join(' or ')}</button>
+			{:else}
+				Equip a pouch, sack or other container to keep them in.
+			{/if}
+		</p>
+	{:else if !worn.length}
+		<p class="coin-note warn">No container equipped, so there's nowhere to keep coins. Add a pouch or sack, or equip one you have.</p>
+	{/if}
+
+	{@render addButton()}
+
+	{#each groups as g (g.id)}
+		<section class="card list place-group" aria-label={g.title}>
+			{#if g.stash}
+				{@const id = g.stash}
+				<button type="button" class="ghead" onclick={() => (tab = id)}>
+					{@render groupHead(g)}
+				</button>
+			{:else}
+				<div class="ghead">
+					{@render groupHead(g)}
+				</div>
+			{/if}
+			{@render itemList(g.items, g.none, g.stash ? 'in' : 'none')}
+		</section>
+	{/each}
 {/if}
 
-<h2 class="label group">Coins{stash ? ` at ${stash.name}` : ' with you'}</h2>
-<CoinsCard {purse} scope={here ?? ''} label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)} />
-{#if !stash && loose}
-	<p class="coin-note warn">
-		{loose.toLocaleString('en')} coins aren't in anything.
-		{#if worn.length}
-			<button type="button" class="put-away" onclick={putAway}>Put them in {worn.map((b) => b.name).join(' or ')}</button>
-		{:else}
-			Equip a pouch, sack or other container to keep them in.
-		{/if}
-	</p>
-{/if}
-
-<h2 class="label group heading">
-	<span>Magic items{magicItems.length ? ` · ${magicItems.length}` : ''}</span>
-	{#if !stash}<span class="attuned-count" class:full={attuned >= limit}>Attuned <b>{attuned} / {limit}</b></span>{/if}
-</h2>
-{@render itemList(magicItems, 'magic')}
-
-<h2 class="label group">Gear{gearItems.length ? ` · ${gearItems.length}` : ''}</h2>
-{@render itemList(gearItems, 'gear')}
+{#snippet groupHead(g: Group)}
+	<span class="gtitle"><b>{g.title}</b><small>{g.sub}</small></span>
+	{#if g.person}
+		{@render attunement()}
+	{:else if g.amount}
+		<span class="amount">{g.amount}</span>
+	{/if}
+	{#if g.full !== undefined}
+		<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, g.full * 100)}%"></span></span>
+	{/if}
+{/snippet}
 
 <ItemPickerSheet
-	open={picker === 'magic'}
-	title="Add magic item"
-	noun="magic items"
-	entries={magicEntries}
-	filters={RARITIES.map((r) => ({ key: r, label: rarityLabel(r) }))}
-	failed={failed.magic}
+	open={picker}
+	title="Add item"
+	kinds={KINDS}
+	{entries}
+	failed={failed.magic || failed.gear}
 	onretry={() => attempt++}
 	onpick={pick}
 	oncustom={openCustom}
-	onclose={() => (picker = null)}
-/>
-
-<ItemPickerSheet
-	open={picker === 'gear'}
-	title="Add gear"
-	noun="gear"
-	entries={gearEntries}
-	filters={GEAR_CATEGORIES}
-	failed={failed.gear}
-	onretry={() => attempt++}
-	onpick={pick}
-	oncustom={openCustom}
-	onclose={() => (picker = null)}
+	onclose={() => (picker = false)}
 />
 
 <ItemSheet
@@ -767,7 +866,7 @@
 	open={carryOpen}
 	onclose={() => (carryOpen = false)}
 	onplace={(id) => {
-		at = id;
+		tab = id;
 		carryOpen = false;
 	}}
 />
@@ -955,52 +1054,74 @@
 		font-weight: 800;
 	}
 
-	.carriers {
-		overflow: hidden;
+	.add-item {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 48px;
+		margin-top: 14px;
+		border: 0;
+		background: var(--color-accent);
+		color: var(--color-on-accent);
+		font-size: 15px;
+		font-weight: 800;
+		box-shadow: var(--shadow-btn);
 	}
 
-	.carrier {
+	.add-item svg {
+		width: 18px;
+		height: 18px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+	}
+
+	.place-group {
+		margin-top: 12px;
+	}
+
+	.ghead {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;
-		gap: 2px 10px;
+		gap: 6px 10px;
 		width: 100%;
-		min-height: 54px;
-		padding: 8px 14px;
+		min-height: 56px;
+		padding: 10px 14px;
 		border: 0;
 		border-radius: 0;
-		background: transparent;
+		background: var(--color-surface-raised);
 		color: var(--color-text);
 		text-align: left;
 		font-weight: 400;
 	}
 
-	.carrier + .carrier,
-	.carrier + .carrier-hint {
-		border-top: 1px solid var(--color-border);
-	}
-
-	.carrier .what {
+	.gtitle {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 	}
 
-	.carrier b {
+	.gtitle b {
 		font-size: 15px;
+		font-weight: 800;
 		overflow-wrap: anywhere;
 	}
 
-	.carrier small {
+	.gtitle small {
 		font-size: 12px;
 		color: var(--color-text-muted);
 	}
 
-	.carrier .amount {
-		font-size: 14px;
+	.ghead .amount {
+		font-size: 13px;
 		font-weight: 800;
 		font-variant-numeric: tabular-nums;
 		color: var(--color-effect-ink);
+		text-align: right;
 	}
 
 	.bar.mini {
@@ -1008,12 +1129,40 @@
 		height: 4px;
 	}
 
-	.carrier-hint {
-		padding: 10px 14px;
-		font-size: 13px;
-		line-height: 1.4;
-		font-weight: 700;
-		color: var(--color-warning);
+	.attuned-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--color-text-muted);
+		letter-spacing: 0;
+		text-transform: none;
+		white-space: nowrap;
+	}
+
+	.gems {
+		display: inline-flex;
+		gap: 4px;
+	}
+
+	.gem {
+		width: 9px;
+		height: 9px;
+		transform: rotate(45deg);
+		border: 1.5px solid var(--color-effect-ink);
+	}
+
+	.gem.on {
+		background: var(--color-effect-ink);
+	}
+
+	.attuned-count.full .gem {
+		border-color: var(--color-warning);
+	}
+
+	.attuned-count.full .gem.on {
+		background: var(--color-warning);
 	}
 
 	.heading {
@@ -1037,7 +1186,6 @@
 
 	.list {
 		overflow: hidden;
-		padding-bottom: 12px;
 	}
 
 	.row {
@@ -1354,20 +1502,8 @@
 	}
 
 	.none {
-		padding: 16px 16px 4px;
+		padding: 14px 16px;
 		font-size: 14px;
 		color: var(--color-text-muted);
-	}
-
-	.add {
-		display: block;
-		width: calc(100% - 24px);
-		min-height: 44px;
-		margin: 12px 12px 0;
-		border-radius: 12px;
-		border: 1.5px dashed var(--color-border-strong);
-		background: transparent;
-		color: var(--color-accent);
-		font-weight: 800;
 	}
 </style>
