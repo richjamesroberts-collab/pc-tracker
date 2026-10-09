@@ -48,7 +48,7 @@ function gear(name: string, weight: number, overrides: Partial<InventoryItem> = 
 }
 
 const coins = (gp: number) => ({ cp: 0, sp: 0, ep: 0, gp, pp: 0 });
-const pouch = (o: Partial<InventoryItem> = {}) => gear('Pouch', 1, { container: { lb: 6, coins: true }, ...o });
+const pouch = (o: Partial<InventoryItem> = {}) => gear('Pouch', 1, { container: { lb: 6 }, ref: 'pouch|phb', ...o });
 const backpack = (o: Partial<InventoryItem> = {}) => gear('Backpack', 5, { container: { lb: 30 }, ...o });
 const bag = (o: Partial<InventoryItem> = {}) =>
 	gear('Bag of Holding', 15, { kind: 'magic', ref: 'bag of holding|dmg', container: { lb: 500, weightless: true }, ...o });
@@ -251,7 +251,7 @@ describe('coins', () => {
 	});
 
 	it('spends what the character carries, loose coins first, change back where it was paid from', () => {
-		const c = pc({ coins: coins(1), items: [pouch({ equipped: true, coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 1 } }), gear('Sack', 0.5, { container: { lb: 30, coins: true }, equipped: true, coins: coins(3) })] });
+		const c = pc({ coins: coins(1), items: [pouch({ equipped: true, coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 1 } }), gear('Sack', 0.5, { container: { lb: 30 }, equipped: true, coins: coins(3) })] });
 		expect(spendCarried(c, 'gp', 3)).toBe(true);
 		expect(c.coins.gp).toBe(0);
 		expect(c.items[1].coins!.gp).toBe(1);
@@ -262,10 +262,11 @@ describe('coins', () => {
 		expect(spendCarried(c, 'pp', 1)).toBe(false);
 	});
 
-	it('puts loose coins away in coin containers, as many as fit', () => {
-		const c = pc({ coins: { cp: 0, sp: 0, ep: 0, gp: 400, pp: 2 }, items: [pouch({ equipped: true }), backpack({ equipped: true })] });
-		expect(putCoinsAway(c)).toBe(300);
-		expect(c.items[0].coins).toMatchObject({ pp: 2, gp: 298 });
-		expect(c.coins).toMatchObject({ pp: 0, gp: 102 });
+	it('puts loose coins away in pouches first, then other containers, as many as fit', () => {
+		const c = pc({ coins: { cp: 0, sp: 0, ep: 0, gp: 400, pp: 2 }, items: [backpack({ equipped: true }), pouch({ equipped: true })] });
+		expect(putCoinsAway(c)).toBe(402);
+		expect(c.items[1].coins).toMatchObject({ pp: 2, gp: 298 });
+		expect(c.items[0].coins).toMatchObject({ gp: 102 });
+		expect(c.coins).toMatchObject({ pp: 0, gp: 0 });
 	});
 });

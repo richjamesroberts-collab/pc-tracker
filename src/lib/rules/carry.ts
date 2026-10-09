@@ -14,7 +14,7 @@ import { RACE_ABILITIES, abilityBreakdown } from './stats';
 export const COINS_PER_LB = 50;
 /** What a Bag of Holding holds. */
 export const BAG_OF_HOLDING_LB = 500;
-/** Containers coins go in as soon as they're added. */
+/** Containers loose coins go in before any other (any container holds coins, as far as it has room). */
 export const COIN_CONTAINERS = ['pouch|phb', 'sack|phb'];
 export const PARTY_BAG_NAME = 'Party Bag of Holding';
 /** Offered when adding a place. */
@@ -349,10 +349,14 @@ export function moveCoinsTo(c: Character, coin: Coin, n: number, from: string | 
 	return true;
 }
 
-/** Put loose coins in the character's coin containers, biggest coins first, as many as fit. Returns how many went in. */
+/**
+ * Put loose coins in the character's equipped containers, pouches and sacks first, biggest coins first, as many as
+ * fit. Returns how many went in.
+ */
 export function putCoinsAway(c: Character): number {
 	let moved = 0;
-	for (const box of wornContainers(c).filter((i) => i.container!.coins)) {
+	const purse = (i: InventoryItem) => (i.ref && COIN_CONTAINERS.includes(i.ref) ? 0 : 1);
+	for (const box of [...wornContainers(c)].sort((a, b) => purse(a) - purse(b))) {
 		let room = coinRoom(carryState(c), box);
 		for (const k of COINS) {
 			const x = Math.min(room, c.coins[k]);

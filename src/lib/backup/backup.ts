@@ -126,8 +126,7 @@ function container(v: unknown): ItemContainer | undefined {
 	const lb = num(v.lb, 0);
 	return {
 		...(lb > 0 ? { lb: Math.min(99_999, lb) } : {}),
-		...(v.weightless === true ? { weightless: true } : {}),
-		...(v.coins === true ? { coins: true } : {})
+		...(v.weightless === true ? { weightless: true } : {})
 	};
 }
 
