@@ -11,7 +11,7 @@
 	import { portraitFromFile } from '$lib/image';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, spellcastingMod, validPicks } from '$lib/rules/stats';
+	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, raceSpeed, spellcastingMod, validPicks } from '$lib/rules/stats';
 	import { isCaster, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
@@ -460,7 +460,7 @@
 			{/if}
 			<label class="field">
 				<span>Speed</span>
-				<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder="30" />
+				<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder={`${raceSpeed(c) ?? 30}`} />
 			</label>
 		</div>
 		{#if !isNew && preview.hp.total !== c.hpBase}

@@ -40,7 +40,7 @@
 	} from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown } from '$lib/rules/stats';
+	import { abilityBreakdown, raceSpeed } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { healingDice, isPotion } from '$lib/rules/potions';
@@ -62,9 +62,11 @@
 	const load = $derived(encumbrance(c));
 	const slowed = $derived(load.status !== 'light');
 
+	// The player's own speed (Unarmored Movement, Fast Movement, Mobile), or the race's.
+	const speed = $derived(c.speed ?? raceSpeed(c));
 	const stats = $derived(
 		[
-			c.speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(c.speed, load.status)}`, warn: slowed },
+			speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(speed, load.status)} ft`, warn: slowed },
 			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
 			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
 		].filter((s): s is { k: string; v: string; warn?: boolean } => !!s)

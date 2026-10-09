@@ -40,7 +40,7 @@ import {
 	spendResource
 } from './features';
 import { abilityMod, signedMod } from './abilities';
-import { abilityBreakdown, armorClass, formula, initiative, maxHp, recompute, setAcTotal, spellcasting } from './stats';
+import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceSpeed, recompute, setAcTotal, spellcasting } from './stats';
 import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
@@ -860,6 +860,17 @@ describe('weapon proficiency', () => {
 
 	it('lists categories first and leaves out weapons they cover', () => {
 		expect(proficiencyList(['rapier', 'simple', 'dagger', 'hand crossbow'])).toEqual(['simple', 'hand crossbow', 'rapier']);
+	});
+});
+
+describe('raceSpeed', () => {
+	it("gives the race's walking speed, a subrace's own replacing it", () => {
+		expect(raceSpeed({ raceKey: 'human' })).toBe(30);
+		expect(raceSpeed({ raceKey: 'dwarf', subraceKey: 'hill' })).toBe(25);
+		expect(raceSpeed({ raceKey: 'elf', subraceKey: 'high' })).toBe(30);
+		expect(raceSpeed({ raceKey: 'elf', subraceKey: 'wood' })).toBe(35);
+		expect(raceSpeed({ raceKey: 'centaur' })).toBe(40);
+		expect(raceSpeed({})).toBeUndefined();
 	});
 });
 
