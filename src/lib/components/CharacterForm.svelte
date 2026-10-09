@@ -11,7 +11,7 @@
 	import { portraitFromFile } from '$lib/image';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, raceSpeed, spellcastingMod, validPicks } from '$lib/rules/stats';
+	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, spellcastingMod, validPicks, walkingSpeed } from '$lib/rules/stats';
 	import { isCaster, SPELL_ABILITY, spellAttack, spellSaveDC } from '$lib/rules/spellcasting';
 	import { WEAPONS, proficiencyLabel, proficiencyList, weaponProficiencySources } from '$lib/rules/proficiency';
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
@@ -186,6 +186,7 @@
 			ac: armorClass(snap, breakdown.scores),
 			hp: maxHp(snap, breakdown),
 			init: initiative({ ...snap, initiativeOverride: undefined }, breakdown.scores),
+			speed: walkingSpeed({ ...snap, speed: undefined }),
 			spellModAuto: spellcastingMod({ ...snap, spellModOverride: undefined }, breakdown.scores),
 			spellDc: spellSaveDC({ ...snap, spellMod }),
 			spellAttack: spellAttack({ ...snap, spellMod })
@@ -460,11 +461,18 @@
 			{/if}
 			<label class="field">
 				<span>Speed</span>
-				<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder={`${raceSpeed(c) ?? 30}`} />
+				<input type="number" inputmode="numeric" min="0" step="5" bind:value={c.speed} placeholder={`${preview.speed?.total ?? 30}`} />
 			</label>
 		</div>
 		{#if !isNew && preview.hp.total !== c.hpBase}
 			<p class="hint">Max HP {preview.hp.total} with magic items: {formula(preview.hp.parts)}</p>
+		{/if}
+		{#if preview.speed}
+			<p class="hint">
+				Speed: {formula(preview.speed.parts)}.
+				{#each preview.speed.off as off (off)}{off}. {/each}
+				{c.speed != null ? 'Clear the box to use this.' : 'Type a number to use your own (Mobile, Boots of Speed).'}
+			</p>
 		{/if}
 
 		<div class="two even">

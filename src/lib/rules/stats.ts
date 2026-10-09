@@ -72,6 +72,38 @@ export function raceSpeed(c: Pick<Character, 'raceKey' | 'subraceKey'>): number 
 	return (c.subraceKey ? race.subraces[c.subraceKey]?.speed : undefined) ?? race.speed;
 }
 
+/** Unarmored Movement's bonus in feet: +10 at monk level 2, 5 more every 4 levels after. */
+export const unarmoredMovement = (level: number) => (level < 2 ? 0 : 10 + 5 * Math.floor((level - 2) / 4));
+
+export interface SpeedBreakdown extends Breakdown {
+	/** Class features that don't apply right now, and why: "Unarmored Movement (+15) needs no armor or shield". */
+	off: string[];
+}
+
+/**
+ * Walking speed: the race's, plus Unarmored Movement (monk, no armor or shield) and Fast Movement (barbarian 5+,
+ * no heavy armor). A speed the player entered replaces all of it. Undefined when there's neither.
+ */
+export function walkingSpeed(
+	c: Pick<Character, 'raceKey' | 'subraceKey' | 'classKey' | 'level' | 'items' | 'speed'>
+): SpeedBreakdown | undefined {
+	if (c.speed != null) return { total: c.speed, parts: [{ label: 'Your speed', value: `${c.speed}` }], off: [] };
+	const race = raceSpeed(c);
+	if (race == null) return undefined;
+	const parts: StatSource[] = [{ label: 'Race', value: `${race}` }];
+	const off: string[] = [];
+	const worn = equippedArmor(c.items ?? []);
+	const add = (label: string, feet: number, applies: boolean, needs: string) => {
+		if (applies) parts.push({ label, value: `+${feet}` });
+		else off.push(`${label} (+${feet}) needs ${needs}`);
+	};
+	if (c.classKey === 'monk' && c.level >= 2)
+		add('Unarmored Movement', unarmoredMovement(c.level), !worn.length, 'no armor or shield');
+	if (c.classKey === 'barbarian' && c.level >= 5)
+		add('Fast Movement', 10, !worn.some((i) => i.armor!.type === 'heavy'), 'no heavy armor');
+	return { total: parts.reduce((n, p) => n + Number(p.value), 0), parts, off };
+}
+
 /** The racial increases that apply, after subrace replacement. Free choices come from `raceAbilityChoices`. */
 export function raceAsi(c: Pick<Character, 'raceKey' | 'subraceKey'>): RaceAsi[] {
 	const race = c.raceKey ? RACE_ABILITIES[c.raceKey] : undefined;

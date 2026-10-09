@@ -40,7 +40,7 @@
 	} from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, raceSpeed } from '$lib/rules/stats';
+	import { abilityBreakdown, walkingSpeed } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { healingDice, isPotion } from '$lib/rules/potions';
@@ -62,8 +62,7 @@
 	const load = $derived(encumbrance(c));
 	const slowed = $derived(load.status !== 'light');
 
-	// The player's own speed (Unarmored Movement, Fast Movement, Mobile), or the race's.
-	const speed = $derived(c.speed ?? raceSpeed(c));
+	const speed = $derived(walkingSpeed(c)?.total);
 	const stats = $derived(
 		[
 			speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(speed, load.status)} ft`, warn: slowed },

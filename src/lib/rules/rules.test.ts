@@ -40,7 +40,19 @@ import {
 	spendResource
 } from './features';
 import { abilityMod, signedMod } from './abilities';
-import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceSpeed, recompute, setAcTotal, spellcasting } from './stats';
+import {
+	abilityBreakdown,
+	armorClass,
+	formula,
+	initiative,
+	maxHp,
+	raceSpeed,
+	recompute,
+	setAcTotal,
+	spellcasting,
+	unarmoredMovement,
+	walkingSpeed
+} from './stats';
 import { coinWorth, formatGp, gainCoins, spendCoins } from './coins';
 import {
 	addItem,
@@ -67,7 +79,7 @@ import { defenses } from './defenses';
 import { skillChecks, skillChoices, SKILL_KEYS } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
-import type { ItemWeapon } from '$lib/types';
+import type { ItemArmor, ItemWeapon } from '$lib/types';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', classKey: 'sorcerer', level: 7, hpMax: 52, hpCurrent: 38, spellMod: 4, ...overrides };
@@ -871,6 +883,33 @@ describe('raceSpeed', () => {
 		expect(raceSpeed({ raceKey: 'elf', subraceKey: 'wood' })).toBe(35);
 		expect(raceSpeed({ raceKey: 'centaur' })).toBe(40);
 		expect(raceSpeed({})).toBeUndefined();
+	});
+});
+
+describe('walkingSpeed', () => {
+	const armor = (type: ItemArmor['type']): InventoryItem =>
+		({ id: type, kind: 'gear', name: type, quantity: 1, equipped: true, armor: { type, ac: 14 } }) as InventoryItem;
+	const speed = (over: Partial<Character>) => walkingSpeed(pc(over));
+
+	it('adds Unarmored Movement by monk level, only without armor or shield', () => {
+		expect([1, 2, 5, 6, 10, 14, 18, 20].map(unarmoredMovement)).toEqual([0, 10, 10, 15, 20, 25, 30, 30]);
+		expect(speed({ raceKey: 'human', classKey: 'monk', level: 1 })?.total).toBe(30);
+		expect(speed({ raceKey: 'human', classKey: 'monk', level: 6 })?.total).toBe(45);
+		expect(speed({ raceKey: 'elf', subraceKey: 'wood', classKey: 'monk', level: 18 })?.total).toBe(65);
+		const shielded = speed({ raceKey: 'human', classKey: 'monk', level: 6, items: [armor('shield')] });
+		expect(shielded?.total).toBe(30);
+		expect(shielded?.off).toEqual(['Unarmored Movement (+15) needs no armor or shield']);
+	});
+
+	it('adds Fast Movement from barbarian 5th level, unless in heavy armor', () => {
+		expect(speed({ raceKey: 'dwarf', classKey: 'barbarian', level: 4 })?.total).toBe(25);
+		expect(speed({ raceKey: 'dwarf', classKey: 'barbarian', level: 5, items: [armor('medium')] })?.total).toBe(35);
+		expect(speed({ raceKey: 'dwarf', classKey: 'barbarian', level: 5, items: [armor('heavy')] })?.total).toBe(25);
+	});
+
+	it("uses the player's own speed instead", () => {
+		expect(speed({ raceKey: 'human', classKey: 'monk', level: 6, speed: 40 })).toMatchObject({ total: 40, off: [] });
+		expect(speed({ raceKey: undefined })).toBeUndefined();
 	});
 });
 
