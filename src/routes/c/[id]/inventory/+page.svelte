@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Pips from '$lib/components/Pips.svelte';
 	import CoinSheet from '$lib/components/CoinSheet.svelte';
+	import CoinsCard from '$lib/components/CoinsCard.svelte';
 	import ItemSheet from '$lib/components/ItemSheet.svelte';
 	import ItemText from '$lib/components/ItemText.svelte';
 	import ItemPickerSheet, { type PickerEntry } from '$lib/components/ItemPickerSheet.svelte';
@@ -691,14 +692,7 @@
 {/if}
 
 <h2 class="label group">Coins{stash ? ` at ${stash.name}` : ' with you'}</h2>
-<button type="button" class="card coins" aria-label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)}>
-	{#each COINS as k (k)}
-		<span class="coin" class:empty={!purse[k]}>
-			<span class="amount">{purse[k].toLocaleString('en')}</span>
-			<span class="code">{k}</span>
-		</span>
-	{/each}
-</button>
+<CoinsCard {purse} scope={here ?? ''} label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)} />
 {#if !stash && loose}
 	<p class="coin-note warn">
 		{loose.toLocaleString('en')} coins aren't in anything.
@@ -1035,49 +1029,6 @@
 
 	.attuned-count.full b {
 		color: var(--color-warning);
-	}
-
-	.coins {
-		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
-		width: 100%;
-		padding: 10px 6px;
-		color: var(--color-text);
-		font-weight: 400;
-		text-align: center;
-	}
-
-	.coin {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		min-width: 0;
-	}
-
-	.coin + .coin {
-		border-left: 1px solid var(--color-border);
-	}
-
-	.coin .amount {
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-size: 20px;
-		font-weight: 900;
-		font-variant-numeric: tabular-nums;
-		color: var(--color-effect-ink);
-	}
-
-	.coin .code {
-		font-size: 11px;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--color-text-muted);
-	}
-
-	.coin.empty .amount {
-		color: var(--color-text-faint);
 	}
 
 	.group {

@@ -391,10 +391,10 @@
 		</div>
 		<div class="slot-rows">
 			{#each slotMax(c) as max, i (i)}
-				<span class="slot-row"><b>{ordinal(i + 1)}</b><Pips label="{ordinal(i + 1)} slots" {max} left={slotsLeft(c, i + 1)} size={14} /></span>
+				<span class="slot-row"><b>{ordinal(i + 1)}</b><Pips label="{ordinal(i + 1)} slots" {max} left={slotsLeft(c, i + 1)} size={14} fx /></span>
 			{/each}
 			{#if pact}
-				<span class="slot-row"><b>Pact {ordinal(pact.level)}</b><Pips label="Pact slots" max={pact.count} left={pact.count - c.pactSlotsUsed} size={14} /></span>
+				<span class="slot-row"><b>Pact {ordinal(pact.level)}</b><Pips label="Pact slots" max={pact.count} left={pact.count - c.pactSlotsUsed} size={14} fx /></span>
 			{/if}
 		</div>
 	</a>
@@ -410,6 +410,7 @@
 				shape="diamond"
 				max={spMax}
 				left={sorceryPointsLeft(c)}
+				fx
 				onspend={() => session.mutate('Spent a sorcery point', (ch) => (ch.sorceryPointsUsed += 1))}
 				onrestore={() => session.mutate('Got a sorcery point back', (ch) => (ch.sorceryPointsUsed = Math.max(0, ch.sorceryPointsUsed - 1)))}
 			/>

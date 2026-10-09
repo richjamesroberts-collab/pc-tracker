@@ -113,7 +113,7 @@ const FX: [UseFx, RegExp][] = [
 	['scroll', /scroll|spellwrought/]
 ];
 
-function fxOf(text: string): UseFx | undefined {
+export function fxOf(text: string): UseFx | undefined {
 	const t = text.toLowerCase();
 	return FX.find(([, re]) => re.test(t))?.[0];
 }

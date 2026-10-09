@@ -6,11 +6,21 @@
 	import { METAMAGIC, metamagicCost, sorceryPointsLeft, spendPactSlot, spendSlot, spendSorceryPoints } from '$lib/rules/resources';
 	import { grantCasting, grantCastOptions, grantedSpells, slotsAllowed, spendCast, type CastSpend } from '$lib/rules/grants';
 	import { spellNotes } from '$lib/rules/spellnotes';
+	import { castSpent, type Spent } from '$lib/rules/castfx';
 	import { signedMod } from '$lib/rules/abilities';
 	import { arcanumLevels, ordinal, pactSlots, slotMax, slotsLeft } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
-	let { spell, onclose }: { spell: Spell | null; onclose: () => void } = $props();
+	let {
+		spell,
+		onclose,
+		oncast
+	}: {
+		spell: Spell | null;
+		onclose: () => void;
+		/** After a cast: what it used (slots, points, counters) and how it was cast ("1st", "ritual", "at will"). */
+		oncast?: (cast: { spell: Spell; spent: Spent[]; how: string }) => void;
+	} = $props();
 
 	type Option = {
 		key: string;
@@ -108,6 +118,7 @@
 						: opt?.kind === 'grant'
 							? opt.label.toLowerCase()
 							: ordinal(opt?.level ?? s.level);
+		const before = structuredClone($state.snapshot(c)) as Character;
 		session.mutate(`Cast ${s.name} (${atLevel})`, (ch) => {
 			if (!free && s.level > 0 && opt) {
 				if (opt.kind === 'slot') spendSlot(ch, opt.level);
@@ -118,6 +129,7 @@
 			if (!free && metaCost) spendSorceryPoints(ch, metaCost);
 			if (s.concentration) ch.concentration = s.name;
 		});
+		oncast?.({ spell: s, spent: castSpent(before, session.character as Character), how: atLevel });
 		onclose();
 	}
 
