@@ -80,6 +80,7 @@ import { skillChecks, skillChoices, SKILL_KEYS } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
 import type { ItemArmor, ItemWeapon } from '$lib/types';
+import { slotOf } from './slots';
 
 function pc(overrides: Partial<Character> = {}): Character {
 	return { ...newCharacter(), name: 'Lyra', classKey: 'sorcerer', level: 7, hpMax: 52, hpCurrent: 38, spellMod: 4, ...overrides };
@@ -412,8 +413,9 @@ describe('limited-use features', () => {
 	});
 });
 
+/** A magic item; one worn in a slot (a cloak, a ring) is worn unless it says otherwise. */
 function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
-	return {
+	const i: InventoryItem = {
 		id: crypto.randomUUID(),
 		kind: 'magic',
 		name: 'Cloak of Protection',
@@ -425,6 +427,8 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
 		notes: '',
 		...overrides
 	};
+	if (slotOf(i)) i.equipped ??= true;
+	return i;
 }
 
 /** A `random` that always rolls the highest face. */
@@ -1067,8 +1071,8 @@ describe('attacks', () => {
 		expect(setEquipped(c, c.items[0].id, true)).toBe(true);
 		expect(setEquipped(c, c.items[1].id, true)).toBe(true);
 		expect(c.items.every((i) => i.equipped)).toBe(true);
-		const ring = item();
-		expect(setEquipped({ ...c, items: [ring] }, ring.id, true)).toBe(false);
+		const tricks = item({ name: 'Bag of Tricks', attunement: false });
+		expect(setEquipped({ ...c, items: [tricks] }, tricks.id, true)).toBe(false);
 	});
 });
 
@@ -1283,6 +1287,7 @@ describe('resistances and immunities', () => {
 			rarity: 'rare',
 			attunement: true,
 			attuned: false,
+			equipped: true,
 			quantity: 1,
 			effects: { resist: ['fire'] },
 			notes: ''

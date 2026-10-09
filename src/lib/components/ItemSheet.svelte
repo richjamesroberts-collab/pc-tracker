@@ -4,6 +4,7 @@
 	import { ITEM_TYPES, RARITIES, copyWeapon, loadGear, rarityLabel, type GearItem } from '$lib/data/content';
 	import { armorFits, parseRegain, picksArmor, specificName, weaponFits } from '$lib/rules/items';
 	import { WEAPONS, proficiencyLabel } from '$lib/rules/proficiency';
+	import { slotOf } from '$lib/rules/slots';
 	import type { ArmorType, InventoryItem, ItemArmor, ItemContainer, ItemEffects, ItemWeapon } from '$lib/types';
 
 	let {
@@ -234,7 +235,7 @@
 			...(weight ? { weight } : {}),
 			...(armor ? { armor } : {}),
 			...(weapon ? { weapon } : {}),
-			...(armor || weapon || container ? { equipped: !!item?.equipped } : {}),
+			...(armor || weapon || container || slotOf({ kind: gear ? 'gear' : 'magic', type, name }) ? { equipped: !!item?.equipped } : {}),
 			effects,
 			...(max > 0
 				? { charges: { max, used: Math.min(item?.charges?.used ?? 0, max), ...(regain.trim() ? { regain: regain.trim() } : {}) } }

@@ -229,8 +229,8 @@ describe('item effects and armor', () => {
 		expect(fillItemDetails(c, magicById, gearById)).toBe(false);
 	});
 	it("doesn't change the AC or max HP shown when filling in attuned items", () => {
-		const ring = { ...inventoryItem(magicById.get('ring of protection|dmg')!), attuned: true, effects: undefined };
-		const amulet = { ...inventoryItem(magicById.get('amulet of health|dmg')!), attuned: true, effects: undefined };
+		const ring = { ...inventoryItem(magicById.get('ring of protection|dmg')!), attuned: true, equipped: true, effects: undefined };
+		const amulet = { ...inventoryItem(magicById.get('amulet of health|dmg')!), attuned: true, equipped: true, effects: undefined };
 		const c = { ...newCharacter(), level: 4, acAuto: false, acBase: 17, hpBase: 40, items: [ring, amulet] };
 		fillItemDetails(c, magicById, gearById);
 		expect(armorClass(c).total).toBe(17);
