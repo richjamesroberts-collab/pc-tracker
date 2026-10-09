@@ -59,7 +59,7 @@
 	const senseList = $derived(senses(c));
 </script>
 
-<h1>Features</h1>
+<h1>PC Log</h1>
 
 <h2 class="label group">Proficiencies and senses</h2>
 <div class="card profs">

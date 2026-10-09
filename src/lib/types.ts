@@ -238,7 +238,7 @@ export interface CharacterFeat {
 	name: string;
 	/** Character level it was taken at; absent for a feat from race or background. */
 	level?: number;
-	/** What it raised, for the breakdown on Features (base `abilities` already include it). */
+	/** What it raised, for the breakdown on PC Log (base `abilities` already include it). */
 	abilities?: Ability[];
 	/** Extra max HP per level (Tough), copied from the bundled feat so HP for new levels stays synchronous. */
 	hpPerLevel?: number;
