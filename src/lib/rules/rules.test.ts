@@ -57,6 +57,7 @@ import {
 	restoreCharges,
 	rollRegain,
 	setAttuned,
+	attunedCopy,
 	spendCharges
 } from './items';
 import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon, martialArtsDie } from './attacks';
@@ -453,13 +454,28 @@ describe('magic items', () => {
 		expect(attunementLimit(pc({ classKey: 'artificer', level: 14 }))).toBe(5);
 		expect(attunementLimit(pc({ classKey: 'artificer', level: 18 }))).toBe(6);
 
-		const c = pc({ items: [item(), item(), item(), item(), item({ attunement: false })] });
+		const named = (name: string) => item({ name });
+		const c = pc({ items: [named('A'), named('B'), named('C'), named('D'), item({ attunement: false })] });
 		for (const i of c.items.slice(0, 3)) expect(setAttuned(c, i.id, true)).toBe(true);
 		expect(setAttuned(c, c.items[3].id, true)).toBe(false);
 		expect(setAttuned(c, c.items[0].id, true)).toBe(true);
 		expect(setAttuned(c, c.items[4].id, true)).toBe(false);
 		expect(setAttuned(c, c.items[0].id, false)).toBe(true);
 		expect(setAttuned(c, c.items[3].id, true)).toBe(true);
+	});
+
+	it("won't attune to two copies of the same item", () => {
+		const ring = () => item({ ref: 'ring of protection|dmg', name: 'Ring of Protection' });
+		const c = pc({ items: [ring(), ring(), item({ ref: 'cloak of protection|dmg' }), item(), item({ name: ' cloak of protection ' })] });
+		expect(setAttuned(c, c.items[0].id, true)).toBe(true);
+		expect(attunedCopy(c, c.items[1])?.id).toBe(c.items[0].id);
+		expect(setAttuned(c, c.items[1].id, true)).toBe(false);
+		// A bundled item and a custom one of the same name are different items; custom ones match by name.
+		expect(setAttuned(c, c.items[2].id, true)).toBe(true);
+		expect(setAttuned(c, c.items[3].id, true)).toBe(true);
+		expect(setAttuned(c, c.items[0].id, false)).toBe(true);
+		expect(setAttuned(c, c.items[4].id, true)).toBe(false);
+		expect(setAttuned(c, c.items[1].id, true)).toBe(true);
 	});
 
 	it('spends and restores charges within the max', () => {

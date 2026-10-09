@@ -40,6 +40,7 @@
 	} from '$lib/rules/carry';
 	import {
 		addItem,
+		attunedCopy,
 		attunedCount,
 		attunementLimit,
 		changeQuantity,
@@ -359,6 +360,10 @@
 			session.notify(`You can attune to ${limit} items at once. End one first.`, { tone: 'warn' });
 			return;
 		}
+		if (!i.attuned && attunedCopy(c, i)) {
+			session.notify(`You're already attuned to another ${i.name}. You can't attune to two of the same item.`, { tone: 'warn' });
+			return;
+		}
 		session.mutate(i.attuned ? `Ended attunement to ${i.name}` : `Attuned to ${i.name}`, (d) => setAttuned(d, i.id, !i.attuned));
 	}
 
@@ -650,9 +655,6 @@
 			<p class="carrier-hint">No container equipped, so there's nowhere to keep coins. Add a pouch or sack under Gear, or equip one you have.</p>
 		{/if}
 	</div>
-	<p class="summary">
-		<span class:full={attuned >= limit}>Attuned <b>{attuned} / {limit}</b></span>
-	</p>
 {/if}
 
 <h2 class="label group">Coins{stash ? ` at ${stash.name}` : ' with you'}</h2>
@@ -675,7 +677,10 @@
 	</p>
 {/if}
 
-<h2 class="label group">Magic items{magicItems.length ? ` · ${magicItems.length}` : ''}</h2>
+<h2 class="label group heading">
+	<span>Magic items{magicItems.length ? ` · ${magicItems.length}` : ''}</span>
+	{#if !stash}<span class="attuned-count" class:full={attuned >= limit}>Attuned <b>{attuned} / {limit}</b></span>{/if}
+</h2>
 {@render itemList(magicItems, 'magic')}
 
 <h2 class="label group">Gear{gearItems.length ? ` · ${gearItems.length}` : ''}</h2>
@@ -973,21 +978,18 @@
 		color: var(--color-warning);
 	}
 
-	.summary {
+	.heading {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 14px;
-		margin: 6px 4px 0;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--color-text-muted);
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
 	}
 
-	.summary b {
+	.attuned-count b {
 		color: var(--color-effect-ink);
 	}
 
-	.summary .full b {
+	.attuned-count.full b {
 		color: var(--color-warning);
 	}
 
