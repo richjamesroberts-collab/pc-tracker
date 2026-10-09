@@ -348,7 +348,7 @@ describe('containers and stashes', () => {
 			['lamp', undefined, undefined],
 			['torch', undefined, undefined]
 		]);
-		expect(c.items[0].container).toEqual({ lb: 300, coins: true });
+		expect(c.items[0].container).toEqual({ lb: 300 });
 	});
 
 	it('keeps coins in containers, equipped containers and mounts', () => {

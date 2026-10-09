@@ -275,7 +275,7 @@ describe('item effects and armor', () => {
 		const chest = { ...gearInventoryItem(gearById.get('chest|phb')!), stash: 'hall' };
 		const c = { ...newCharacter(), items: [pouch, chest], coins: { cp: 0, sp: 0, ep: 0, gp: 350, pp: 0 }, itemDataVersion: 7 };
 		fillItemData(c, magicById, gearById);
-		expect(c.items[0]).toMatchObject({ container: { lb: 6, coins: true }, equipped: true, coins: { gp: 300 } });
+		expect(c.items[0]).toMatchObject({ container: { lb: 6 }, equipped: true, coins: { gp: 300 } });
 		expect(c.items[1].equipped).toBeUndefined();
 		expect(c.coins.gp).toBe(50);
 	});

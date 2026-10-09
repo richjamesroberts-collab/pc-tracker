@@ -16,7 +16,7 @@ import type {
 import { GEAR_USES, readItemUse } from '$lib/rules/usable';
 import { CLASS_MAP } from './classes';
 import { specificName } from '$lib/rules/items';
-import { COIN_CONTAINERS, putCoinsAway } from '$lib/rules/carry';
+import { putCoinsAway } from '$lib/rules/carry';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
 import type { ResourceDef } from '$lib/rules/features';
@@ -210,10 +210,9 @@ export const copyWeapon = (w: ItemWeapon): ItemWeapon => ({
 	...(w.range ? { range: [w.range[0], w.range[1]] as [number, number] } : {})
 });
 
-/** `{ container }` for spreading onto an entry: what it holds, and whether it keeps coins (pouches and sacks do). */
-function containerOf(data: { id: string; container?: Omit<ItemContainer, 'coins'> }): { container?: ItemContainer } {
-	if (!data.container) return {};
-	return { container: { ...data.container, ...(COIN_CONTAINERS.includes(data.id) ? { coins: true } : {}) } };
+/** `{ container }` for spreading onto an entry: what it holds. */
+function containerOf(data: { container?: ItemContainer }): { container?: ItemContainer } {
+	return data.container ? { container: { ...data.container } } : {};
 }
 
 /** `{ use }` for spreading onto an entry, or nothing when the description doesn't say it's used. */

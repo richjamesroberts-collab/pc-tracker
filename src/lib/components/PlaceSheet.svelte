@@ -44,7 +44,7 @@
 		/** How many there are; with `split`, the player can move fewer. */
 		max?: number;
 		split?: boolean;
-		/** Placing coins: only coin containers on the character, and stashes. */
+		/** Placing coins: only equipped containers on the character, and stashes. */
 		coins?: boolean;
 		/** Where it is now, when moving; shown but not offered. */
 		from?: Place;
@@ -138,7 +138,7 @@
 	const groups = $derived.by(() => {
 		if (!open) return [];
 		const keep = (r: Row | null): r is Row => !!r;
-		const worn = wornContainers(c).filter((i) => !coins || i.container!.coins);
+		const worn = wornContainers(c);
 		const person = coins
 			? []
 			: [row('carry', {}, from?.inside && !from.stash ? 'Take it out: worn, held or strapped on' : 'On you: worn, held or strapped on')];
@@ -146,7 +146,7 @@
 			{
 				title: 'With you',
 				rows: [...person, ...worn.map((i) => row(i.id, { inside: i.id }, `In ${i.name}`))].filter(keep),
-				empty: coins ? 'Nothing to keep coins in. Equip a pouch or sack (or mark a container for coins).' : undefined
+				empty: coins ? 'Nothing to keep coins in. Equip a pouch, sack or other container.' : undefined
 			}
 		];
 		for (const s of [...c.stashes].sort((a, b) => ['mount', 'bag', 'place'].indexOf(a.kind) - ['mount', 'bag', 'place'].indexOf(b.kind))) {

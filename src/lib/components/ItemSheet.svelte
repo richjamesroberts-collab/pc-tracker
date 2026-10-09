@@ -203,7 +203,7 @@
 		const container: ItemContainer | undefined = !custom
 			? item?.container
 			: holds || weightless
-				? { ...(holds ? { lb: holds } : {}), ...(weightless ? { weightless: true } : {}), ...(item?.container?.coins ? { coins: true } : {}) }
+				? { ...(holds ? { lb: holds } : {}), ...(weightless ? { weightless: true } : {}) }
 				: undefined;
 		if (custom) {
 			if (acBonus) effects.ac = acBonus;

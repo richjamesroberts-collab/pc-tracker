@@ -156,7 +156,7 @@
 			{#each holders as h (h.id)}
 				<li class:loose={!h.id}>
 					<b>{h.name}</b> <span>{list(h.coins)}</span>
-					{#if !h.id && wornContainers(c).some((i) => i.container!.coins)}<button type="button" onclick={putAway}>Put away</button>{/if}
+					{#if !h.id && wornContainers(c).length}<button type="button" onclick={putAway}>Put away</button>{/if}
 				</li>
 			{/each}
 		</ul>

@@ -81,7 +81,6 @@
 	const variant = $derived(c.encumbranceRule === 'variant');
 	const purse = $derived(here ? (purseOf(c, here) ?? c.coins) : carriedCoins(c));
 	const worn = $derived(wornContainers(c));
-	const coinBoxes = $derived(worn.filter((i) => i.container!.coins));
 	const loose = $derived(coinCount(c.coins));
 	const carriers = $derived(c.stashes.filter((s) => s.kind !== 'place'));
 	const cap = (s: Stash) => stashCapacity(s);
@@ -295,16 +294,6 @@
 		const where = to.newPlace ?? placeName(to);
 		const label = to.inside ? `${what} put in ${where}` : to.stash || to.newPlace ? `${what} left at ${where}` : `${what} back with you`;
 		session.mutate(label, (d) => moveItem(d, item.id, to.newPlace ? { stash: addStash(d, 'place', to.newPlace) } : to, n));
-	}
-
-	function toggleCoins(i: InventoryItem) {
-		const on = !i.container?.coins;
-		session.mutate(on ? `Keeping coins in ${i.name}` : `No coins in ${i.name}`, (d) => {
-			const x = d.items.find((y) => y.id === i.id);
-			if (!x?.container) return;
-			if (on) x.container.coins = true;
-			else delete x.container.coins;
-		});
 	}
 
 	function pick(id: string) {
@@ -542,9 +531,6 @@
 							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
 								{i.equipped ? 'Equipped' : 'Equip'}
 							</button>
-							<button type="button" class="purse" class:on={!!i.container.coins} aria-pressed={!!i.container.coins} onclick={() => toggleCoins(i)}>
-								{i.container.coins ? 'For coins' : 'Not for coins'}
-							</button>
 						{/if}
 						<button type="button" class="edit" onclick={() => (moving = i.id)}>Move</button>
 						<button type="button" onclick={() => openEdit(i)}>Edit</button>
@@ -642,7 +628,7 @@
 				<span class="what">
 					<b>{box.name}</b>
 					<small>
-						{[box.coins && coinCount(box.coins) ? `${coinCount(box.coins).toLocaleString('en')} coins` : '', box.container!.coins && Number.isFinite(coinRoom(carry, box)) ? `room for ${coinRoom(carry, box).toLocaleString('en')} more coins` : '', box.container!.weightless ? 'weightless inside' : '']
+						{[box.coins && coinCount(box.coins) ? `${coinCount(box.coins).toLocaleString('en')} coins` : '', Number.isFinite(coinRoom(carry, box)) ? `room for ${coinRoom(carry, box).toLocaleString('en')} more coins` : '', box.container!.weightless ? 'weightless inside' : '']
 							.filter(Boolean)
 							.join(' · ') || 'Equipped'}
 					</small>
@@ -660,8 +646,8 @@
 				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
 			</button>
 		{/each}
-		{#if !coinBoxes.length}
-			<p class="carrier-hint">No pouch or sack equipped, so there's nowhere to keep coins. Add one under Gear, or equip one you have.</p>
+		{#if !worn.length}
+			<p class="carrier-hint">No container equipped, so there's nowhere to keep coins. Add a pouch or sack under Gear, or equip one you have.</p>
 		{/if}
 	</div>
 	<p class="summary">
@@ -681,10 +667,10 @@
 {#if !stash && loose}
 	<p class="coin-note warn">
 		{loose.toLocaleString('en')} coins aren't in anything.
-		{#if coinBoxes.length}
-			<button type="button" class="put-away" onclick={putAway}>Put them in {coinBoxes.map((b) => b.name).join(' or ')}</button>
+		{#if worn.length}
+			<button type="button" class="put-away" onclick={putAway}>Put them in {worn.map((b) => b.name).join(' or ')}</button>
 		{:else}
-			Equip a pouch or sack to keep them in.
+			Equip a pouch, sack or other container to keep them in.
 		{/if}
 	</p>
 {/if}
@@ -985,15 +971,6 @@
 		line-height: 1.4;
 		font-weight: 700;
 		color: var(--color-warning);
-	}
-
-	.actions .purse {
-		border-color: var(--color-effect-edge);
-		color: var(--color-effect-ink);
-	}
-
-	.actions .purse.on {
-		background: var(--color-effect-bg);
 	}
 
 	.summary {

@@ -144,8 +144,6 @@ export interface ItemContainer {
 	lb?: number;
 	/** What's inside adds nothing to the weight carried; only the container's own weight counts (Bag of Holding). */
 	weightless?: boolean;
-	/** Coins can be kept in it (pouches and sacks start out this way). */
-	coins?: boolean;
 }
 
 /** Something the character carries. Bundled items copy their name, type, rarity, weight and charges when added. */
