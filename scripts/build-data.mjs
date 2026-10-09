@@ -605,7 +605,7 @@ const racesOut = raceList.map((r) => {
 	};
 });
 
-// Racial ability score increases, darkvision, damage resistances and immunities and Powerful Build, by race key then subrace
+// Racial ability score increases, walking speed, darkvision, damage resistances and immunities and Powerful Build, by race key then subrace
 // key. `replaces` marks subraces whose increase is instead of the race's (Variant Human), not on top of it.
 // `resist`, `immune` and `conditionImmune` are lowercase damage types and conditions, on top of the race's.
 function asiOf(ability) {
@@ -635,15 +635,22 @@ for (const r of raceList) {
 	const subraces = subracesOf(r);
 	const standard = subraces.find((s) => !s.name);
 	const entry = { asi: flexible(r) ? LINEAGE_ASI : asiOf(r.ability ?? standard?.ability), subraces: {} };
+	const speed = walkSpeed(r.speed);
+	if (speed) entry.speed = speed;
 	// Custom Lineage's darkvision is one of two choices, so the player adds it themselves.
 	if (r.darkvision && r.name !== 'Custom Lineage') entry.darkvision = r.darkvision;
 	Object.assign(entry, defensesOf(r));
 	// Powerful Build, Little Giant, Equine Build: one size larger for carrying capacity.
 	const traits = racesOut.find((x) => x.key === raceKey(r)).traits;
 	if (traits.some((t) => /count as one size larger when determining your carrying/.test(t.text))) entry.powerfulBuild = true;
-	for (const s of subraces.filter((s) => s.name && (s.ability || s.darkvision || Object.keys(defensesOf(s)).length))) {
+	const subSpeed = (s) => {
+		const own = walkSpeed(s.speed);
+		return own && own !== speed ? own : undefined;
+	};
+	for (const s of subraces.filter((s) => s.name && (s.ability || subSpeed(s) || s.darkvision || Object.keys(defensesOf(s)).length))) {
 		entry.subraces[subraceKey(s)] = {
 			...(s.ability ? { asi: asiOf(s.ability) } : {}),
+			...(subSpeed(s) ? { speed: subSpeed(s) } : {}),
 			...(s.ability && !r.ability && standard?.ability ? { replaces: true } : {}),
 			...(s.darkvision ? { darkvision: s.darkvision } : {}),
 			...defensesOf(s)
@@ -660,7 +667,7 @@ for (const r of raceList) {
 }
 const raceAbilitiesPath = join(root, 'src/lib/data/race-abilities.json');
 writeFileSync(raceAbilitiesPath, JSON.stringify(raceAbilities));
-console.log(`Wrote racial ability increases, darkvision and defenses to ${raceAbilitiesPath}`);
+console.log(`Wrote racial ability increases, speed, darkvision and defenses to ${raceAbilitiesPath}`);
 
 const MIN_RACES = 53;
 if (racesOut.length < MIN_RACES) fail(`Expected at least ${MIN_RACES} races, found ${racesOut.length}.`);

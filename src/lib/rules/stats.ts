@@ -29,11 +29,13 @@ export interface RaceDefenses {
 
 interface RaceAbilities extends RaceDefenses {
 	asi?: RaceAsi;
+	/** Walking speed in feet; a subrace's own speed replaces it (Wood Elf). */
+	speed?: number;
 	/** Feet; a subrace's own darkvision replaces it. */
 	darkvision?: number;
 	/** Counts as one size larger for carrying capacity (Powerful Build, Little Giant, Equine Build). */
 	powerfulBuild?: true;
-	subraces: Record<string, { asi?: RaceAsi; replaces?: true; darkvision?: number } & RaceDefenses>;
+	subraces: Record<string, { asi?: RaceAsi; replaces?: true; speed?: number; darkvision?: number } & RaceDefenses>;
 }
 
 export const RACE_ABILITIES = raceAbilitiesJson as Record<string, RaceAbilities>;
@@ -61,6 +63,13 @@ export interface AbilityBreakdown {
 	withoutItems: AbilityScores;
 	/** What changed each score, beyond the base. */
 	sources: Record<Ability, StatSource[]>;
+}
+
+/** The walking speed a character's race or subrace gives (from the bundled race data), if it has one. */
+export function raceSpeed(c: Pick<Character, 'raceKey' | 'subraceKey'>): number | undefined {
+	const race = c.raceKey ? RACE_ABILITIES[c.raceKey] : undefined;
+	if (!race) return undefined;
+	return (c.subraceKey ? race.subraces[c.subraceKey]?.speed : undefined) ?? race.speed;
 }
 
 /** The racial increases that apply, after subrace replacement. Free choices come from `raceAbilityChoices`. */
