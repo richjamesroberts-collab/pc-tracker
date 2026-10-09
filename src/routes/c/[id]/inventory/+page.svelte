@@ -6,6 +6,8 @@
 	import ItemPickerSheet, { type PickerEntry } from '$lib/components/ItemPickerSheet.svelte';
 	import PlaceSheet, { type Destination } from '$lib/components/PlaceSheet.svelte';
 	import CarrySheet from '$lib/components/CarrySheet.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
+	import { swipeLeft } from '$lib/swipe';
 	import { session } from '$lib/session.svelte';
 	import {
 		GEAR_CATEGORIES,
@@ -355,6 +357,34 @@
 		if (id) session.mutate(`${name} removed`, (d) => removeItem(d, id));
 	}
 
+	/** The entry swiped away, waiting for the player to confirm. */
+	let removing = $state<string | null>(null);
+	const removingItem = $derived(removing ? c.items.find((i) => i.id === removing) : undefined);
+
+	/** What happens to a removed container's contents and coins, and its attunement. */
+	function removeNote(i: InventoryItem): string {
+		const inside = c.items.filter((x) => x.inside === i.id).length;
+		const coins = i.coins ? coinCount(i.coins) : 0;
+		const parent = carry.parents.get(i.id);
+		const where = parent ? `in ${parent.name}` : i.stash ? `at ${placeName({ stash: i.stash })}` : 'with you';
+		return [
+			inside ? `${inside === 1 ? 'The 1 thing in it stays' : `The ${inside} things in it stay`} ${where}.` : '',
+			coins ? `Its ${coins.toLocaleString('en')} coins stay ${i.stash ? `at ${placeName({ stash: i.stash })}` : 'with you, loose'}.` : '',
+			i.attuned ? 'Your attunement to it ends.' : '',
+			'You can undo this straight after.'
+		]
+			.filter(Boolean)
+			.join(' ');
+	}
+
+	function confirmRemove() {
+		const item = removingItem;
+		removing = null;
+		if (!item) return;
+		if (expanded === item.id) expanded = null;
+		session.mutate(`${item.name} removed`, (d) => removeItem(d, item.id));
+	}
+
 	function toggleAttuned(i: InventoryItem) {
 		if (!i.attuned && attuned >= limit) {
 			session.notify(`You can attune to ${limit} items at once. End one first.`, { tone: 'warn' });
@@ -449,19 +479,22 @@
 			{@const open = expanded === i.id}
 			{@const data = dataFor(i)}
 			{@const left = chargesLeft(i)}
-			<div class="item">
-				<button type="button" class="info" aria-expanded={open} onclick={() => (expanded = open ? null : i.id)}>
-					<span class="line">
-						<span class="name">{i.name}</span>
-						{#if i.quantity > 1}<span class="qty">×{i.quantity}</span>{/if}
-					</span>
-					<span class="meta">{meta(i)}</span>
-				</button>
-				<div class="badges">
-					{#if i.equipped}<span class="tag worn">{i.armor && i.armor.type !== 'shield' ? 'Worn' : 'Equipped'}</span>{/if}
-					{#if i.attuned}<span class="tag attuned">Attuned</span>{/if}
-					{#if i.charges}<span class="charges" aria-label="{left} of {i.charges.max} {usesWord(i)} left">{left}/{i.charges.max}</span>{/if}
+			<div class="row">
+				<div class="item" use:swipeLeft={{ onswipe: () => (removing = i.id) }}>
+					<button type="button" class="info" aria-expanded={open} onclick={() => (expanded = open ? null : i.id)}>
+						<span class="line">
+							<span class="name">{i.name}</span>
+							{#if i.quantity > 1}<span class="qty">×{i.quantity}</span>{/if}
+						</span>
+						<span class="meta">{meta(i)}</span>
+					</button>
+					<div class="badges">
+						{#if i.equipped}<span class="tag worn">{i.armor && i.armor.type !== 'shield' ? 'Worn' : 'Equipped'}</span>{/if}
+						{#if i.attuned}<span class="tag attuned">Attuned</span>{/if}
+						{#if i.charges}<span class="charges" aria-label="{left} of {i.charges.max} {usesWord(i)} left">{left}/{i.charges.max}</span>{/if}
+					</div>
 				</div>
+				<span class="swipe-bg" aria-hidden="true">Remove</span>
 			</div>
 			{#if open}
 				<div class="details">
@@ -722,6 +755,17 @@
 	check={(item) => (editing ? editProblem(c, $state.snapshot(item) as InventoryItem) : '')}
 	onclose={() => (sheetOpen = false)}
 />
+
+<Sheet open={!!removingItem} onclose={() => (removing = null)} label="Remove item">
+	{#if removingItem}
+		<h2 class="confirm-title">Remove {removingItem.quantity > 1 ? `${removingItem.quantity} × ${removingItem.name}` : removingItem.name}?</h2>
+		<p class="confirm-note">{removeNote(removingItem)}</p>
+		<div class="confirm">
+			<button type="button" class="keep" onclick={() => (removing = null)}>Keep</button>
+			<button type="button" class="danger" onclick={confirmRemove}>Remove</button>
+		</div>
+	{/if}
+</Sheet>
 
 <CoinSheet open={coinsOpen} stash={here ?? undefined} onclose={() => (coinsOpen = false)} />
 
@@ -1045,15 +1089,85 @@
 		padding-bottom: 12px;
 	}
 
+	.row {
+		position: relative;
+		overflow: hidden;
+	}
+
 	.item {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		padding-right: 12px;
+		background: var(--color-surface);
+		transition: transform 0.2s ease;
 	}
 
-	.list > .item:not(:first-child) {
+	.item:global(.swiping) {
+		transition: none;
+		user-select: none;
+	}
+
+	.list > .row:not(:first-child) {
 		border-top: 1px solid var(--color-border);
+	}
+
+	/* Under the row, shown as it's swiped left. */
+	.swipe-bg {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		padding-right: 20px;
+		background: var(--color-used-bg);
+		color: var(--color-used-ink);
+		font-size: 14px;
+		font-weight: 800;
+		transition: background-color 0.15s, color 0.15s;
+	}
+
+	.item:global(.armed) + .swipe-bg {
+		background: var(--color-danger);
+		color: var(--color-on-solid);
+	}
+
+	.confirm-title {
+		font-size: 22px;
+		overflow-wrap: anywhere;
+	}
+
+	.confirm-note {
+		margin-top: 6px;
+		color: var(--color-text-muted);
+	}
+
+	.confirm {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		margin-top: 16px;
+	}
+
+	.confirm button {
+		height: 52px;
+		border-radius: 14px;
+		font-size: 16px;
+		font-weight: 800;
+	}
+
+	.confirm .keep {
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-border-strong);
+		color: var(--color-text);
+	}
+
+	.confirm .danger {
+		border: 0;
+		background: var(--color-danger);
+		color: var(--color-on-solid);
 	}
 
 	.info {
