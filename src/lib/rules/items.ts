@@ -10,11 +10,26 @@ export function attunedCount(c: Character): number {
 	return c.items.filter((i) => i.attuned).length;
 }
 
-/** Attune or end attunement. Fails for items that don't need it, or when already at the limit. */
+/** Two entries for the same magic item: the same bundled item, or custom items of the same name. */
+export function sameItem(a: InventoryItem, b: InventoryItem): boolean {
+	if (a.ref || b.ref) return a.ref === b.ref;
+	return a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+}
+
+/** Another copy of this item the character is already attuned to (a creature can't attune to two copies). */
+export function attunedCopy(c: Character, item: InventoryItem): InventoryItem | undefined {
+	return c.items.find((i) => i.id !== item.id && i.attuned && sameItem(i, item));
+}
+
+/**
+ * Attune or end attunement. Fails for items that don't need it, when already at the limit, or when already
+ * attuned to another copy of the same item.
+ */
 export function setAttuned(c: Character, id: string, on: boolean): boolean {
 	const item = c.items.find((i) => i.id === id);
 	if (!item || (on && !item.attunement)) return false;
 	if (on && !item.attuned && attunedCount(c) >= attunementLimit(c)) return false;
+	if (on && !item.attuned && attunedCopy(c, item)) return false;
 	item.attuned = on;
 	return true;
 }
