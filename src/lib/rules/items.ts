@@ -1,4 +1,5 @@
 import type { Character, InventoryItem, ItemArmor, ItemWeapon } from '$lib/types';
+import { setWorn, slotOf } from './slots';
 
 /** Three items, or more for artificers (Magic Item Adept, Savant and Master). */
 export function attunementLimit(c: Pick<Character, 'classKey' | 'level'>): number {
@@ -124,6 +125,8 @@ export function addItem(c: Character, item: InventoryItem): string {
 		same.quantity = Math.min(9999, same.quantity + item.quantity);
 		return same.id;
 	}
+	// Worn things start off: the player puts them on.
+	if (slotOf(item)) item.equipped ??= false;
 	c.items.push(item);
 	return item.id;
 }
@@ -150,12 +153,12 @@ export function removeItem(c: Character, id: string): void {
 
 /**
  * An item's effects count while the character has it with them (not in a stash), it's attuned (if it needs
- * attunement) and worn (if it's armor or a shield).
+ * attunement) and worn (if it's armor, a shield, or worn in a slot like a cloak or a ring).
  */
 export function isActive(item: InventoryItem): boolean {
 	if (item.stash) return false;
 	if (item.attunement && !item.attuned) return false;
-	if (item.armor && !item.equipped) return false;
+	if ((item.armor || slotOf(item)) && !item.equipped) return false;
 	return true;
 }
 
@@ -174,10 +177,12 @@ export function itemSpellBonus(c: Pick<Character, 'items'>): { attack: number; d
 /**
  * Put armor or a shield on or take it off, ready a weapon or put it away, or start or stop using a container to carry
  * things. Wearing one suit of armor (or shield) takes off any other; any number of weapons can be at hand. An equipped
- * container comes out of any container it was in. Nothing in a stash can be equipped.
+ * container comes out of any container it was in. Magic items worn in a slot (cloaks, rings) go through `setWorn`.
+ * Nothing in a stash can be equipped.
  */
 export function setEquipped(c: Character, id: string, on: boolean): boolean {
 	const item = c.items.find((i) => i.id === id);
+	if (item && slotOf(item)) return setWorn(c, id, on);
 	if (!item?.armor && !item?.weapon && !item?.container) return false;
 	if (on && item.stash) return false;
 	if (on && item.container) delete item.inside;

@@ -57,6 +57,7 @@
 		spendCharges,
 		stacks
 	} from '$lib/rules/items';
+	import { SLOTS, displaced, slotOf } from '$lib/rules/slots';
 	import { describeEffects } from '$lib/rules/stats';
 	import type { Character, InventoryItem, Stash } from '$lib/types';
 
@@ -86,7 +87,11 @@
 	/** Equipped or attuned: attunement counts wherever the item is. */
 	const inUse = $derived(byKind(c.items.filter((i) => (i.equipped && !i.stash) || i.attuned)));
 	/** Carried things that could be equipped or attuned, but aren't. */
-	const canUse = $derived(byKind(carried.filter((i) => !i.equipped && !i.attuned && (i.weapon || i.armor || i.container || i.attunement))));
+	const canUse = $derived(
+		byKind(carried.filter((i) => !i.equipped && !i.attuned && (i.weapon || i.armor || i.container || i.attunement || slotOf(i))))
+	);
+	/** Put on, or equip for things held or carried. */
+	const wears = (i: InventoryItem) => !!slotOf(i) || (!!i.armor && i.armor.type !== 'shield');
 
 	const carry = $derived(carryState(c));
 	const load = $derived(encumbrance(c, carry.carried));
@@ -238,6 +243,7 @@
 		return (
 			[
 				box ? `In ${box.name}` : away ? `At ${away}` : '',
+				slotOf(i) && i.equipped && SLOTS[slotOf(i)!].label !== i.type ? SLOTS[slotOf(i)!].label : '',
 				i.type,
 				rarityLabel(i.rarity),
 				i.attunement && !i.attuned ? 'Attunement' : '',
@@ -483,6 +489,16 @@
 	}
 
 	function toggleWorn(i: InventoryItem) {
+		const slot = slotOf(i);
+		// What comes off to make room: the slot's oldest, or the other armor or shield.
+		const off = i.equipped
+			? []
+			: slot
+				? displaced(c, i)
+				: i.armor
+					? c.items.filter((x) => x.id !== i.id && x.equipped && x.armor && (x.armor.type === 'shield') === (i.armor!.type === 'shield'))
+					: [];
+		const swap = off.length ? ` (took off ${off.map((x) => x.name).join(' and ')})` : '';
 		const label = i.container
 			? i.equipped
 				? `Stopped using ${i.name}: it's carried as it is`
@@ -493,7 +509,7 @@
 				: `Equipped ${i.name}: it's under Attacks on Vitals`
 			: i.equipped
 				? `Took off ${i.name}`
-				: `${i.armor?.type === 'shield' ? 'Equipped' : 'Wearing'} ${i.name}`;
+				: `${wears(i) ? 'Wearing' : 'Equipped'} ${i.name}${swap}`;
 		session.mutate(label, (d) => setEquipped(d, i.id, !i.equipped));
 	}
 
@@ -522,6 +538,7 @@
 		if (i.stash) return 'Not with you';
 		if (i.attunement && !i.attuned) return 'Attune to use';
 		if (i.armor && !i.equipped) return i.armor.type === 'shield' ? 'Equip to use' : 'Wear to use';
+		if (slotOf(i) && !i.equipped) return 'Wear to use';
 		return '';
 	}
 
@@ -558,7 +575,7 @@
 	}
 </script>
 
-{#snippet itemList(list: InventoryItem[], none: string, where: Where)}
+{#snippet itemList(list: InventoryItem[], none: string, where: Where, quick = false)}
 		{#each list as i (i.id)}
 			{@const open = expanded === i.id}
 			{@const data = dataFor(i)}
@@ -573,7 +590,12 @@
 						<span class="meta">{meta(i, where)}</span>
 					</button>
 					<div class="badges">
-						{#if i.equipped}<span class="tag worn">{i.armor && i.armor.type !== 'shield' ? 'Worn' : 'Equipped'}</span>{/if}
+						{#if i.equipped}<span class="tag worn">{wears(i) ? 'Worn' : 'Equipped'}</span>{/if}
+						{#if quick && !i.stash && !i.equipped && (i.weapon || i.armor || i.container || slotOf(i))}
+							<button type="button" class="quick" onclick={() => toggleWorn(i)}>{wears(i) ? 'Wear' : 'Equip'}</button>
+						{:else if quick && i.attunement && !i.attuned}
+							<button type="button" class="quick" onclick={() => toggleAttuned(i)}>Attune</button>
+						{/if}
 						{#if i.attuned}<span class="tag attuned">Attuned</span>{/if}
 						{#if i.charges}<span class="charges" aria-label="{left} of {i.charges.max} {usesWord(i)} left">{left}/{i.charges.max}</span>{/if}
 					</div>
@@ -635,6 +657,11 @@
 						{#if i.armor && !i.stash}
 							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
 								{i.equipped ? (i.armor.type === 'shield' ? 'Equipped' : 'Wearing') : i.armor.type === 'shield' ? 'Equip' : 'Wear'}
+							</button>
+						{/if}
+						{#if slotOf(i) && !i.stash}
+							<button type="button" class="wear" class:on={i.equipped} aria-pressed={!!i.equipped} onclick={() => toggleWorn(i)}>
+								{i.equipped ? 'Wearing' : 'Wear'}
 							</button>
 						{/if}
 						{#if i.attunement}
@@ -725,13 +752,13 @@
 		{@render attunement()}
 	</h2>
 	<div class="card list">
-		{@render itemList(inUse, 'Nothing equipped or attuned yet. Equip weapons, armor and containers, or attune to magic items, from here or All.', 'all')}
+		{@render itemList(inUse, 'Nothing equipped or attuned yet. Wear or equip things you carry, or attune to magic items, from here or All.', 'all')}
 	</div>
 
 	{#if canUse.length}
 		<h2 class="label group">Can equip or attune · {canUse.length}</h2>
 		<div class="card list">
-			{@render itemList(canUse, '', 'in')}
+			{@render itemList(canUse, '', 'in', true)}
 		</div>
 	{/if}
 {:else if stash}
@@ -1362,6 +1389,17 @@
 	.tag.attuned {
 		background: var(--color-effect-bg);
 		color: var(--color-effect-ink);
+	}
+
+	.quick {
+		flex-shrink: 0;
+		min-height: 36px;
+		padding: 0 14px;
+		border: 0;
+		background: var(--color-accent);
+		color: var(--color-on-accent);
+		font-size: 13px;
+		font-weight: 800;
 	}
 
 	.charges {

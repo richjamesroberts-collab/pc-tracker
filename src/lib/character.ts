@@ -1,4 +1,5 @@
 import type { Character } from '$lib/types';
+import { fillWorn } from '$lib/rules/slots';
 
 export function newCharacter(): Character {
 	const now = new Date().toISOString();
@@ -77,6 +78,8 @@ export function migrateToBaseStats(c: Character): Character {
 	c.feats ??= [];
 	c.classOptions ??= [];
 	c.stashes ??= [];
+	// Magic items worn in a slot (cloaks, rings): what was carried was in use.
+	fillWorn(c);
 	// `hpBase` arrived with the other base stats, so it marks a character that's already been moved over.
 	return c.hpBase === undefined ? legacyToBase(c) : c;
 }
