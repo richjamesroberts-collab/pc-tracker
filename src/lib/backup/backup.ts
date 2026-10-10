@@ -1,6 +1,7 @@
 import { legacyToBase, newCharacter } from '$lib/character';
 import { recompute } from '$lib/rules/stats';
 import { SKILL_KEYS } from '$lib/rules/skills';
+import { HAIR_TONES, SKIN_TONES } from '$lib/sprite';
 import type {
 	Ability,
 	AbilityScores,
@@ -128,6 +129,15 @@ function container(v: unknown): ItemContainer | undefined {
 		...(lb > 0 ? { lb: Math.min(99_999, lb) } : {}),
 		...(v.weightless === true ? { weightless: true } : {})
 	};
+}
+
+/** The pixel hero's skin and hair colours, kept only when they're ones we know. */
+function look(v: unknown): Pick<Character, 'look'> {
+	if (!isObj(v)) return {};
+	const out: NonNullable<Character['look']> = {};
+	if ((SKIN_TONES as readonly unknown[]).includes(v.skin)) out.skin = v.skin as string;
+	if ((HAIR_TONES as readonly unknown[]).includes(v.hair)) out.hair = v.hair as string;
+	return Object.keys(out).length ? { look: out } : {};
 }
 
 function stashes(v: unknown): Stash[] {
@@ -403,6 +413,8 @@ export function readBackup(data: unknown): Character {
 		coins: coins(raw.coins),
 		stashes: stashes(raw.stashes),
 		...(raw.encumbranceRule === 'variant' ? { encumbranceRule: 'variant' as const } : {}),
+		...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === 'nonbinary' ? { gender: raw.gender } : {}),
+		...look(raw.look),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

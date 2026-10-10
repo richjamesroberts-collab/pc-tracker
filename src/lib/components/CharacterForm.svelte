@@ -9,6 +9,7 @@
 	import { CLASSES } from '$lib/data/classes';
 	import { RACE_BOOKS, RACES, RACE_MAP } from '$lib/data/races';
 	import { portraitFromFile } from '$lib/image';
+	import { GENDERS } from '$lib/sprite';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
 	import { abilityBreakdown, armorClass, formula, initiative, maxHp, raceChoice, spellcastingMod, validPicks, walkingSpeed } from '$lib/rules/stats';
@@ -284,10 +285,21 @@
 	{/if}
 
 	{#if show('basics')}
-		<label class="field">
-			<span>Character name</span>
-			<input bind:value={c.name} required autocomplete="off" autocapitalize="words" placeholder="Lyra Ashwood" />
-		</label>
+		<div class="two">
+			<label class="field">
+				<span>Character name</span>
+				<input bind:value={c.name} required autocomplete="off" autocapitalize="words" placeholder="Lyra Ashwood" />
+			</label>
+			<label class="field">
+				<span>Gender</span>
+				<select bind:value={c.gender}>
+					<option value={undefined}>Not set</option>
+					{#each GENDERS as g (g.key)}
+						<option value={g.key}>{g.label}</option>
+					{/each}
+				</select>
+			</label>
+		</div>
 
 		<div class="two even">
 			<label class="field">

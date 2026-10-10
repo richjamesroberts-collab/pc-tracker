@@ -77,6 +77,8 @@ export interface ItemUse {
 
 export type ArmorType = 'light' | 'medium' | 'heavy' | 'shield';
 
+export type Gender = 'female' | 'male' | 'nonbinary';
+
 /** Base AC of a suit of armor, or a shield's bonus (normally 2). */
 export interface ItemArmor {
 	type: ArmorType;
@@ -386,6 +388,11 @@ export interface Character {
 	stashes: Stash[];
 	/** 'variant': the PHB's variant encumbrance (speed drops at 5 and 10 × STR); otherwise only carrying capacity counts. */
 	encumbranceRule?: 'variant';
+
+	/** The character's gender, for how the pixel hero is drawn (unset draws it in between). */
+	gender?: Gender;
+	/** Skin and hair colours the player picked for the pixel hero, over the race's (keys of `SKIN_TONES`/`HAIR_TONES` in sprite.ts). */
+	look?: { skin?: string; hair?: string };
 
 	notes: string;
 	createdAt: string;

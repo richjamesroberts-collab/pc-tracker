@@ -8,9 +8,10 @@
 	import ItemPickerSheet, { type PickerEntry, type PickerKind } from '$lib/components/ItemPickerSheet.svelte';
 	import PlaceSheet, { type Destination } from '$lib/components/PlaceSheet.svelte';
 	import CarrySheet from '$lib/components/CarrySheet.svelte';
+	import LookSheet from '$lib/components/LookSheet.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
 	import HeroSprite from '$lib/components/HeroSprite.svelte';
-	import { heroGear } from '$lib/sprite';
+	import { heroGear, heroLook } from '$lib/sprite';
 	import { CLASS_MAP } from '$lib/data/classes';
 	import { raceLabel } from '$lib/data/races';
 	import { swipeLeft } from '$lib/swipe';
@@ -97,6 +98,7 @@
 		byKind(carried.filter((i) => !i.equipped && !i.attuned && (i.weapon || i.armor || i.container || i.attunement || slotOf(i))))
 	);
 	const kit = $derived(heroGear(c));
+	const look = $derived(heroLook(c));
 	const heroLabel = $derived(
 		`${c.name || 'Your character'}${inUse.some((i) => i.equipped) ? `, with ${inUse.filter((i) => i.equipped).map((i) => i.name).join(', ')}` : ''}`
 	);
@@ -183,6 +185,7 @@
 		return out;
 	});
 	let carryOpen = $state(false);
+	let lookOpen = $state(false);
 
 	let library = $state<MagicItem[] | null>(null);
 	let gear = $state<GearItem[] | null>(null);
@@ -783,7 +786,10 @@
 					{/each}
 				</span>
 			</div>
-			<HeroSprite gear={kit} label={heroLabel} />
+			<button type="button" class="hero-look" aria-label="{heroLabel}. Change how they look." onclick={() => (lookOpen = true)}>
+				<HeroSprite gear={kit} {look} label={heroLabel} />
+			</button>
+			<button type="button" class="look-btn" onclick={() => (lookOpen = true)}>Look</button>
 		</div>
 		<div class="plate">
 			<b>{c.name || 'Unnamed'}</b>
@@ -974,6 +980,8 @@
 </Sheet>
 
 <CoinSheet open={coinsOpen} stash={here ?? undefined} onclose={() => (coinsOpen = false)} />
+
+<LookSheet open={lookOpen} onclose={() => (lookOpen = false)} />
 
 <CarrySheet
 	open={carryOpen}
@@ -1232,6 +1240,30 @@
 		width: 11px;
 		height: 11px;
 		border-width: 2px;
+	}
+
+	.hero-look {
+		position: relative;
+		padding: 0;
+		border: 0;
+		background: none;
+	}
+
+	/* On the floor, bottom left */
+	.look-btn {
+		position: absolute;
+		left: 10px;
+		bottom: 5px;
+		min-height: 24px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 999px;
+		background: var(--color-stage-edge);
+		color: var(--color-stage);
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 	}
 
 	.plate {

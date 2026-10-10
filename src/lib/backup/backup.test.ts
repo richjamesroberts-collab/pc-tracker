@@ -313,6 +313,22 @@ describe('feats and class options', () => {
 	});
 });
 
+describe('how the hero looks', () => {
+	it('keeps gender and known colours, and drops the rest', () => {
+		const old = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
+		expect(old.gender).toBeUndefined();
+		expect(old.look).toBeUndefined();
+		const c = readBackup({
+			app: APP_ID,
+			schemaVersion: 1,
+			character: { id: 'a', name: 'X', classKey: 'fighter', gender: 'female', look: { skin: 'teal', hair: 'plaid' } }
+		});
+		expect(c.gender).toBe('female');
+		expect(c.look).toEqual({ skin: 'teal' });
+		expect(readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'fighter', gender: 'robot', look: { hair: 1 } } })).not.toHaveProperty('look');
+	});
+});
+
 describe('containers and stashes', () => {
 	const thing = (id: string, extra: object = {}) => ({ id, kind: 'gear', name: id, type: '', rarity: '', quantity: 1, notes: '', ...extra });
 
