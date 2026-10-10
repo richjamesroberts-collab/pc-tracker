@@ -82,6 +82,56 @@
 	--color-coin-cp:        #c0703d;
 	--color-coin-rim:       rgba(60, 40, 10, 0.35);
 
+	/* The pixel hero on PC Equipped: its art is the same in both themes, its stage isn't */
+	--color-px-outline:       #2b1d22;
+	--color-px-skin:          #f4c7a1;
+	--color-px-skin-dk:       #d99b78;
+	--color-px-hair:          #7b4526;
+	--color-px-hair-dk:       #5a301a;
+	--color-px-eye:           #2b1d22;
+	--color-px-white:         #ffffff;
+	--color-px-blush:         #ef9c8c;
+	--color-px-tunic:         #3f7f8c;
+	--color-px-tunic-dk:      #2f6170;
+	--color-px-pants:         #5b4a3f;
+	--color-px-pants-dk:      #45372e;
+	--color-px-shoe:          #6b4630;
+	--color-px-belt:          #6a4026;
+	--color-px-gold:          #efbe45;
+	--color-px-steel:         #b8c3cc;
+	--color-px-steel-dk:      #8d99a4;
+	--color-px-shine:         #eef3f6;
+	--color-px-leather:       #a26b3c;
+	--color-px-leather-dk:    #7c4f2b;
+	--color-px-stud:          #d8dfe4;
+	--color-px-cloak:         #a3324a;
+	--color-px-cloak-dk:      #782238;
+	--color-px-robe:          #4b4a9e;
+	--color-px-robe-dk:       #36357a;
+	--color-px-roll:          #c9a26b;
+	--color-px-roll-dk:       #a07c4b;
+	--color-px-strap:         #5a3a22;
+	--color-px-sack:          #d8c69c;
+	--color-px-sack-dk:       #b39f73;
+	--color-px-gem:           #3ab3e6;
+	--color-px-gem-lt:        #a8e6ff;
+	--color-px-ruby:          #e2475a;
+	--color-px-ring:          #ffd84d;
+	--color-px-boot:          #4e8d4f;
+	--color-px-boot-lt:       #74b06c;
+	--color-px-boot-dk:       #386a3a;
+	--color-px-gaunt:         #8f9aa5;
+	--color-px-gaunt-dk:      #6b7580;
+	--color-px-grip:          #5a3a22;
+	--color-px-wood:          #b07a45;
+	--color-px-wood-dk:       #8a5c32;
+	--color-px-string:        #efe6d2;
+	--color-px-lens:          #6fd3c4;
+	--color-px-flash:         #fff3b0;
+	--color-stage:          #e6eddf;
+	--color-stage-floor:    #cdbf9f;
+	--color-stage-edge:     #b5a582;
+
 	/* Alerts / notifications */
 	--color-alert-bg:       #fff1df;
 	--color-alert-edge:     #e8bf8e;
@@ -177,6 +227,10 @@
 	--color-coin-sp:        #c3c9ce;
 	--color-coin-cp:        #db8a54;
 	--color-coin-rim:       rgba(0, 0, 0, 0.4);
+
+	--color-stage:          #34403d;
+	--color-stage-floor:    #4f4a3f;
+	--color-stage-edge:     #3c382f;
 
 	--color-alert-bg:       #3d2c18;
 	--color-alert-edge:     #7d5a30;
