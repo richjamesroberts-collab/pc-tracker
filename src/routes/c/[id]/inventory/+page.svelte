@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import Pips from '$lib/components/Pips.svelte';
 	import CoinSheet from '$lib/components/CoinSheet.svelte';
 	import CoinsCard from '$lib/components/CoinsCard.svelte';
@@ -33,6 +34,7 @@
 		addStash,
 		carriedCoins,
 		carryState,
+		coinRoom,
 		editProblem,
 		encumbrance,
 		moveItem,
@@ -110,6 +112,15 @@
 	const worn = $derived(wornContainers(c));
 	const loose = $derived(coinCount(c.coins));
 	const cap = (s: Stash) => stashCapacity(s);
+	/** Mounts and the party bag: stashes that carry things along with the character. */
+	const carriers = $derived(c.stashes.filter((s) => s.kind !== 'place'));
+
+	/** Show a container's section of the All tab. */
+	async function showGroup(id: string) {
+		tab = 'all';
+		await tick();
+		document.getElementById(`group-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
 
 	/** A section of the All tab: what's on the character, in each carried container, and at each stash. */
 	interface Group {
@@ -784,6 +795,8 @@
 		</button>
 	</section>
 
+	{@render carryingOn()}
+
 	<h2 class="label group">Equipped &amp; attuned{inUse.length ? ` · ${inUse.length}` : ''}</h2>
 	<div class="card list">
 		{@render itemList(inUse, 'Nothing equipped or attuned yet. Wear or equip things you carry, or attune to magic items, from here or All.', 'all')}
@@ -841,6 +854,8 @@
 		{#if load.status !== 'light'}<span class="load-note">{CARRY_STATUS[load.status].note}</span>{/if}
 	</button>
 
+	{@render carryingOn()}
+
 	<h2 class="label group">Coins with you</h2>
 	<CoinsCard {purse} scope="" label="Coins: {formatGp(coinWorth(purse))} in all. Tap to spend, gain or move." onclick={() => (coinsOpen = true)} />
 	{#if loose}
@@ -859,7 +874,7 @@
 	{@render addButton()}
 
 	{#each groups as g (g.id)}
-		<section class="card list place-group" aria-label={g.title}>
+		<section class="card list place-group" id="group-{g.id}" aria-label={g.title}>
 			{#if g.stash}
 				{@const id = g.stash}
 				<button type="button" class="ghead" onclick={() => (tab = id)}>
@@ -874,6 +889,43 @@
 		</section>
 	{/each}
 {/if}
+
+{#snippet carryingOn()}
+	<h2 class="label group">Carrying on</h2>
+	<div class="card carriers">
+		<div class="carrier">
+			<span class="what"><b>Person</b><small>Worn, held or strapped on</small></span>
+			<span class="amount">{lb(carry.onPerson)}</span>
+		</div>
+		{#each worn as box (box.id)}
+			{@const used = carry.loads.get(box.id) ?? 0}
+			{@const max = box.container!.lb}
+			{@const coins = box.coins ? coinCount(box.coins) : 0}
+			{@const room = coinRoom(carry, box)}
+			<button type="button" class="carrier" onclick={() => showGroup(box.id)}>
+				<span class="what">
+					<b>{box.name}</b>
+					<small>
+						{[coins ? `${coins.toLocaleString('en')} coins` : '', Number.isFinite(room) ? `room for ${room.toLocaleString('en')} more coins` : '', box.container!.weightless ? 'weightless inside' : '']
+							.filter(Boolean)
+							.join(' · ') || 'Equipped'}
+					</small>
+				</span>
+				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
+				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
+			</button>
+		{/each}
+		{#each carriers as s (s.id)}
+			{@const used = carry.stashLoads.get(s.id) ?? 0}
+			{@const max = cap(s)}
+			<button type="button" class="carrier" onclick={() => (tab = s.id)}>
+				<span class="what"><b>{s.name}</b><small>{s.kind === 'mount' ? 'Mount' : 'Carried by someone else'}</small></span>
+				<span class="amount">{max !== undefined ? `${lb(used)} of ${lb(max)}` : lb(used)}</span>
+				{#if max !== undefined}<span class="bar mini" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (used / max) * 100)}%"></span></span>{/if}
+			</button>
+		{/each}
+	</div>
+{/snippet}
 
 {#snippet groupHead(g: Group)}
 	<span class="gtitle"><b>{g.title}</b><small>{g.sub}</small></span>
@@ -1267,6 +1319,57 @@
 		stroke: currentColor;
 		stroke-width: 2.4;
 		stroke-linecap: round;
+	}
+
+	.carriers {
+		overflow: hidden;
+	}
+
+	.carrier {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 2px 10px;
+		width: 100%;
+		min-height: 54px;
+		padding: 8px 14px;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		text-align: left;
+		font-weight: 400;
+	}
+
+	.carrier + .carrier {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.carrier .what {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.carrier b {
+		font-size: 15px;
+		overflow-wrap: anywhere;
+	}
+
+	.carrier small {
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.carrier .amount {
+		font-size: 14px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-effect-ink);
+	}
+
+	.place-group {
+		scroll-margin-top: 12px;
 	}
 
 	.place-group {
