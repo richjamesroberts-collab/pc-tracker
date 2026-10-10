@@ -8,6 +8,10 @@
 	import PlaceSheet, { type Destination } from '$lib/components/PlaceSheet.svelte';
 	import CarrySheet from '$lib/components/CarrySheet.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
+	import HeroSprite from '$lib/components/HeroSprite.svelte';
+	import { heroGear } from '$lib/sprite';
+	import { CLASS_MAP } from '$lib/data/classes';
+	import { raceLabel } from '$lib/data/races';
 	import { swipeLeft } from '$lib/swipe';
 	import { session } from '$lib/session.svelte';
 	import {
@@ -90,6 +94,12 @@
 	const canUse = $derived(
 		byKind(carried.filter((i) => !i.equipped && !i.attuned && (i.weapon || i.armor || i.container || i.attunement || slotOf(i))))
 	);
+	const kit = $derived(heroGear(c));
+	const heroLabel = $derived(
+		`${c.name || 'Your character'}${inUse.some((i) => i.equipped) ? `, with ${inUse.filter((i) => i.equipped).map((i) => i.name).join(', ')}` : ''}`
+	);
+	const who = $derived([raceLabel(c), `${CLASS_MAP.get(c.classKey)?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' '));
+
 	/** Put on, or equip for things held or carried. */
 	const wears = (i: InventoryItem) => !!slotOf(i) || (!!i.armor && i.armor.type !== 'shield');
 
@@ -747,10 +757,34 @@
 </div>
 
 {#if view === 'equipped'}
-	<h2 class="label group heading">
-		<span>Equipped &amp; attuned{inUse.length ? ` · ${inUse.length}` : ''}</span>
-		{@render attunement()}
-	</h2>
+	<section class="card hero-card" aria-label="{c.name || 'Your character'}'s gear">
+		<div class="stage">
+			<span class="floor" aria-hidden="true"></span>
+			<div class="hud left">
+				<small>AC</small>
+				<b>{c.ac}</b>
+			</div>
+			<div class="hud right" aria-label="Attuned to {attuned} of {limit}">
+				<small>Attuned</small>
+				<span class="gems" aria-hidden="true">
+					{#each Array.from({ length: limit }, (_, n) => n) as n (n)}
+						<span class="gem" class:on={n < attuned}></span>
+					{/each}
+				</span>
+			</div>
+			<HeroSprite gear={kit} label={heroLabel} />
+		</div>
+		<div class="plate">
+			<b>{c.name || 'Unnamed'}</b>
+			<span>{who}</span>
+		</div>
+		<button type="button" class="hero-load" class:warn={load.status !== 'light'} aria-label="Carrying {lb(load.carried)} of {lb(load.capacity)}. Tap for details." onclick={() => (carryOpen = true)}>
+			<span class="bar" aria-hidden="true"><span class="fill" style:width="{Math.min(100, (load.carried / load.capacity) * 100)}%"></span></span>
+			<span class="load-line"><span><b>{lb(load.carried)}</b> of {lb(load.capacity)}</span><span>{CARRY_STATUS[load.status].label}</span></span>
+		</button>
+	</section>
+
+	<h2 class="label group">Equipped &amp; attuned{inUse.length ? ` · ${inUse.length}` : ''}</h2>
 	<div class="card list">
 		{@render itemList(inUse, 'Nothing equipped or attuned yet. Wear or equip things you carry, or attune to magic items, from here or All.', 'all')}
 	</div>
@@ -1081,6 +1115,135 @@
 		font-weight: 800;
 	}
 
+	.hero-card {
+		margin-top: 12px;
+		overflow: hidden;
+	}
+
+	.stage {
+		position: relative;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		height: 236px;
+		padding-bottom: 12px;
+		background: var(--color-stage);
+	}
+
+	.floor {
+		position: absolute;
+		inset: auto 0 0;
+		height: 34px;
+		background: var(--color-stage-floor);
+		border-top: 4px solid var(--color-stage-edge);
+	}
+
+	.hud {
+		position: absolute;
+		top: 12px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		min-width: 52px;
+		padding: 8px 10px;
+		border-radius: 10px;
+		background: var(--color-surface);
+		border: 2px solid var(--color-text);
+		box-shadow: 3px 3px 0 var(--color-text);
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+	}
+
+	.hud.left {
+		left: 12px;
+	}
+
+	.hud.right {
+		right: 12px;
+	}
+
+	.hud small {
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+
+	.hud b {
+		font-size: 20px;
+		font-weight: 900;
+		line-height: 1;
+	}
+
+	.hud .gem {
+		width: 11px;
+		height: 11px;
+		border-width: 2px;
+	}
+
+	.plate {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 12px 14px 4px;
+	}
+
+	.plate b {
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+		font-size: 15px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		overflow-wrap: anywhere;
+	}
+
+	.plate span {
+		flex-shrink: 0;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--color-text-muted);
+	}
+
+	.hero-load {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		width: 100%;
+		padding: 8px 14px 14px;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 12px;
+		font-weight: 400;
+		text-align: left;
+	}
+
+	.load-line {
+		display: flex;
+		justify-content: space-between;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.load-line b {
+		color: var(--color-effect-ink);
+	}
+
+	.load-line span:last-child {
+		font-weight: 800;
+	}
+
+	.hero-load.warn .fill {
+		background: var(--color-warning);
+	}
+
+	.hero-load.warn .load-line b,
+	.hero-load.warn .load-line span:last-child {
+		color: var(--color-warning);
+	}
+
 	.add-item {
 		display: flex;
 		align-items: center;
@@ -1190,13 +1353,6 @@
 
 	.attuned-count.full .gem.on {
 		background: var(--color-warning);
-	}
-
-	.heading {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
 	}
 
 	.attuned-count b {
