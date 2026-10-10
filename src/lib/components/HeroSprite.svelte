@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { HERO_H, HERO_W, drawHero, runs, type HeroGear, type Layer } from '$lib/sprite';
+	import { HERO_H, HERO_W, PLAIN_LOOK, drawHero, runs, type HeroGear, type HeroLook, type Layer } from '$lib/sprite';
 
-	/** The pixel hero in what it has on; whatever goes on flashes in. */
-	let { gear, px = 5, label }: { gear: HeroGear; px?: number; label: string } = $props();
+	/** The pixel hero as the character looks, in what it has on; whatever goes on flashes in. */
+	let { gear, look = PLAIN_LOOK, px = 5, label }: { gear: HeroGear; look?: HeroLook; px?: number; label: string } = $props();
 
-	const pixels = $derived(runs(drawHero(gear)));
+	const pixels = $derived(runs(drawHero(gear, look)));
 
 	/** Layers just put on, and a count so the flash starts over each time. */
 	let flash = $state<Layer[]>([]);
 	let flashes = $state(0);
-	const glow = $derived(flash.length ? runs(drawHero(gear, flash)) : []);
+	const glow = $derived(flash.length ? runs(drawHero(gear, look, flash)) : []);
 
 	// What it had on last time, to tell what's new (nothing flashes when the screen opens). Armor counts by kind.
 	let seen: Set<string> | null = null;
