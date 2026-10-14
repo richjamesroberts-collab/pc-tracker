@@ -3,6 +3,7 @@
 	import SpellDetails from '$lib/components/SpellDetails.svelte';
 	import SpellNav from '$lib/components/SpellNav.svelte';
 	import CustomSpellSheet from '$lib/components/CustomSpellSheet.svelte';
+	import SwapSpellSheet from '$lib/components/SwapSpellSheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { cacheSpell, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
 	import { CLASSES } from '$lib/data/classes';
@@ -15,6 +16,7 @@
 		grantsFor,
 		matchesFilter,
 		schoolLimit,
+		swappable,
 		variantPicks,
 		type GrantChoice
 	} from '$lib/rules/grants';
@@ -37,6 +39,7 @@
 	let source = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
 	let customOpen = $state(false);
+	let swapping = $state<ReturnType<typeof swappable>[number] | null>(null);
 
 	const grantedNow = $derived(new Map(grantedSpells(c).map((g) => [g.id, g])));
 	const granted = $derived(grantedIds(c));
@@ -68,6 +71,8 @@
 		for (const g of grantedNow.values()) if (g.grant.free) counts.set(g.grant.tag, (counts.get(g.grant.tag) ?? 0) + 1);
 		return [...counts].map(([tag, n]) => ({ tag, n }));
 	});
+	/** Spells in a list the player can swap from (Aberrant Mind, Clockwork Soul), by the spell there now. */
+	const swaps = $derived(new Map(swappable(c).map((x) => [x.id, x])));
 	const fixedIn = (id: string) => [...grantLists.entries()].find(([, g]) => g.at.has(id));
 	/** The choice a spell can still be picked for on the current grant filter. */
 	const openChoiceFor = (s: Spell) =>
@@ -268,6 +273,9 @@
 				{#if expanded === s.id}
 					<div class="details">
 						<SpellDetails spell={s} compact />
+						{#if swaps.has(s.id)}
+							<button type="button" class="swap" onclick={() => (swapping = swaps.get(s.id) ?? null)}>Replace with another spell</button>
+						{/if}
 						{#if s.pack === 'custom'}
 							<button type="button" class="delete" onclick={() => deleteCustom(s)}>Delete custom spell</button>
 						{/if}
@@ -279,6 +287,7 @@
 {/each}
 
 <CustomSpellSheet open={customOpen} onclose={() => (customOpen = false)} />
+<SwapSpellSheet swap={swapping} {pool} known={mine} onclose={() => (swapping = null)} />
 
 <style>
 	.top {
@@ -544,6 +553,16 @@
 
 	.details {
 		padding: 0 12px 14px;
+	}
+
+	.swap {
+		margin-top: 10px;
+		min-height: 40px;
+		border: 0;
+		background: transparent;
+		color: var(--color-spell-ink);
+		font-weight: 700;
+		padding: 0;
 	}
 
 	.delete {

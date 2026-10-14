@@ -246,6 +246,27 @@ export function swappable(c: GrantCharacter): { grant: SpellGrant; id: string; o
 	);
 }
 
+/**
+ * Spells a level up from `prev` to `next` can swap: the swappable lists `prev` already had (gaining the
+ * subclass isn't gaining a level in it), at the new level, so spells arriving now can be swapped too.
+ */
+export function levelSwaps(prev: GrantCharacter, next: GrantCharacter): ReturnType<typeof swappable> {
+	const had = new Set(grantsFor(prev).map((g) => g.key));
+	return swappable(next).filter((x) => had.has(x.grant.key));
+}
+
+/** Trade the spell standing for `original` in a swappable list for `to`; `to === original` puts the original back. */
+export function swapGrantSpell(
+	c: Pick<Character, 'spells' | 'concentration'>,
+	swap: { grant: string; original: string; to: string }
+): void {
+	const out = c.spells.find((s) => s.grant === swap.grant && s.replaces === swap.original)?.id ?? swap.original;
+	c.spells = c.spells.filter((s) => !(s.grant === swap.grant && s.replaces === swap.original));
+	if (swap.to !== swap.original) c.spells.push({ id: swap.to, prepared: true, grant: swap.grant, replaces: swap.original });
+	// Concentration is kept by name; drop it if that spell was swapped out.
+	if (out !== swap.to && c.concentration?.toLowerCase() === out.split('|')[0]) c.concentration = undefined;
+}
+
 /** A spell that can replace `current` (same level, the grant's schools and lists). */
 export function canSwapTo(grant: SpellGrant, current: Pick<Spell, 'level'>, spell: Pick<Spell, 'id' | 'level' | 'classes' | 'school'>): boolean {
 	return !!grant.swap && spell.level === current.level && matchesFilter(spell, { schools: grant.swap.schools, classes: grant.swap.classes });

@@ -18,6 +18,7 @@ import {
 	grantedIds,
 	grantedSpells,
 	grantsFor,
+	levelSwaps,
 	newGrantChoices,
 	newGrants,
 	pickedSpells,
@@ -25,6 +26,7 @@ import {
 	shortRestCasts,
 	slotsAllowed,
 	spendCast,
+	swapGrantSpell,
 	swappable,
 	variantPicks,
 	type SpellGrant
@@ -229,6 +231,34 @@ describe('subclass spell swaps', () => {
 		// Trading the swapped-in spell again replaces it, still standing for Arms of Hadar.
 		applyChoices(c, { hp: 0, grantSwap: { grant: arms.grant.key, original: arms.original, to: 'sleep|phb' } }, 5);
 		expect(c.spells).toEqual([{ id: 'sleep|phb', prepared: true, grant: arms.grant.key, replaces: 'arms of hadar|phb' }]);
+	});
+
+	it('offers the spells arriving at the new level, but not when the subclass is new', () => {
+		const at4 = pc({ subclassKey: 'aberrant-mind', level: 4 });
+		const at5 = { ...at4, level: 5 };
+		const ids = levelSwaps(at4, at5).map((x) => x.id);
+		expect(ids).toContain('hunger of hadar|phb');
+		expect(ids).toContain('sending|phb');
+		expect(levelSwaps(pc({ level: 4 }), at5)).toEqual([]);
+		expect(levelSwaps(pc({ subclassKey: 'draconic', level: 4 }), { ...at5, subclassKey: 'draconic' })).toEqual([]);
+	});
+
+	it('asks for the swap at each level after the first, so a new character built level by level gets it too', () => {
+		const c = pc({ subclassKey: 'clockwork-soul', level: 1 });
+		expect(levelUpNeeds(c, c, true).grantSwap).toBe(false);
+		expect(levelUpNeeds(c, { ...c, level: 2 }).grantSwap).toBe(true);
+	});
+
+	it('swaps outside level up, puts the original back and drops concentration on the spell swapped out', () => {
+		const c = pc({ subclassKey: 'aberrant-mind', level: 3 });
+		const key = 'sorcerer/aberrant-mind#0';
+		swapGrantSpell(c, { grant: key, original: 'calm emotions|phb', to: 'suggestion|phb' });
+		expect(grantedSpells(c).map((s) => s.id)).toContain('suggestion|phb');
+		c.concentration = 'Suggestion';
+		swapGrantSpell(c, { grant: key, original: 'calm emotions|phb', to: 'calm emotions|phb' });
+		expect(c.spells).toEqual([]);
+		expect(c.concentration).toBeUndefined();
+		expect(grantedSpells(c).map((s) => s.id)).toContain('calm emotions|phb');
 	});
 });
 

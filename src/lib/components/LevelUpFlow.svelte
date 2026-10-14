@@ -100,7 +100,7 @@
 		newGrantChoices,
 		newGrants,
 		schoolLimit,
-		swappable,
+		levelSwaps,
 		variantPicks,
 		type GrantCharacter
 	} from '$lib/rules/grants';
@@ -214,7 +214,8 @@
 	const arrivingChoices = $derived(new Set(newGrantChoices(first ? null : start, grantChar).map((ch) => ch.key)));
 	/** Choices arriving now, plus older ones not filled yet (a character from before choices were asked for). */
 	const openChoices = $derived(grantChoices(grantChar).filter((ch) => arrivingChoices.has(ch.key) || ch.picked.length < ch.count));
-	const swaps = $derived(create || first ? [] : swappable(start));
+	/** One spell in a subclass list can be swapped each level, spells arriving now included (none at a new character's 1st). */
+	const swaps = $derived(first ? [] : levelSwaps(start, grantChar));
 	const swap = $derived.by(() => {
 		const [grant, original] = picks.swapFrom.split('@');
 		return swaps.find((x) => x.grant.key === grant && x.original === original);
