@@ -3,24 +3,24 @@
 	import PickList, { type PickItem } from './PickList.svelte';
 	import SpellDetails from './SpellDetails.svelte';
 	import { session } from '$lib/session.svelte';
-	import { cacheSpell, uncacheSpell } from '$lib/library.svelte';
-	import { canSwapTo, swapGrantSpell, type SpellGrant } from '$lib/rules/grants';
+	import { cacheSpell, spellPool, uncacheSpell } from '$lib/library.svelte';
+	import { canSwapTo, grantedSpells, grantHas, swapGrantSpell, type SpellGrant } from '$lib/rules/grants';
 	import { ordinal } from '$lib/rules/spellcasting';
-	import type { Spell } from '$lib/types';
+	import type { Character } from '$lib/types';
 
 	let {
 		swap,
-		pool,
-		known,
 		onclose
 	}: {
 		/** The spell in a swappable list (Aberrant Mind, Clockwork Soul) to trade, and the fixed spell it stands for. */
 		swap: { grant: SpellGrant; id: string; original: string } | null;
-		pool: Spell[];
-		/** Spells the character already has, which can't be swapped in. */
-		known: Set<string>;
 		onclose: () => void;
 	} = $props();
+
+	const c = $derived(session.character as Character);
+	const pool = $derived(spellPool(c));
+	/** Spells the character already has, which can't be swapped in. */
+	const known = $derived(new Set([...c.spells.map((s) => s.id), ...grantedSpells(c).map((g) => g.id)]));
 
 	let selected = $state<string[]>([]);
 
@@ -30,22 +30,22 @@
 
 	const byId = $derived(new Map(pool.map((s) => [s.id, s])));
 	const current = $derived(swap ? byId.get(swap.id) : undefined);
-	const original = $derived(swap ? byId.get(swap.original) : undefined);
 	const rule = $derived(swap?.grant.swap);
+	/** The list's own spells of that level first (the original among them, to put back), then the rest. */
 	const items = $derived.by((): PickItem[] => {
 		if (!swap || !current) return [];
-		return pool
-			.filter((s) => s.id !== swap.id && s.id !== swap.original && canSwapTo(swap.grant, current, s) && !known.has(s.id))
-			.map((s) => ({
-				id: s.id,
-				name: s.name,
-				meta: `${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}`
-			}));
+		const { grant } = swap;
+		const options = pool.filter((s) => s.id !== swap.id && canSwapTo(grant, current, s) && !known.has(s.id));
+		return [...options.filter((s) => grantHas(grant, s.id)), ...options.filter((s) => !grantHas(grant, s.id))].map((s) => ({
+			id: s.id,
+			name: s.name,
+			meta: `${grantHas(grant, s.id) ? `${s.id === swap.original ? 'Original' : grant.tag} · ` : ''}${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}`
+		}));
 	});
 
 	function apply(to: string) {
 		if (!swap || !current) return;
-		const s = to === swap.original ? original : byId.get(to);
+		const s = byId.get(to);
 		if (!s) return;
 		const { grant, original: orig } = swap;
 		const out = current;
@@ -62,17 +62,15 @@
 	{#if swap && current}
 		<h2>Replace {current.name}</h2>
 		<p class="muted">
-			{swap.grant.name}: a {rule ? `${rule.schools.join(' or ').toLowerCase()} spell from the ${rule.classes.join(', ')} lists` : 'spell'} of
-			the same level. The rules allow one swap each time you gain a level; level up asks for it.
+			{swap.grant.name}: another {swap.grant.tag.toLowerCase()} spell or a
+			{rule ? `${rule.schools.join(' or ').toLowerCase()} spell from the ${rule.classes.join(', ')} lists` : 'spell'} of the same level.
+			The rules allow one swap each time you gain a level; level up asks for it.
 		</p>
-		{#if swap.id !== swap.original && original}
-			<button type="button" class="restore" onclick={() => apply(swap.original)}>Put back {original.name}</button>
-		{/if}
 		<PickList {items} bind:selected max={1} label="Replacement" search>
 			{#snippet details(item)}{@const s = byId.get(item.id)}{#if s}<SpellDetails spell={s} compact />{/if}{/snippet}
 		</PickList>
 		<button type="button" class="apply" disabled={!selected[0]} onclick={() => apply(selected[0])}>
-			{selected[0] ? `Swap for ${byId.get(selected[0])?.name}` : 'Pick a replacement'}
+			{!selected[0] ? 'Pick a replacement' : selected[0] === swap.original ? `Put back ${byId.get(selected[0])?.name}` : `Swap for ${byId.get(selected[0])?.name}`}
 		</button>
 	{/if}
 </Sheet>
@@ -88,17 +86,6 @@
 		margin: 8px 0 12px;
 		font-size: 14px;
 		color: var(--color-text-muted);
-	}
-
-	.restore {
-		width: 100%;
-		min-height: 44px;
-		margin-bottom: 12px;
-		border: 1.5px solid var(--color-border-strong);
-		border-radius: 12px;
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-weight: 700;
 	}
 
 	.apply {

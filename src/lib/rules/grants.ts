@@ -267,9 +267,18 @@ export function swapGrantSpell(
 	if (out !== swap.to && c.concentration?.toLowerCase() === out.split('|')[0]) c.concentration = undefined;
 }
 
-/** A spell that can replace `current` (same level, the grant's schools and lists). */
+/** One of the grant's own fixed spells (an original Psionic or Clockwork Magic spell). */
+export function grantHas(grant: SpellGrant, id: string): boolean {
+	return grant.spells.some((s) => s.id === id);
+}
+
+/** A spell that can replace `current`: same level, and the grant's schools and lists or one of the grant's own spells. */
 export function canSwapTo(grant: SpellGrant, current: Pick<Spell, 'level'>, spell: Pick<Spell, 'id' | 'level' | 'classes' | 'school'>): boolean {
-	return !!grant.swap && spell.level === current.level && matchesFilter(spell, { schools: grant.swap.schools, classes: grant.swap.classes });
+	return (
+		!!grant.swap &&
+		spell.level === current.level &&
+		(grantHas(grant, spell.id) || matchesFilter(spell, { schools: grant.swap.schools, classes: grant.swap.classes }))
+	);
 }
 
 /** Granted spells new at `next` compared with `prev`, by grant: { name: 'Psionic Spells', spells: ['Calm Emotions', 'Detect Thoughts'] }. */

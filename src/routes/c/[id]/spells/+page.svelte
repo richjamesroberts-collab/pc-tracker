@@ -3,6 +3,7 @@
 	import Pips from '$lib/components/Pips.svelte';
 	import SpellNav from '$lib/components/SpellNav.svelte';
 	import CastSheet from '$lib/components/CastSheet.svelte';
+	import SwapSpellSheet from '$lib/components/SwapSpellSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
 	import CastHud from '$lib/components/CastHud.svelte';
 	import UseFx from '$lib/components/UseFx.svelte';
@@ -20,7 +21,7 @@
 		spellLimit,
 		spellSaveDC
 	} from '$lib/rules/spellcasting';
-	import { castSummary, grantedSpells } from '$lib/rules/grants';
+	import { castSummary, grantedSpells, swappable } from '$lib/rules/grants';
 	import { spellFx, type Spent } from '$lib/rules/castfx';
 	import type { UseFx as UseFxKind } from '$lib/rules/usable';
 	import type { Character, Spell } from '$lib/types';
@@ -45,6 +46,10 @@
 
 	let preparing = $state(false);
 	let casting = $state<Spell | null>(null);
+	let swapping = $state<ReturnType<typeof swappable>[number] | null>(null);
+	/** Spells in a list the player can swap from (Aberrant Mind, Clockwork Soul), by the spell there now. */
+	const swaps = $derived(new Map(swappable(c).map((x) => [x.id, x])));
+	const replaceable = $derived(casting ? swaps.get(casting.id) : undefined);
 	let fontOpen = $state(false);
 
 	/** The spell just cast: its row plays the spell's animation with what it used floating up. */
@@ -291,7 +296,18 @@
 	{/if}
 {/snippet}
 
-<CastSheet spell={casting} onclose={() => (casting = null)} oncast={onCast} />
+<CastSheet
+	spell={casting}
+	onclose={() => (casting = null)}
+	oncast={onCast}
+	onreplace={replaceable
+		? () => {
+				swapping = replaceable;
+				casting = null;
+			}
+		: undefined}
+/>
+<SwapSpellSheet swap={swapping} onclose={() => (swapping = null)} />
 {#if hud}
 	{#key hud.n}
 		<CastHud spell={hud.spell} spent={hud.spent} />
