@@ -3,7 +3,7 @@ import { characterFeat, type FeatData } from '$lib/data/content';
 import { abilityMod } from './abilities';
 import { attacksPerAction, fightingStyleCount } from './attacks';
 import { resourcesFor } from './features';
-import { newGrantChoices, newGrants } from './grants';
+import { levelSwaps, newGrantChoices, newGrants, swapGrantSpell } from './grants';
 import { sorceryPointsMax } from './resources';
 import { abilityBreakdown } from './stats';
 import {
@@ -137,6 +137,8 @@ export interface LevelUpNeeds {
 	spells: number;
 	/** Known casters can swap one spell they know for another. */
 	swapSpell: boolean;
+	/** A spell in a subclass list (Aberrant Mind, Clockwork Soul) can be swapped for another. */
+	grantSwap: boolean;
 	/** A new Mystic Arcanum spell level (warlock 11, 13, 15, 17). */
 	arcanum: number | null;
 	prep: SpellPrep;
@@ -186,6 +188,7 @@ export function levelUpNeeds(
 						: 2
 					: 0,
 		swapSpell: prep === 'known' && prevPrep === 'known' && spellLimit(prev) > 0,
+		grantSwap: !first && levelSwaps(prev, next).length > 0,
 		arcanum: newArcanum ?? null,
 		prep
 	};
@@ -203,6 +206,7 @@ export const hasChoices = (n: LevelUpNeeds) =>
 	n.weapons > 0 ||
 	n.cantrips > 0 ||
 	n.spells > 0 ||
+	n.grantSwap ||
 	n.arcanum !== null;
 
 /** Numbers that change at the new level, as short lines: "Proficiency bonus +2 → +3", "Rage 3 → 4". */
@@ -345,11 +349,7 @@ export function applyChoices(c: Character, choices: LevelUpChoices, level: numbe
 		c.spells = c.spells.filter((s) => (s.grant !== key || s.replaces) && !(ids.includes(s.id) && !s.grant));
 		for (const id of ids) c.spells.push({ id, prepared: true, grant: key });
 	}
-	const swap = choices.grantSwap;
-	if (swap) {
-		c.spells = c.spells.filter((s) => !(s.grant === swap.grant && s.replaces === swap.original));
-		if (swap.to !== swap.original) c.spells.push({ id: swap.to, prepared: true, grant: swap.grant, replaces: swap.original });
-	}
+	if (choices.grantSwap) swapGrantSpell(c, choices.grantSwap);
 
 	const learn = choices.learn ?? [];
 	const forget = new Set((choices.forget ?? []).filter((id) => !learn.includes(id)));
