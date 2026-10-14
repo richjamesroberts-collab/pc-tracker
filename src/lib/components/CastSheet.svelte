@@ -14,10 +14,13 @@
 	let {
 		spell,
 		onclose,
-		oncast
+		oncast,
+		onreplace
 	}: {
 		spell: Spell | null;
 		onclose: () => void;
+		/** A spell in a swappable list (Aberrant Mind, Clockwork Soul): offer to replace it. */
+		onreplace?: () => void;
 		/** After a cast: what it used (slots, points, counters) and how it was cast ("1st", "ritual", "at will"). */
 		oncast?: (cast: { spell: Spell; spent: Spent[]; how: string }) => void;
 	} = $props();
@@ -205,6 +208,9 @@
 		{#if spell.level > 0}
 			<button type="button" class="free" onclick={() => cast(true)}>Cast without a slot (item or feature)</button>
 		{/if}
+		{#if onreplace}
+			<button type="button" class="replace" onclick={onreplace}>Replace with another spell</button>
+		{/if}
 	{/if}
 </Sheet>
 
@@ -367,5 +373,15 @@
 		color: var(--color-text-muted);
 		font-size: 14px;
 		font-weight: 600;
+	}
+
+	.replace {
+		width: 100%;
+		min-height: 44px;
+		border: 0;
+		background: transparent;
+		color: var(--color-spell-ink);
+		font-size: 14px;
+		font-weight: 700;
 	}
 </style>

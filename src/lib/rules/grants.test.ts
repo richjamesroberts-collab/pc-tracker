@@ -223,6 +223,9 @@ describe('subclass spell swaps', () => {
 		expect(canSwapTo(arms.grant, spell('arms of hadar|phb'), spell('charm person|phb'))).toBe(true);
 		expect(canSwapTo(arms.grant, spell('arms of hadar|phb'), spell('magic missile|phb'))).toBe(false);
 		expect(canSwapTo(arms.grant, spell('arms of hadar|phb'), spell('suggestion|phb'))).toBe(false);
+		// The list's own spells of that level are options too, whatever their school.
+		expect(canSwapTo(arms.grant, spell('dissonant whispers|phb'), spell('arms of hadar|phb'))).toBe(true);
+		expect(canSwapTo(arms.grant, spell('arms of hadar|phb'), spell('hunger of hadar|phb'))).toBe(false);
 		applyChoices(c, { hp: 0, grantSwap: { grant: arms.grant.key, original: arms.original, to: 'charm person|phb' } }, 4);
 		const ids = grantedSpells(c).map((s) => s.id);
 		expect(ids).toContain('charm person|phb');

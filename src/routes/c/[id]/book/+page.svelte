@@ -287,7 +287,7 @@
 {/each}
 
 <CustomSpellSheet open={customOpen} onclose={() => (customOpen = false)} />
-<SwapSpellSheet swap={swapping} {pool} known={mine} onclose={() => (swapping = null)} />
+<SwapSpellSheet swap={swapping} onclose={() => (swapping = null)} />
 
 <style>
 	.top {

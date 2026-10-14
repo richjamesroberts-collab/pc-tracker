@@ -96,6 +96,7 @@
 		filterLabel,
 		grantChoices,
 		grantedIds,
+		grantHas,
 		matchesFilter,
 		newGrantChoices,
 		newGrants,
@@ -524,7 +525,13 @@
 		if (!swap) return [];
 		const current = spellById.get(swap.id);
 		if (!current) return [];
-		return pool.filter((s) => s.id !== swap.id && canSwapTo(swap.grant, current, s) && !knownIds.has(s.id)).map(spellItem);
+		const { grant } = swap;
+		const options = pool.filter((s) => s.id !== swap.id && canSwapTo(grant, current, s) && !knownIds.has(s.id));
+		// The list's own spells of that level first (the original among them, to put back).
+		return [...options.filter((s) => grantHas(grant, s.id)), ...options.filter((s) => !grantHas(grant, s.id))].map((s) => {
+			const item = spellItem(s);
+			return grantHas(grant, s.id) ? { ...item, meta: `${s.id === swap.original ? 'Original' : grant.tag} · ${item.meta}` } : item;
+		});
 	});
 	const grantsOk = $derived(
 		variantsToPick.every((v) => !!picks.variants[v.owner]) &&
