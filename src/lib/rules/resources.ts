@@ -105,6 +105,7 @@ export const hitDiceRegained = (c: Pick<Character, 'level' | 'hitDiceUsed'>) =>
 	Math.min(c.hitDiceUsed, Math.max(1, Math.floor(hitDiceMax(c) / 2)));
 
 export function shortRest(c: Character): void {
+	c.bladesong = undefined;
 	c.pactSlotsUsed = 0;
 	resetResources(c, 'short');
 	shortRestCasts(c);
@@ -112,6 +113,7 @@ export function shortRest(c: Character): void {
 
 export function longRest(c: Character): void {
 	c.wildShape = undefined;
+	c.bladesong = undefined;
 	c.hpCurrent = c.hpMax;
 	c.tempHp = 0;
 	c.deathSaves = { successes: 0, failures: 0 };

@@ -3,7 +3,7 @@ import { ABILITY_SHORT, abilityMod, signedMod } from './abilities';
 import { isActive } from './items';
 import { isProficient, proficiencyLabel, weaponProficiencySources } from './proficiency';
 import { proficiencyBonus } from './spellcasting';
-import { abilityBreakdown, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
+import { abilityBreakdown, bladesongActive, bladesongBonus, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
 
 export interface FightingStyle {
 	key: string;
@@ -166,7 +166,8 @@ type AttackInput = Pick<
 	| 'items'
 	| 'weaponProficiencies'
 	| 'fightingStyles'
->;
+> &
+	Partial<Pick<Character, 'bladesong'>>;
 
 /**
  * Attacks with the weapons the character has equipped, then an unarmed strike. Ability, proficiency,
@@ -191,6 +192,9 @@ export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBre
 		};
 	};
 	const sub = `${c.classKey}/${c.subclassKey}`;
+	const singing = bladesongActive(c);
+	/** Song of Victory: melee weapon attacks add this while Bladesong is going. */
+	const songDamage = singing && c.level >= 14 ? bladesongBonus(scores) : 0;
 	const equipped = (c.items ?? []).filter((i) => i.equipped && i.weapon);
 	const lightMelee = equipped.filter((i) => !i.weapon!.ranged && i.weapon!.properties.includes('light'));
 	const shield = (c.items ?? []).some((i) => i.equipped && i.armor?.type === 'shield');
@@ -255,7 +259,9 @@ export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBre
 
 		const damageParts = [abilityPart];
 		if (magic?.damage) damageParts.push({ label: i.name, value: signedMod(magic.damage), from: magicFrom });
-		const flat = mod(best.ability) + (magic?.damage ?? 0);
+		const song = w.ranged ? 0 : songDamage;
+		if (song) damageParts.push({ label: 'Song of Victory', value: signedMod(song), from: 'Bladesong: INT modifier, melee weapons' });
+		const flat = mod(best.ability) + (magic?.damage ?? 0) + song;
 		// Dueling needs no other weapon in hand, so it doesn't count while this is one of a two-weapon pair.
 		const paired = lightMelee.length > 1 && lightMelee.includes(i);
 		const duelingWeapon = styles.has('dueling') && !w.ranged && !has('two-handed');
@@ -284,6 +290,7 @@ export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBre
 			notes.push(`Great Weapon Fighting: reroll 1s and 2s on damage dice${has('versatile') ? ' when used two-handed' : ''}`);
 		}
 		if (styles.has('thrown') && has('thrown')) notes.push('Thrown Weapon Fighting: +2 damage when thrown');
+		if (singing && (has('two-handed') || has('versatile'))) notes.push('Attacking with two hands ends Bladesong');
 		if (paired) {
 			// The bonus-action attack adds no ability modifier unless it's negative or the character has Two-Weapon Fighting.
 			const offFlat = flat - (styles.has('two-weapon') || mod(best.ability) < 0 ? 0 : mod(best.ability));
@@ -324,8 +331,9 @@ export function attacks(c: AttackInput, breakdown: AbilityBreakdown = abilityBre
 
 	const natural = c.raceKey ? NATURAL_WEAPONS[c.raceKey] : undefined;
 	const armed = equipped.length > 0 || shield;
-	if (natural) out.push(unarmedStrike(c, breakdown, profPart(), armed, featureNotes(true, false, 'str'), natural));
-	out.push(unarmedStrike(c, breakdown, profPart(), armed, featureNotes(true, false, 'str')));
+	const unarmedNotes = () => [...featureNotes(true, false, 'str'), ...(songDamage ? [`Song of Victory: ${signedMod(songDamage)} damage`] : [])];
+	if (natural) out.push(unarmedStrike(c, breakdown, profPart(), armed, unarmedNotes(), natural));
+	out.push(unarmedStrike(c, breakdown, profPart(), armed, unarmedNotes()));
 	return out;
 }
 

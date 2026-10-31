@@ -5,7 +5,7 @@ import { ABILITY_SHORT, abilityMod, signedMod } from './abilities';
 import { heavyLoadNote } from './carry';
 import { isActive } from './items';
 import { proficiencyBonus } from './spellcasting';
-import { abilityBreakdown, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
+import { abilityBreakdown, bladesongActive, scoreDetail, type AbilityBreakdown, type StatSource } from './stats';
 
 export const SKILLS: { key: Skill; name: string; ability: Ability }[] = [
 	{ key: 'acrobatics', name: 'Acrobatics', ability: 'dex' },
@@ -254,7 +254,7 @@ type SkillInput = Pick<
 	| 'skillProficiencies'
 	| 'skillExpertise'
 > &
-	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule' | 'background' | 'feats'>>;
+	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule' | 'background' | 'feats' | 'bladesong'>>;
 
 /** Observant adds this to passive Perception and Investigation. */
 const OBSERVANT_BONUS = 5;
@@ -327,6 +327,7 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 		}
 
 		if (s.key === 'stealth') for (const a of noisy) notes.push(`${a.name}: disadvantage`);
+		if (s.key === 'acrobatics' && bladesongActive(c)) notes.push('Bladesong: advantage');
 		if (heavy && (s.ability === 'str' || s.ability === 'dex' || s.ability === 'con')) notes.push(heavy);
 		if (c.classKey === 'rogue' && c.level >= 11 && level !== 'none' && level !== 'half') {
 			notes.push(`Reliable Talent: a d20 roll of 9 or lower counts as 10 (at least ${total + 10})`);

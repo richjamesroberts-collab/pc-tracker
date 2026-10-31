@@ -375,6 +375,8 @@ export interface Character {
 	hitDiceUsed: number;
 	/** The form taken with Wild Shape: its own hit points, while `hpCurrent` waits for the character to revert. */
 	wildShape?: { hp: number; beast: Beast };
+	/** A Bladesinger's Bladesong is going: see `bladesongActive` in rules/stats.ts. */
+	bladesong?: boolean;
 
 	/**
 	 * Weapon proficiencies beyond class, subclass and race (feats, multiclassing, a Kensei's or Bladesinger's pick):

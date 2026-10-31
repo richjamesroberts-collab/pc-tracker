@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { startBladesong } from './features';
 import { newCharacter } from '$lib/character';
 import { CLASS_MAP } from '$lib/data/classes';
 import type { Character, InventoryItem } from '$lib/types';
@@ -1154,6 +1155,76 @@ describe("Volo's and Monsters of the Multiverse races", () => {
 		expect(keys(pc({ raceKey: 'genasi', subraceKey: 'earth', level: 5 }))).toEqual(['merge-with-stone', 'genasi-pass-without-trace']);
 		expect(keys(pc({ raceKey: 'aasimar-vgm', subraceKey: 'scourge', level: 3 }))).toEqual(['healing-hands-vgm', 'radiant-consumption']);
 		expect(resourcesFor(pc({ raceKey: 'aasimar', level: 5 }))[0].die!(pc({ level: 5 }))).toBe('3d4');
+	});
+});
+
+describe('Bladesong', () => {
+	const singer = (over: Partial<Character> = {}) => pc({ classKey: 'wizard', subclassKey: 'bladesinging', level: 2, raceKey: 'elf', abilities: scores({ dex: 14, int: 16 }), ...over });
+	const armor = (type: 'light' | 'medium' | 'shield', ac = 12) => ({ id: type, kind: 'gear', name: type, type: '', rarity: '', attunement: false, attuned: false, quantity: 1, armor: { type, ac }, equipped: true, notes: '' }) as InventoryItem;
+
+	it('adds INT to AC and 10 ft to speed while it\'s going, and nothing when it stops', () => {
+		const c = singer();
+		const ac = armorClass(c);
+		const speed = walkingSpeed(c)!.total;
+		expect(startBladesong(c)).toBe(true);
+		expect(c.resourcesUsed.bladesong).toBe(1);
+		expect(armorClass(c).total).toBe(ac.total + 3);
+		expect(armorClass(c).parts.at(-1)).toEqual({ label: 'Bladesong', value: '+3' });
+		expect(walkingSpeed(c)?.total).toBe(speed + 10);
+		c.bladesong = undefined;
+		expect(armorClass(c).total).toBe(ac.total);
+		expect(walkingSpeed(c)?.total).toBe(speed);
+	});
+
+	it('gives at least +1, and adds to a speed the player set', () => {
+		const c = singer({ abilities: scores({ int: 8 }), speed: 40, bladesong: true });
+		expect(armorClass(c).parts.at(-1)?.value).toBe('+1');
+		expect(walkingSpeed(c)?.total).toBe(50);
+	});
+
+	it('adds to an AC the player entered', () => {
+		expect(armorClass(singer({ acAuto: false, acBase: 15, bladesong: true })).total).toBe(18);
+	});
+
+	it('won\'t start in medium armor or with a shield, or twice; light armor is fine', () => {
+		for (const type of ['medium', 'shield'] as const) {
+			const c = singer({ items: [armor(type)] });
+			expect(startBladesong(c)).toBe(false);
+			expect(c.resourcesUsed.bladesong ?? 0).toBe(0);
+		}
+		expect(startBladesong(singer({ items: [armor('light')] }))).toBe(true);
+		const c = singer({ bladesong: true });
+		expect(startBladesong(c)).toBe(false);
+		expect(c.resourcesUsed.bladesong ?? 0).toBe(0);
+	});
+
+	it('ends when armor goes on, the character drops, or they rest', () => {
+		expect(recompute(singer({ bladesong: true, items: [armor('shield')] })).bladesong).toBeUndefined();
+		expect(recompute(singer({ bladesong: true, hpCurrent: 0 })).bladesong).toBeUndefined();
+		expect(recompute(singer({ bladesong: true })).bladesong).toBe(true);
+		const rest = singer({ bladesong: true });
+		shortRest(rest);
+		expect(rest.bladesong).toBeUndefined();
+	});
+
+	it('gives advantage on Acrobatics', () => {
+		const note = (c: Character) => skillChecks(c).find((s) => s.key === 'acrobatics')!.notes;
+		expect(note(singer())).not.toContain('Bladesong: advantage');
+		expect(note(singer({ bladesong: true }))).toContain('Bladesong: advantage');
+	});
+
+	it('does nothing for anyone else', () => {
+		expect(armorClass(pc({ classKey: 'fighter', bladesong: true })).parts.some((p) => p.label === 'Bladesong')).toBe(false);
+	});
+
+	it('adds Song of Victory to melee damage from 14th level', () => {
+		const sword = { id: 's', kind: 'gear', name: 'Longsword', type: '', rarity: '', attunement: false, attuned: false, quantity: 1, equipped: true, notes: '', weapon: { base: 'longsword', category: 'martial', ranged: false, damage: '1d8', damageType: 'slashing', properties: ['versatile'], versatile: '1d10' } } as InventoryItem;
+		const bow = { ...sword, id: 'b', name: 'Longbow', weapon: { ...sword.weapon!, base: 'longbow', ranged: true, properties: [] } } as InventoryItem;
+		const hit = (level: number, song: boolean, name: string) => attacks(singer({ level, bladesong: song, items: [sword, bow] })).find((a) => a.name === name)!;
+		expect(hit(14, true, 'Longsword').damageBonus - hit(14, false, 'Longsword').damageBonus).toBe(3);
+		expect(hit(13, true, 'Longsword').damageBonus).toBe(hit(13, false, 'Longsword').damageBonus);
+		expect(hit(14, true, 'Longbow').damageBonus).toBe(hit(14, false, 'Longbow').damageBonus);
+		expect(hit(2, true, 'Longsword').notes).toContain('Attacking with two hands ends Bladesong');
 	});
 });
 

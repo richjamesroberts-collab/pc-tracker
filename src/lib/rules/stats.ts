@@ -87,9 +87,13 @@ export interface SpeedBreakdown extends Breakdown {
  * no heavy armor). A speed the player entered replaces all of it. Undefined when there's neither.
  */
 export function walkingSpeed(
-	c: Pick<Character, 'raceKey' | 'subraceKey' | 'classKey' | 'level' | 'items' | 'speed'>
+	c: Pick<Character, 'raceKey' | 'subraceKey' | 'classKey' | 'level' | 'items' | 'speed'> & Partial<Pick<Character, 'subclassKey' | 'bladesong'>>
 ): SpeedBreakdown | undefined {
-	if (c.speed != null) return { total: c.speed, parts: [{ label: 'Your speed', value: `${c.speed}` }], off: [] };
+	const song: StatSource[] = bladesongActive(c) ? [{ label: 'Bladesong', value: `+${BLADESONG_SPEED}` }] : [];
+	if (c.speed != null) {
+		const parts = [{ label: 'Your speed', value: `${c.speed}` }, ...song];
+		return { total: parts.reduce((n, p) => n + Number(p.value), 0), parts, off: [] };
+	}
 	const race = raceSpeed(c);
 	if (race == null) return undefined;
 	const parts: StatSource[] = [{ label: 'Race', value: `${race}` }];
@@ -103,6 +107,7 @@ export function walkingSpeed(
 		add('Unarmored Movement', unarmoredMovement(c.level), !worn.length, 'no armor or shield');
 	if (c.classKey === 'barbarian' && c.level >= 5)
 		add('Fast Movement', 10, !worn.some((i) => i.armor!.type === 'heavy'), 'no heavy armor');
+	parts.push(...song);
 	return { total: parts.reduce((n, p) => n + Number(p.value), 0), parts, off };
 }
 
@@ -210,7 +215,8 @@ type StatInput = Pick<
 	| 'initiativeOverride'
 	| 'spellModOverride'
 	| 'fightingStyles'
->;
+> &
+	Partial<Pick<Character, 'bladesong'>>;
 
 export interface Breakdown {
 	total: number;
@@ -220,6 +226,18 @@ export interface Breakdown {
 // Worn armor gives its base AC even unattuned; only its magic bonus needs attunement.
 const equippedArmor = (items: InventoryItem[]) => items.filter((i) => i.armor && i.equipped);
 const magicAc = (i: InventoryItem) => (isActive(i) ? (i.effects?.ac ?? 0) : 0);
+
+const BLADESONG_SPEED = 10;
+
+/** Medium or heavy armor or a shield: Bladesong can't start in them, and ends when they go on. */
+export const bladesongBlocked = (c: Partial<Pick<Character, 'items'>>) => equippedArmor(c.items ?? []).some((i) => i.armor!.type !== 'light');
+
+/** Whether Bladesong is going, for a character who has it. */
+export const bladesongActive = (c: Partial<Pick<Character, 'bladesong' | 'classKey' | 'subclassKey' | 'items'>>) =>
+	!!c.bladesong && c.classKey === 'wizard' && c.subclassKey === 'bladesinging' && !bladesongBlocked(c);
+
+/** Bladesong's bonus to AC, concentration saves and (Song of Victory) melee damage: the INT modifier, at least 1. */
+export const bladesongBonus = (scores: Pick<AbilityScores, 'int'>) => Math.max(1, abilityMod(scores.int));
 
 /** AC worked out from armor, shield, DEX, features and items, or from the player's own AC. */
 export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
@@ -313,6 +331,12 @@ export function armorClass(c: StatInput, scores = abilityScores(c)): Breakdown {
 		parts.push({ label: i.name, value: signedMod(i.effects!.ac!) });
 	}
 
+	if (bladesongActive(c)) {
+		const n = bladesongBonus(scores);
+		total += n;
+		parts.push({ label: 'Bladesong', value: signedMod(n) });
+	}
+
 	if (c.acAdjust) {
 		total += c.acAdjust;
 		parts.push({ label: 'Adjustment', value: signedMod(c.acAdjust) });
@@ -397,6 +421,8 @@ export function maxHp(c: StatInput, breakdown = abilityBreakdown(c)): Breakdown 
 
 /** Refresh the worked-out numbers on a character, in place. Current HP drops if the max fell below it. */
 export function recompute<T extends Character>(c: T): T {
+	// Bladesong ends when armor or a shield goes on, or the singer drops.
+	if (c.bladesong && (bladesongBlocked(c) || c.hpCurrent <= 0)) c.bladesong = undefined;
 	const breakdown = abilityBreakdown(c);
 	c.ac = armorClass(c, breakdown.scores).total;
 	c.hpMax = maxHp(c, breakdown).total;

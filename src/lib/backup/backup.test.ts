@@ -329,6 +329,14 @@ describe('how the hero looks', () => {
 	});
 });
 
+describe('bladesong', () => {
+	it('keeps it going, and leaves it off otherwise', () => {
+		const read = (bladesong: unknown) => readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'wizard', bladesong } });
+		expect(read(true).bladesong).toBe(true);
+		expect(read('yes')).not.toHaveProperty('bladesong');
+	});
+});
+
 describe('wild shape', () => {
 	const read = (wildShape: unknown) => readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'druid', wildShape } });
 

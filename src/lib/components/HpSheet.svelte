@@ -9,6 +9,8 @@
 	import { session } from '$lib/session.svelte';
 	import { applyDamage, applyHealing, applyTempHp, isDown } from '$lib/rules/hp';
 	import { asShape, damageShape } from '$lib/rules/wildshape';
+	import { signedMod } from '$lib/rules/abilities';
+	import { abilityScores, bladesongActive, bladesongBonus } from '$lib/rules/stats';
 	import type { Character } from '$lib/types';
 
 	let {
@@ -65,7 +67,7 @@
 
 	const concentrationHint = $derived(
 		mode === 'damage' && amount && c.concentration && !down
-			? `Concentrating on ${c.concentration}: CON save DC ${Math.max(10, Math.floor(amount / 2))}`
+			? `Concentrating on ${c.concentration}: CON save DC ${Math.max(10, Math.floor(amount / 2))}${bladesongActive(c) ? `, ${signedMod(bladesongBonus(abilityScores(c)))} from Bladesong` : ''}`
 			: ''
 	);
 

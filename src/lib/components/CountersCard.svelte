@@ -43,8 +43,11 @@
 		restoreCustom,
 		restoreResource,
 		spendCustom,
-		spendResource
+		spendResource,
+		startBladesong
 	} from '$lib/rules/features';
+	import { abilityScores, bladesongBlocked, bladesongBonus } from '$lib/rules/stats';
+	import { signedMod } from '$lib/rules/abilities';
 	import { asShape, transform } from '$lib/rules/wildshape';
 	import type { Beast, Character } from '$lib/types';
 
@@ -174,6 +177,12 @@
 			return;
 		}
 		if (row.left < n || n < 1) return;
+		const song = row.id === 'bladesong';
+		if (song && (c.bladesong || bladesongBlocked(c))) {
+			viewing = null;
+			session.notify(c.bladesong ? 'Bladesong is already going' : "Can't use Bladesong in medium or heavy armor or with a shield", { tone: 'warn' });
+			return;
+		}
 		const left = row.left - n;
 		const what = row.unit[0] === 'use' && n === 1 ? row.name : `${count(n, row.unit)} of ${row.name}`;
 		const key = row.def?.heal && me ? row.def.key : undefined;
@@ -184,6 +193,8 @@
 			const healed = session.mutate(gain ? `Used ${what}: ${gain}` : `Used ${what}, ${left} left`, (d) => healing(d, key, n, me!.roll));
 			if (healed?.healed) onhealed?.({ kind: 'heal', amount: healed.healed });
 			else if (healed?.temp) onhealed?.({ kind: 'temp', amount: healed.temp });
+		} else if (song) {
+			session.mutate(`Bladesong: ${signedMod(bladesongBonus(abilityScores(c)))} AC, +10 ft, ${left} left`, startBladesong);
 		} else {
 			session.mutate(`Used ${what}, ${left} left`, (d) => spendOne(row, d, n));
 		}
