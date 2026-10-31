@@ -29,6 +29,7 @@
 	import CounterSheet from './CounterSheet.svelte';
 	import FeatureSheet from './FeatureSheet.svelte';
 	import UseFx from './UseFx.svelte';
+	import WildShapeSheet from './WildShapeSheet.svelte';
 	import type { HpChange } from './HpSheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { CLASS_MAP } from '$lib/data/classes';
@@ -44,13 +45,24 @@
 		spendCustom,
 		spendResource
 	} from '$lib/rules/features';
-	import type { Character } from '$lib/types';
+	import { asShape, transform } from '$lib/rules/wildshape';
+	import type { Beast, Character } from '$lib/types';
 
 	// Limited-use class, subclass and racial features, plus the player's own counters. Tapping one opens its
 	// details; Use spends one (or opens the details to pick how many) and plays an animation over the row.
 	// Healing features used on the character heal them, and the hit points card shows it (`onhealed`).
 
-	let { onhealed }: { onhealed?: (change: HpChange) => void } = $props();
+	let {
+		onhealed,
+		ontransformed,
+		form = false
+	}: {
+		onhealed?: (change: HpChange) => void;
+		/** Wild Shape used: a form was taken. */
+		ontransformed?: () => void;
+		/** Showing the Wild Shape form: healing features heal it. */
+		form?: boolean;
+	} = $props();
 
 	/** Rows with more pips than this show as a number instead. */
 	const MAX_PIPS = 10;
@@ -136,16 +148,40 @@
 		viewing = row.id;
 	}
 
+	let shaping = $state(false);
+	const wildShape = $derived(rows.find((r) => r.id === 'wild-shape'));
+
+	function become(beast: Beast) {
+		const row = wildShape;
+		if (!row) return;
+		const taken = session.mutate(`Became ${beast.name}`, (d) => transform(d, beast));
+		shaping = false;
+		if (!taken) return;
+		ontransformed?.();
+		clearTimeout(fxTimer);
+		fx = { id: row.id, kind: row.fx, label: `${beast.name}`, n: (fx?.n ?? 0) + 1 };
+		fxTimer = setTimeout(() => (fx = null), 1900);
+	}
+
+	/** Heal as the form, when that's who the player is healing. */
+	const healing = (d: Character, key: string, n: number, roll?: number) =>
+		form ? asShape(d, () => healWithFeature(d, key, n, roll)) : healWithFeature(d, key, n, roll);
+
 	function use(row: CounterRow, n = 1, me?: { roll?: number }) {
+		if (row.id === 'wild-shape') {
+			viewing = null;
+			shaping = true;
+			return;
+		}
 		if (row.left < n || n < 1) return;
 		const left = row.left - n;
 		const what = row.unit[0] === 'use' && n === 1 ? row.name : `${count(n, row.unit)} of ${row.name}`;
 		const key = row.def?.heal && me ? row.def.key : undefined;
 		if (key) {
 			// Work out what it gives on a copy first, so the toast can say.
-			const got = healWithFeature(structuredClone($state.snapshot(c)) as Character, key, n, me!.roll);
+			const got = healing(structuredClone($state.snapshot(c)) as Character, key, n, me!.roll);
 			const gain = [got?.healed ? `+${got.healed} HP` : '', got?.temp ? `+${got.temp} temp HP` : ''].filter(Boolean).join(', ');
-			const healed = session.mutate(gain ? `Used ${what}: ${gain}` : `Used ${what}, ${left} left`, (d) => healWithFeature(d, key, n, me!.roll));
+			const healed = session.mutate(gain ? `Used ${what}: ${gain}` : `Used ${what}, ${left} left`, (d) => healing(d, key, n, me!.roll));
 			if (healed?.healed) onhealed?.({ kind: 'heal', amount: healed.healed });
 			else if (healed?.temp) onhealed?.({ kind: 'temp', amount: healed.temp });
 		} else {
@@ -249,7 +285,9 @@
 	<button type="button" class="add" onclick={() => openCounter(-1)}>Add counter</button>
 </section>
 
+<WildShapeSheet open={shaping} left={wildShape?.left ?? 0} onclose={() => (shaping = false)} onpick={become} />
 <FeatureSheet
+	hp={form && c.wildShape ? { current: c.wildShape.hp, max: c.wildShape.beast.hp } : undefined}
 	counter={viewRow}
 	onclose={() => (viewing = null)}
 	{begin}

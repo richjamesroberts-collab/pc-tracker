@@ -3,6 +3,7 @@ import { recompute } from '$lib/rules/stats';
 import { SKILL_KEYS } from '$lib/rules/skills';
 import { HAIR_TONES, SKIN_TONES } from '$lib/sprite';
 import type {
+	Beast,
 	Ability,
 	AbilityScores,
 	ArmorType,
@@ -151,6 +152,33 @@ function background(v: unknown): Pick<Character, 'background'> {
 				: {}),
 			...(pickLanguages > 0 ? { pickLanguages } : {}),
 			...(pickEither > 0 ? { pickEither } : {})
+		}
+	};
+}
+
+/** The form a druid is in, kept only when it has what Vitals shows; the lists default so an old form still draws. */
+function wildShape(v: unknown): Pick<Character, 'wildShape'> {
+	if (!isObj(v) || !isObj(v.beast) || typeof v.beast.name !== 'string') return {};
+	const b = v.beast;
+	const list = <T,>(x: unknown): T[] => (Array.isArray(x) ? x.filter(isObj) : []) as T[];
+	const hp = Math.max(1, num(b.hp, 1));
+	return {
+		wildShape: {
+			hp: Math.min(hp, Math.max(1, num(v.hp, hp))),
+			beast: {
+				...(b as unknown as Beast),
+				ac: num(b.ac, 10),
+				hp,
+				str: num(b.str, 10),
+				dex: num(b.dex, 10),
+				con: num(b.con, 10),
+				passive: num(b.passive, 10),
+				speed: isObj(b.speed) ? (b.speed as Beast['speed']) : {},
+				senses: list(b.senses),
+				traits: list(b.traits),
+				attacks: list(b.attacks),
+				actions: list(b.actions)
+			}
 		}
 	};
 }
@@ -442,6 +470,7 @@ export function readBackup(data: unknown): Character {
 		...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === 'nonbinary' ? { gender: raw.gender } : {}),
 		...look(raw.look),
 		...background(raw.background),
+		...wildShape(raw.wildShape),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

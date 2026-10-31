@@ -8,16 +8,20 @@
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { applyDamage, applyHealing, applyTempHp, isDown } from '$lib/rules/hp';
+	import { asShape, damageShape } from '$lib/rules/wildshape';
 	import type { Character } from '$lib/types';
 
 	let {
 		open,
 		mode = $bindable('damage'),
 		onclose,
-		onchanged
+		onchanged,
+		form = false
 	}: {
 		open: boolean;
 		mode?: HpMode;
+		/** It's the Wild Shape form's hit points changing. */
+		form?: boolean;
 		onclose: () => void;
 		/** After hit points change, to animate it: the damage taken, or the hit points or temp HP actually gained. */
 		onchanged?: (change: HpChange) => void;
@@ -35,11 +39,20 @@
 
 	const c = $derived(session.character as Character);
 	const amount = $derived(Number(digits) || 0);
-	const down = $derived(isDown(c));
+	const shape = $derived(form ? c.wildShape : undefined);
+	const down = $derived(!shape && isDown(c));
 
 	const preview = $derived.by(() => {
 		if (!amount) return '';
 		const next = structuredClone($state.snapshot(c)) as Character;
+		if (shape) {
+			if (mode === 'heal') return `HP ${shape.hp} → ${Math.min(shape.beast.hp, shape.hp + amount)}`;
+			if (mode === 'temp') return amount <= c.tempHp ? `You already have ${c.tempHp} temp. Temp HP doesn't stack.` : `Temp HP ${c.tempHp} → ${amount}`;
+			const r = damageShape(next, amount);
+			const soak = r.absorbed ? `Temp HP absorbs ${r.absorbed} · ` : '';
+			if (!r.reverted) return `${soak}HP ${shape.hp} → ${next.wildShape?.hp}`;
+			return `${soak}Back to normal form${r.overflow ? `, ${r.overflow} carries over` : ''}`;
+		}
 		if (mode === 'damage') {
 			const r = applyDamage(next, amount, { critical });
 			if (down) return r.instantDeath ? 'Massive damage: instant death' : `+${critical ? 2 : 1} failed death save`;
@@ -66,6 +79,23 @@
 
 	function apply() {
 		if (!amount) return;
+		if (shape && mode === 'damage') {
+			const spell = c.concentration;
+			const r = session.mutate(`Took ${amount} damage`, (ch) => damageShape(ch, amount));
+			if (r?.reverted) session.notify(`Back to normal form${r.overflow ? `: ${r.overflow} damage carried over` : ''}`, { tone: 'warn', canUndo: true });
+			if (r?.instantDeath) session.notify('Massive damage: instant death', { tone: 'warn', canUndo: true });
+			if (r?.concentrationDC && spell) session.concentrationCheck = { spell, dc: r.concentrationDC };
+			onclose();
+			if (r && !r.reverted) onchanged?.({ kind: 'damage', amount });
+			return;
+		}
+		if (shape && mode === 'heal') {
+			const before = shape.hp;
+			session.mutate(`Healed ${amount}`, (ch) => asShape(ch, () => applyHealing(ch, amount)));
+			onclose();
+			onchanged?.({ kind: 'heal', amount: (c.wildShape?.hp ?? before) - before });
+			return;
+		}
 		if (mode === 'damage') {
 			const spell = c.concentration;
 			const r = session.mutate(`Took ${amount} damage`, (ch) => applyDamage(ch, amount, { critical }));

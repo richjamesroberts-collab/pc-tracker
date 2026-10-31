@@ -8,6 +8,7 @@ import featsJson from './feats.json';
 import optionsJson from './options.json';
 import backgroundsJson from './backgrounds.json';
 import equipmentJson from './equipment.json';
+import beastsJson from './beasts.json';
 import { CLASSES } from './classes';
 import { RACE_BOOKS, RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
@@ -39,6 +40,7 @@ import { TOOL_GROUPS, toolChoices, toolSources } from '../rules/tools';
 import { OPTION_INFO } from '../rules/levelup';
 import raceAbilities from './race-abilities.json';
 import { newCharacter } from '$lib/character';
+import type { Beast } from '$lib/types';
 import { armorClass, maxHp } from '../rules/stats';
 
 const classes = classesJson as Record<string, ClassContent>;
@@ -418,6 +420,23 @@ describe('bundled feats and class options', () => {
 		const soldier = (backgroundsJson as BackgroundData[]).find((b) => b.name === 'Soldier')!;
 		expect(chosenEntries(soldier.equipment, 'background', newKitChoices()).find((e) => e.ref === 'pouch|phb')?.coins).toBe(1000);
 		expect(kits.ranger.rows.at(-1)?.options[0].items).toContainEqual({ ref: 'arrow|phb', quantity: 20 });
+	});
+
+	it('has beasts with stat blocks Vitals can show', () => {
+		const beasts = beastsJson as Beast[];
+		expect(new Set(beasts.map((b) => b.id)).size).toBe(beasts.length);
+		expect(beasts.filter((b) => b.elemental).map((b) => b.name).sort()).toEqual(['Air Elemental', 'Earth Elemental', 'Fire Elemental', 'Water Elemental']);
+		for (const b of beasts) {
+			expect(b.hp, b.name).toBeGreaterThan(0);
+			expect(b.ac, b.name).toBeGreaterThan(0);
+			expect(Object.keys(b.speed).length, b.name).toBeGreaterThan(0);
+			for (const a of b.attacks) expect(a.damage, `${b.name} ${a.name}`).toMatch(/^[\dd +-]+ \w+$/);
+		}
+		const bear = beasts.find((b) => b.name === 'Brown Bear')!;
+		expect(bear).toMatchObject({ cr: '1', crValue: 1, ac: 11, hp: 34, str: 19, speed: { walk: 40, climb: 30 } });
+		expect(bear.attacks.map((a) => a.name)).toEqual(['Bite', 'Claws']);
+		expect(bear.actions[0].name).toBe('Multiattack');
+		expect(beasts.find((b) => b.name === 'Giant Spider')?.actions[0].name).toBe('Web (Recharge 5-6)');
 	});
 
 	it('has languages for every race, and tools the app lists', () => {

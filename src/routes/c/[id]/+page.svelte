@@ -45,6 +45,7 @@
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { passivePerception } from '$lib/rules/skills';
+	import { revert, shapeAttacks, shapeHours, shapeInitiative, shapePassive, shapeStats } from '$lib/rules/wildshape';
 	import { healingDice, isPotion } from '$lib/rules/potions';
 	import { isUsable, type UseFx as UseFxKind } from '$lib/rules/usable';
 	import { CARRY_STATUS, carrySpeed, encumbrance } from '$lib/rules/carry';
@@ -53,28 +54,37 @@
 	const c = $derived(session.character as Character);
 	const cls = $derived(CLASSES.find((x) => x.key === c.classKey));
 	const subclass = $derived(cls?.subclasses.find((s) => s.key === c.subclassKey)?.name);
-	const down = $derived(isDown(c));
+	/** A Wild Shape form gets a tab: Vitals then shows it, in the same layout, with its numbers. */
+	let tab = $state<'form' | 'self'>('form');
+	const beast = $derived(tab === 'form' ? c.wildShape?.beast : undefined);
+	const shaped = $derived(!!beast);
+	const ac = $derived(beast?.ac ?? c.ac);
+	const hp = $derived(beast && c.wildShape ? { current: c.wildShape.hp, max: beast.hp } : { current: c.hpCurrent, max: c.hpMax });
+	const down = $derived(!shaped && isDown(c));
 	const caster = $derived(isCaster(c));
-	const hpPct = $derived(Math.max(0, Math.min(100, (c.hpCurrent / c.hpMax) * 100)));
-	const tempPct = $derived(Math.min(100 - hpPct, (c.tempHp / c.hpMax) * 100));
+	/** A beast can't cast until Beast Spells at 18th level. */
+	const casting = $derived(caster && (!shaped || c.level >= 18));
+	const hpPct = $derived(Math.max(0, Math.min(100, (hp.current / hp.max) * 100)));
+	const tempPct = $derived(Math.min(100 - hpPct, (c.tempHp / hp.max) * 100));
 	const hpTone = $derived(hpPct > 50 ? 'high' : hpPct > 25 ? 'mid' : 'low');
 	const pact = $derived(pactSlots(c));
 	const spMax = $derived(sorceryPointsMax(c));
 
 	const load = $derived(encumbrance(c));
-	const slowed = $derived(load.status !== 'light');
+	const slowed = $derived(!shaped && load.status !== 'light');
 
 	const speed = $derived(walkingSpeed(c)?.total);
-	const passive = $derived(passivePerception(c));
+	const passive = $derived(beast ? shapePassive(c, beast) : passivePerception(c));
 	let passiveOpen = $state(false);
 	const passiveCheck = $derived<Check | null>(
 		passiveOpen ? { name: 'Passive Perception', sub: passive.own ? 'Your own number' : '10 + your Perception', total: passive.total, parts: passive.parts, notes: passive.notes, flat: true } : null
 	);
 	const stats = $derived(
 		[
-			speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(speed, load.status)} ft`, warn: slowed },
+			...(beast ? shapeStats(c, beast).slice(0, 1) : []),
+			!beast && speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(speed, load.status)} ft`, warn: slowed },
 			{ k: 'Passive', v: `${passive.total}`, open: () => (passiveOpen = true) },
-			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
+			...(beast ? shapeStats(c, beast).slice(1) : senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` })))
 		].filter((s): s is { k: string; v: string; warn?: boolean; open?: () => void } => !!s)
 	);
 
@@ -87,10 +97,17 @@
 
 	let hpOpen = $state(false);
 	let acOpen = $state(false);
+	let formAcOpen = $state(false);
+	const formAc = $derived<Check | null>(
+		formAcOpen && beast ? { name: 'Armor class', sub: beast.name, total: beast.ac, parts: [{ label: 'Stat block', value: `${beast.ac}`, from: beast.acFrom ?? beast.name }], notes: [], flat: true } : null
+	);
+	/** Stat block's special rules, on the form's tab. */
+	const abilitiesText = $derived(beast ? [...beast.actions, ...beast.traits] : []);
 
 	const abilities = $derived(abilityBreakdown(c));
-	const attacks = $derived(attackList(c, abilities));
-	const perAction = $derived(attacksPerAction(c));
+	const attacks = $derived(beast ? shapeAttacks(c, beast) : attackList(c, abilities));
+	const perAction = $derived(beast ? 1 : attacksPerAction(c));
+	const initiativeNow = $derived(beast ? shapeInitiative(c, beast) : c.initiativeModifier);
 	/** Id of the attack whose sheet is open. */
 	let attackId = $state<string | null>(null);
 	const openAttack = $derived(attacks.find((a) => a.id === attackId) ?? null);
@@ -176,13 +193,17 @@
 <header>
 	<Portrait name={c.name} image={c.image} size={60} muted={isDead(c)} />
 	<div class="who">
-		<h1>{c.name}</h1>
-		<p>{[raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}</p>
+		<h1>{beast?.name ?? c.name}</h1>
+		<p>
+			{beast
+				? `${beast.size} ${beast.elemental ? 'elemental' : 'beast'} · CR ${beast.cr} · ${c.name}`
+				: [raceLabel(c), subclass, `${cls?.name ?? c.classKey} ${c.level}`].filter(Boolean).join(' · ')}
+		</p>
 	</div>
-	{#if c.initiativeModifier != null}
-		<div class="init" role="img" aria-label="Initiative {signedMod(c.initiativeModifier)}">
+	{#if initiativeNow != null}
+		<div class="init" role="img" aria-label="Initiative {signedMod(initiativeNow)}">
 			<span class="k">INIT</span>
-			<span class="v">{signedMod(c.initiativeModifier)}</span>
+			<span class="v">{signedMod(initiativeNow)}</span>
 		</div>
 	{/if}
 	<button
@@ -222,11 +243,33 @@
 	</button>
 {/if}
 
+{#if c.wildShape}
+	<nav class="forms" aria-label="Form">
+		<button type="button" aria-pressed={tab === 'self'} onclick={() => (tab = 'self')}>{c.name}</button>
+		<button type="button" aria-pressed={tab === 'form'} onclick={() => (tab = 'form')}>{c.wildShape.beast.name}</button>
+	</nav>
+	<div class="card shape-bar">
+		<p>
+			{#if shaped}
+				Up to {shapeHours(c)} {shapeHours(c) === 1 ? 'hour' : 'hours'}. Back to normal as a bonus action, or at 0 hit points.
+			{:else}
+				You're in {c.wildShape.beast.name} form. These are your own hit points, waiting for you.
+			{/if}
+		</p>
+		<button type="button" onclick={() => session.mutate(`Back to normal form: ${c.hpCurrent} HP`, revert)}>Revert</button>
+	</div>
+{/if}
+
 <div class="vitals-row" class:down>
-	<button type="button" class="card ac-card" aria-label="Armor class {c.ac}. Tap to change." onclick={() => (acOpen = true)}>
+	<button
+		type="button"
+		class="card ac-card"
+		aria-label="Armor class {ac}. Tap to {shaped ? 'see how' : 'change'}."
+		onclick={() => (shaped ? (formAcOpen = true) : (acOpen = true))}
+	>
 		<span class="label">Armor class</span>
-		<AcShield ac={c.ac} size={76} />
-		<span class="ac-hint">Tap to change</span>
+		<AcShield {ac} size={76} />
+		<span class="ac-hint">{shaped ? 'Tap for details' : 'Tap to change'}</span>
 	</button>
 	{#if down}
 		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
@@ -243,7 +286,7 @@
 				{/if}
 			</div>
 			<p class="hp-num">
-				{#key hpFx?.n}<span class="cur" class:pulse={hpFx?.kind === 'heal'} class:hit={hpFx?.kind === 'damage'}>{c.hpCurrent}</span>{/key}<span class="max">/ {c.hpMax}</span>
+				{#key hpFx?.n}<span class="cur" class:pulse={hpFx?.kind === 'heal'} class:hit={hpFx?.kind === 'damage'}>{hp.current}</span>{/key}<span class="max">/ {hp.max}</span>
 			</p>
 			<div class="bar" aria-hidden="true">
 				<div class="fill {hpTone}" style:width="{hpPct}%"></div>
@@ -279,7 +322,7 @@
 	{/if}
 </div>
 
-<DefensesCard />
+<DefensesCard form={shaped} />
 
 {#if c.concentration}
 	<div class="conc">
@@ -292,7 +335,7 @@
 	</div>
 {/if}
 
-<SavingThrows />
+<SavingThrows form={shaped} />
 
 {#if stats.length}
 	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
@@ -316,7 +359,7 @@
 	</a>
 {/if}
 
-{#if potions.healing.count || potions.other.count}
+{#if !shaped && (potions.healing.count || potions.other.count)}
 	<section class="potions" aria-labelledby="potions-title">
 		<h2 id="potions-title" class="label">Potions</h2>
 		<div class="card potion-list">
@@ -336,7 +379,7 @@
 	</section>
 {/if}
 
-{#if usable.length || useFx}
+{#if !shaped && (usable.length || useFx)}
 	<section class="potions usable" aria-labelledby="usable-title" bind:this={usableCard}>
 		<h2 id="usable-title" class="label">Items</h2>
 		<div class="usable-wrap">
@@ -377,13 +420,33 @@
 				<span class="a-dmg">{a.damage}</span>
 			</button>
 		{/each}
-		{#if attacks.length === 1}
+		{#if shaped && !attacks.length}
+			<p class="equip-hint">No attacks in this form.</p>
+		{:else if !shaped && attacks.length === 1}
 			<a class="equip-hint" href={resolve('/c/[id]/inventory', { id: c.id })}>Equip weapons in Inventory to see them here</a>
 		{/if}
 	</div>
 </section>
 
-{#if caster}
+{#if abilitiesText.length}
+	<section class="attacks" aria-labelledby="form-title">
+		<h2 id="form-title" class="label">Abilities</h2>
+		<div class="card form-text">
+			{#each abilitiesText as t (t.name)}
+				<details>
+					<summary>{t.name}</summary>
+					{#each t.text.split('\n') as para, i (i)}<p>{para}</p>{/each}
+				</details>
+			{/each}
+		</div>
+	</section>
+{/if}
+
+{#if shaped && caster && !casting}
+	<p class="form-note">You can't cast spells in this form. Spells you're concentrating on carry on.</p>
+{/if}
+
+{#if casting}
 	<section class="spellcasting" aria-labelledby="spellcasting-title">
 		<h2 id="spellcasting-title" class="label">Spellcasting</h2>
 		<div class="stats" style:--cols={spellcasting.length}>
@@ -430,14 +493,15 @@
 	{/if}
 {/if}
 
-<CountersCard onhealed={hpChanged} />
+<CountersCard onhealed={hpChanged} form={shaped} ontransformed={() => (tab = 'form')} />
 
 <div class="rests">
 	<button type="button" onclick={() => rest('short')}>Short rest</button>
 	<button type="button" onclick={() => rest('long')}>Long rest</button>
 </div>
 
-<HpSheet open={hpOpen} bind:mode={hpMode} onclose={() => (hpOpen = false)} onchanged={hpChanged} />
+<HpSheet open={hpOpen} bind:mode={hpMode} form={shaped} onclose={() => (hpOpen = false)} onchanged={hpChanged} />
+<CheckSheet check={formAc} edit="Change armor class in Edit" onclose={() => (formAcOpen = false)} />
 <AttackSheet attack={openAttack} onclose={() => (attackId = null)} />
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
@@ -1068,6 +1132,82 @@
 		color: var(--color-conc-ink);
 		font-size: 18px;
 		font-weight: 800;
+	}
+
+	.forms {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		margin-top: 12px;
+		padding: 4px;
+		border-radius: 14px;
+		background: var(--color-surface-raised);
+	}
+
+	.forms button {
+		min-height: 40px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 14px;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.forms button[aria-pressed='true'] {
+		background: var(--color-surface);
+		color: var(--color-spell-ink);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.shape-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 8px;
+		padding: 10px 12px;
+		font-size: 13px;
+		color: var(--color-text-muted);
+	}
+
+	.shape-bar p {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.shape-bar button {
+		flex-shrink: 0;
+		min-height: 40px;
+		background: var(--color-surface);
+		border: 1.5px solid var(--color-spell-edge);
+		color: var(--color-spell-ink);
+		font-weight: 800;
+	}
+
+	.form-text details + details {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.form-text summary {
+		padding: 12px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.form-text p {
+		padding: 0 12px 12px;
+		font-size: 14px;
+		line-height: 1.45;
+	}
+
+	.form-note {
+		margin-top: 12px;
+		font-size: 14px;
+		color: var(--color-text-muted);
 	}
 
 	.stats {

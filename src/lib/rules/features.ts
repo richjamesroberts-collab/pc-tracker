@@ -103,7 +103,8 @@ export const RESOURCES: ResourceDef[] = [
 		die: (c) => dieByLevel(c.level, [[1, 'd6'], [5, 'd8'], [10, 'd10'], [15, 'd12']])
 	}),
 	cls('cleric', { key: 'channel-divinity', name: 'Channel Divinity', max: (c) => byLevel(c.level, [[2, 1], [6, 2], [18, 3]]), reset: short }),
-	cls('druid', { key: 'wild-shape', name: 'Wild Shape', max: (c) => byLevel(c.level, [[2, 2], [20, 0]]), reset: short }),
+	// Archdruid's unlimited uses are in `shapeCost`: the counter stays, to pick a form from.
+	cls('druid', { key: 'wild-shape', name: 'Wild Shape', max: (c) => byLevel(c.level, [[2, 2]]), reset: short }),
 	cls('fighter', { key: 'second-wind', name: 'Second Wind', max: () => 1, reset: short, heal: { selfOnly: true, roll: (c) => `1d10 + ${c.level}` } }),
 	cls('fighter', { key: 'action-surge', name: 'Action Surge', max: (c) => byLevel(c.level, [[2, 1], [17, 2]]), reset: short }),
 	cls('fighter', { key: 'indomitable', name: 'Indomitable', max: (c) => byLevel(c.level, [[9, 1], [13, 2], [17, 3]]), reset: long }),

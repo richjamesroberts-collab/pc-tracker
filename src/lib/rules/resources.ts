@@ -111,6 +111,7 @@ export function shortRest(c: Character): void {
 }
 
 export function longRest(c: Character): void {
+	c.wildShape = undefined;
 	c.hpCurrent = c.hpMax;
 	c.tempHp = 0;
 	c.deathSaves = { successes: 0, failures: 0 };
