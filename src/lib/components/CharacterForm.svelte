@@ -19,7 +19,7 @@
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { defenses, DEFENSE_NAMES } from '$lib/rules/defenses';
-	import { backgroundSkills, canPickSkill, fixedSkills, givenBySubclass, raceSkills, skillChoices, skillsMade, SKILLS } from '$lib/rules/skills';
+	import { backgroundSkills, canPickSkill, fixedSkills, givenBySubclass, passivePerception, raceSkills, skillChoices, skillsMade, SKILLS } from '$lib/rules/skills';
 	import { fittingPicks, toolChoices, toolSources } from '$lib/rules/tools';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
@@ -240,6 +240,7 @@
 			ac: armorClass(snap, breakdown.scores),
 			hp: maxHp(snap, breakdown),
 			init: initiative({ ...snap, initiativeOverride: undefined }, breakdown.scores),
+			passive: passivePerception({ ...snap, passivePerception: undefined }, breakdown),
 			speed: walkingSpeed({ ...snap, speed: undefined }),
 			spellModAuto: spellcastingMod({ ...snap, spellModOverride: undefined }, breakdown.scores),
 			spellDc: spellSaveDC({ ...snap, spellMod }),
@@ -578,12 +579,16 @@
 			</label>
 			<label class="field">
 				<span>Passive Perc.</span>
-				<input type="number" inputmode="numeric" min="0" bind:value={c.passivePerception} placeholder="12" />
+				<input type="number" inputmode="numeric" min="0" bind:value={c.passivePerception} placeholder={`${preview.passive.total}`} />
 			</label>
 		</div>
 		<p class="hint">
 			Initiative: {formula(preview.init.parts, true)}.
 			{c.initiativeOverride != null ? 'Clear the box to use this.' : 'Type a number to use your own (Alert feat).'}
+		</p>
+		<p class="hint">
+			Passive Perception: {formula(preview.passive.parts)}.
+			{c.passivePerception != null ? 'Clear the box to use this.' : 'Type a number to use your own.'}
 		</p>
 	{/if}
 

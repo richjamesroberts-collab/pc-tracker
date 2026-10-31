@@ -9,6 +9,8 @@
 		total: number;
 		parts: StatSource[];
 		notes: string[];
+		/** A score rather than a modifier (passive Perception): shown without a plus sign. */
+		flat?: boolean;
 	}
 </script>
 
@@ -27,6 +29,8 @@
 	$effect(() => {
 		if (check) shown = check;
 	});
+
+	const value = (x: Check) => (x.flat ? `${x.total}` : signedMod(x.total));
 </script>
 
 <Sheet open={!!check} {onclose} label={shown?.name ?? 'Check'}>
@@ -37,11 +41,11 @@
 				<h2>{live.name}</h2>
 				<p class="muted">{live.sub}</p>
 			</div>
-			<strong class="total">{signedMod(live.total)}</strong>
+			<strong class="total">{value(live)}</strong>
 		</div>
 
 		<h3 class="k">How it’s worked out</h3>
-		<Breakdown parts={live.parts} total={signedMod(live.total)} />
+		<Breakdown parts={live.parts} total={value(live)} />
 
 		{#if live.notes.length}
 			<h3 class="k">At the table (not in the number)</h3>
