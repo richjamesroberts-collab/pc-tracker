@@ -277,6 +277,9 @@ export interface LevelUpChoices {
 	weapons?: string[];
 	/** Skills gaining expertise from the class. */
 	expertise?: Skill[];
+	/** The full lists of picked tools and languages after levelling, when the level brings more. */
+	tools?: string[];
+	languages?: string[];
 	/** The full list of metamagic options after levelling. */
 	metamagic?: string[];
 	/** The full list of class options after levelling, for each kind in `optionKinds`. */
@@ -337,6 +340,8 @@ export function applyChoices(c: Character, choices: LevelUpChoices, level: numbe
 	if (choices.fightingStyles) c.fightingStyles = [...new Set(choices.fightingStyles)];
 	for (const w of choices.weapons ?? []) if (!c.weaponProficiencies.includes(w)) c.weaponProficiencies.push(w);
 	for (const s of choices.expertise ?? []) if (!c.skillExpertise.includes(s)) c.skillExpertise.push(s);
+	if (choices.tools) c.toolProficiencies = [...new Set(choices.tools)];
+	if (choices.languages) c.languages = [...new Set(choices.languages)];
 	if (choices.metamagic) c.metamagic = [...new Set(choices.metamagic)];
 	if (choices.optionKinds?.length) {
 		const kinds = new Set(choices.optionKinds);

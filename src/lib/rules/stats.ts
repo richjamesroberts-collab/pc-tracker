@@ -1,5 +1,5 @@
 import raceAbilitiesJson from '$lib/data/race-abilities.json';
-import type { Ability, AbilityScores, Character, InventoryItem } from '$lib/types';
+import type { Ability, AbilityScores, Character, InventoryItem, ToolLanguages } from '$lib/types';
 import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from './abilities';
 import { isActive } from './items';
 import { proficiencyBonus, spellAbility } from './spellcasting';
@@ -27,7 +27,7 @@ export interface RaceDefenses {
 	conditionImmune?: string[];
 }
 
-interface RaceAbilities extends RaceDefenses {
+interface RaceAbilities extends RaceDefenses, ToolLanguages {
 	asi?: RaceAsi;
 	/** Walking speed in feet; a subrace's own speed replaces it (Wood Elf). */
 	speed?: number;
@@ -35,7 +35,7 @@ interface RaceAbilities extends RaceDefenses {
 	darkvision?: number;
 	/** Counts as one size larger for carrying capacity (Powerful Build, Little Giant, Equine Build). */
 	powerfulBuild?: true;
-	subraces: Record<string, { asi?: RaceAsi; replaces?: true; speed?: number; darkvision?: number } & RaceDefenses>;
+	subraces: Record<string, { asi?: RaceAsi; replaces?: true; speed?: number; darkvision?: number } & RaceDefenses & ToolLanguages>;
 }
 
 export const RACE_ABILITIES = raceAbilitiesJson as Record<string, RaceAbilities>;

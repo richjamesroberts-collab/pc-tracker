@@ -131,6 +131,30 @@ function container(v: unknown): ItemContainer | undefined {
 	};
 }
 
+/** The character's background, kept only when it says which one. */
+function background(v: unknown): Pick<Character, 'background'> {
+	if (!isObj(v) || typeof v.ref !== 'string' || typeof v.name !== 'string') return {};
+	const choose = isObj(v.choose) ? v.choose : undefined;
+	const pickTools = Array.isArray(v.pickTools) ? v.pickTools.filter(isObj) : [];
+	const pickLanguages = num(v.pickLanguages, 0);
+	const pickEither = num(v.pickEither, 0);
+	return {
+		background: {
+			ref: v.ref,
+			name: v.name,
+			skills: skills(v.skills),
+			...(choose ? { choose: { count: Math.max(1, num(choose.count, 1)), ...(Array.isArray(choose.from) ? { from: skills(choose.from) } : {}) } } : {}),
+			...(strings(v.tools).length ? { tools: strings(v.tools) } : {}),
+			...(strings(v.languages).length ? { languages: strings(v.languages) } : {}),
+			...(pickTools.length
+				? { pickTools: pickTools.map((p) => ({ count: Math.max(1, num(p.count, 1)), ...(Array.isArray(p.from) ? { from: strings(p.from) } : {}) })) }
+				: {}),
+			...(pickLanguages > 0 ? { pickLanguages } : {}),
+			...(pickEither > 0 ? { pickEither } : {})
+		}
+	};
+}
+
 /** The pixel hero's skin and hair colours, kept only when they're ones we know. */
 function look(v: unknown): Pick<Character, 'look'> {
 	if (!isObj(v)) return {};
@@ -384,6 +408,8 @@ export function readBackup(data: unknown): Character {
 		skillProficiencies: skills(raw.skillProficiencies),
 		skillExpertise: skills(raw.skillExpertise),
 		saveProficiencies: strings(raw.saveProficiencies).filter((x): x is Ability => ABILITY_KEYS.includes(x as Ability)),
+		toolProficiencies: strings(raw.toolProficiencies),
+		languages: strings(raw.languages),
 		fightingStyles: strings(raw.fightingStyles),
 		feats: feats(raw.feats),
 		classOptions: classOptions(raw.classOptions),
@@ -415,6 +441,7 @@ export function readBackup(data: unknown): Character {
 		...(raw.encumbranceRule === 'variant' ? { encumbranceRule: 'variant' as const } : {}),
 		...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === 'nonbinary' ? { gender: raw.gender } : {}),
 		...look(raw.look),
+		...background(raw.background),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

@@ -250,6 +250,21 @@ export function placed(c: Pick<Character, 'items'>, item: InventoryItem, to: Pla
 	return out;
 }
 
+/** Pack contents that fit in the pack's own container (a backpack's 30 lb), in order; the rest is strapped on. */
+export function packPlan(items: InventoryItem[]): { box: string; inside: string[] } | undefined {
+	const box = items.find((i) => i.container);
+	if (!box) return undefined;
+	let room = box.container!.lb ?? Infinity;
+	const inside: string[] = [];
+	for (const i of items) {
+		const w = (i.weight ?? 0) * i.quantity;
+		if (i === box || w > room) continue;
+		inside.push(i.id);
+		room -= w;
+	}
+	return { box: box.id, inside };
+}
+
 export const partyBag = (c: Pick<Character, 'stashes'>) => c.stashes.find((s) => s.kind === 'bag');
 
 /** Add a place, a mount (with its carrying capacity) or the party's Bag of Holding (only one). Returns its id. */

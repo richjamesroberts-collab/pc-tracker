@@ -95,6 +95,13 @@ class PcTrackerDB extends Dexie {
 				.toCollection()
 				.modify((c: Character) => migrateToBaseStats(c))
 		);
+		// Tool proficiencies and languages.
+		this.version(13).upgrade((tx) =>
+			tx
+				.table('characters')
+				.toCollection()
+				.modify((c: Character) => migrateToBaseStats(c))
+		);
 	}
 }
 

@@ -2,6 +2,7 @@ import type {
 	Ability,
 	AbilityScores,
 	Character,
+	CharacterBackground,
 	CharacterFeat,
 	ClassOption,
 	ClassOptionKind,
@@ -11,7 +12,8 @@ import type {
 	ItemEffects,
 	ItemUse,
 	ItemWeapon,
-	Skill
+	Skill,
+	ToolLanguages
 } from '$lib/types';
 import { GEAR_USES, readItemUse } from '$lib/rules/usable';
 import { CLASS_MAP } from './classes';
@@ -20,6 +22,7 @@ import { putCoinsAway } from '$lib/rules/carry';
 import { armorClass, maxHp } from '$lib/rules/stats';
 import { RACE_MAP, raceLabel } from './races';
 import type { ResourceDef } from '$lib/rules/features';
+import type { ClassKit, KitRow } from '$lib/rules/starting';
 
 export interface Feature {
 	name: string;
@@ -322,21 +325,23 @@ export function gearInventoryItem(g: GearItem, quantity = g.bundle ?? 1): Invent
 export function unpack(pack: GearItem, byId: Map<string, GearItem>): InventoryItem[] {
 	return (pack.contents ?? []).map((c) => {
 		const g = c.ref ? byId.get(c.ref) : undefined;
-		if (g) return gearInventoryItem(g, c.quantity);
-		return {
-			id: crypto.randomUUID(),
-			kind: 'gear',
-			name: c.name ?? c.ref ?? 'Item',
-			type: '',
-			rarity: '',
-			attunement: false,
-			attuned: false,
-			quantity: c.quantity,
-			effects: {},
-			notes: ''
-		};
+		return g ? gearInventoryItem(g, c.quantity) : plainItem(c.name ?? c.ref ?? 'Item', c.quantity);
 	});
 }
+
+/** A new inventory entry for a thing that isn't on the gear list. */
+export const plainItem = (name: string, quantity: number): InventoryItem => ({
+	id: crypto.randomUUID(),
+	kind: 'gear',
+	name,
+	type: '',
+	rarity: '',
+	attunement: false,
+	attuned: false,
+	quantity,
+	effects: {},
+	notes: ''
+});
 
 /**
  * Fill in armor and effects on bundled items added before they were tracked. Returns true if anything
@@ -488,6 +493,65 @@ export function loadOptions(): Promise<ClassOptionData[]> {
 		}
 	);
 	return optionCache;
+}
+
+/** A background from backgrounds.json. */
+export interface BackgroundData extends ToolLanguages {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	/** Skills it gives outright. */
+	skills: Skill[];
+	/** Skills to pick; any skill when `from` is left out. */
+	choose?: { count: number; from?: Skill[] };
+	/** Starting equipment; a Custom Background has none of its own. */
+	equipment: KitRow[];
+	/** The book's summary: skills, tools, languages and equipment, as written. */
+	lines: { name: string; text: string }[];
+	features: { name: string; text: string }[];
+}
+
+/** The blank background: two skills of the player's choice and a name of their own. */
+export const CUSTOM_BACKGROUND = 'custom background|phb';
+
+export const BACKGROUND_BOOKS = [
+	{ key: 'PHB', name: "Player's Handbook" },
+	{ key: 'SCAG', name: "Sword Coast Adventurer's Guide" }
+];
+
+let backgroundCache: Promise<BackgroundData[]> | undefined;
+
+/** Loads the bundled backgrounds as a separate chunk, once. */
+export function loadBackgrounds(): Promise<BackgroundData[]> {
+	backgroundCache ??= import('./backgrounds.json').then(
+		(m) => m.default as BackgroundData[],
+		(err) => {
+			backgroundCache = undefined;
+			throw err;
+		}
+	);
+	return backgroundCache;
+}
+
+/** A new background entry for the character, copying what the app needs without the bundled data. */
+export function characterBackground(b: BackgroundData): CharacterBackground {
+	const { id, source: _source, equipment: _equipment, lines: _lines, features: _features, ...rest } = b;
+	return { ref: id, ...structuredClone(rest) };
+}
+
+let equipmentCache: Promise<Record<string, ClassKit>> | undefined;
+
+/** Loads each class's starting equipment as a separate chunk, once. */
+export function loadEquipment(): Promise<Record<string, ClassKit>> {
+	equipmentCache ??= import('./equipment.json').then(
+		(m) => m.default as Record<string, ClassKit>,
+		(err) => {
+			equipmentCache = undefined;
+			throw err;
+		}
+	);
+	return equipmentCache;
 }
 
 /** A new feat entry for the character, copying what the app needs without the bundled data. */

@@ -329,6 +329,41 @@ describe('how the hero looks', () => {
 	});
 });
 
+describe('tools and languages', () => {
+	it('start empty on older backups, and keep what was picked', () => {
+		const old = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });
+		expect(old).toMatchObject({ toolProficiencies: [], languages: [] });
+		const c = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'fighter', toolProficiencies: ['lute', 7], languages: ['Elvish'] } });
+		expect(c).toMatchObject({ toolProficiencies: ['lute'], languages: ['Elvish'] });
+	});
+});
+
+describe('background', () => {
+	const read = (background: unknown) => readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'fighter', background } });
+
+	it('stays unset on older backups, and keeps known skills', () => {
+		expect(read(undefined)).not.toHaveProperty('background');
+		expect(read({ name: 'No ref' })).not.toHaveProperty('background');
+		expect(read({ ref: 'faction agent|scag', name: 'Faction Agent', skills: ['insight', 'juggling'], choose: { count: 1, from: ['arcana', 'juggling'] } }).background).toEqual({
+			ref: 'faction agent|scag',
+			name: 'Faction Agent',
+			skills: ['insight'],
+			choose: { count: 1, from: ['arcana'] }
+		});
+		expect(read({ ref: 'custom background|phb', name: 'Haunted One', skills: [], choose: { count: 2 } }).background).toEqual({
+			ref: 'custom background|phb',
+			name: 'Haunted One',
+			skills: [],
+			choose: { count: 2 }
+		});
+		expect(read({ ref: 'soldier|phb', name: 'Soldier', skills: [], tools: ['vehicles (land)'], pickTools: [{ count: 1, from: ['gaming'] }], pickLanguages: 2 }).background).toMatchObject({
+			tools: ['vehicles (land)'],
+			pickTools: [{ count: 1, from: ['gaming'] }],
+			pickLanguages: 2
+		});
+	});
+});
+
 describe('containers and stashes', () => {
 	const thing = (id: string, extra: object = {}) => ({ id, kind: 'gear', name: id, type: '', rarity: '', quantity: 1, notes: '', ...extra });
 

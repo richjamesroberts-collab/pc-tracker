@@ -426,6 +426,7 @@ for (const key of Object.keys(CLASS_SOURCES)) {
 const featureText = (rec) => flatten(rec.entries).join('\n');
 
 const classesOut = {};
+const classKits = {};
 for (const [key, source] of Object.entries(CLASS_SOURCES)) {
 	const file = classFiles[key];
 	const cls = file.class.find((c) => c.source === source);
@@ -468,6 +469,7 @@ for (const [key, source] of Object.entries(CLASS_SOURCES)) {
 	for (const id of Object.keys(table)) if (!seen.has(id)) fail(`${cls.name} subclass ${id} is not in the 5etools data`);
 
 	classesOut[key] = { name: cls.name, features, subclasses };
+	classKits[key] = cls.startingEquipment;
 }
 refSources = new Set(SOURCES);
 
@@ -630,6 +632,38 @@ function defensesOf(x) {
 	return out;
 }
 
+const TOOL_GROUPS = { anyArtisansTool: 'artisan', anyMusicalInstrument: 'instrument', anyGamingSet: 'gaming', 'musical instrument': 'instrument', 'gaming set': 'gaming' };
+
+/**
+ * `{ tools, languages, pickTools, pickLanguages }` from a 5etools race, subrace or background: tools are lowercase, as
+ * `TOOL_GROUPS` in rules/tools.ts has them, and picks can name a group. Where a list has alternatives (Clan Crafter's "Dwarvish,
+ * or another if you already speak it") the first is taken.
+ */
+function toolLanguagesOf(x) {
+	const tools = [];
+	const languages = [];
+	const pickTools = [];
+	let pickLanguages = 0;
+	for (const [k, v] of Object.entries(x.languageProficiencies?.[0] ?? {})) {
+		if (k === 'anyStandard' || k === 'any') pickLanguages += v;
+		else if (v === true) languages.push(k.replace(/\b\w/g, (ch) => ch.toUpperCase()));
+		else fail(`Unknown language proficiency ${k} on ${x.name}`);
+	}
+	for (const [k, v] of Object.entries(x.toolProficiencies?.[0] ?? {})) {
+		if (k === 'choose') pickTools.push({ count: v.count ?? 1, from: v.from.map((f) => TOOL_GROUPS[f] ?? f) });
+		else if (k === 'any') pickTools.push({ count: v });
+		else if (TOOL_GROUPS[k]) pickTools.push({ count: v, from: [TOOL_GROUPS[k]] });
+		else if (v === true) tools.push(k);
+		else fail(`Unknown tool proficiency ${k} on ${x.name}`);
+	}
+	return {
+		...(tools.length ? { tools } : {}),
+		...(languages.length ? { languages } : {}),
+		...(pickTools.length ? { pickTools } : {}),
+		...(pickLanguages ? { pickLanguages } : {})
+	};
+}
+
 const raceAbilities = {};
 for (const r of raceList) {
 	const subraces = subracesOf(r);
@@ -640,6 +674,9 @@ for (const r of raceList) {
 	// Custom Lineage's darkvision is one of two choices, so the player adds it themselves.
 	if (r.darkvision && r.name !== 'Custom Lineage') entry.darkvision = r.darkvision;
 	Object.assign(entry, defensesOf(r));
+	// Monsters of the Multiverse gives every race Common and one more in its introduction, not on the race.
+	const everyone = r.source === 'MPMM' ? { languageProficiencies: [{ common: true, anyStandard: 1 }] } : {};
+	Object.assign(entry, toolLanguagesOf({ ...everyone, ...standard, ...r }));
 	// Powerful Build, Little Giant, Equine Build: one size larger for carrying capacity.
 	const traits = racesOut.find((x) => x.key === raceKey(r)).traits;
 	if (traits.some((t) => /count as one size larger when determining your carrying/.test(t.text))) entry.powerfulBuild = true;
@@ -647,13 +684,14 @@ for (const r of raceList) {
 		const own = walkSpeed(s.speed);
 		return own && own !== speed ? own : undefined;
 	};
-	for (const s of subraces.filter((s) => s.name && (s.ability || subSpeed(s) || s.darkvision || Object.keys(defensesOf(s)).length))) {
+	for (const s of subraces.filter((s) => s.name && (s.ability || subSpeed(s) || s.darkvision || Object.keys({ ...defensesOf(s), ...toolLanguagesOf(s) }).length))) {
 		entry.subraces[subraceKey(s)] = {
 			...(s.ability ? { asi: asiOf(s.ability) } : {}),
 			...(subSpeed(s) ? { speed: subSpeed(s) } : {}),
 			...(s.ability && !r.ability && standard?.ability ? { replaces: true } : {}),
 			...(s.darkvision ? { darkvision: s.darkvision } : {}),
-			...defensesOf(s)
+			...defensesOf(s),
+			...toolLanguagesOf(s)
 		};
 	}
 	// Dragonborn resist their ancestry's damage type (5etools has it as a choice, the ancestry table has the answer).
@@ -1140,6 +1178,157 @@ if (featsOut.length < MIN_FEATS) fail(`Expected at least ${MIN_FEATS} feats, fou
 const featsPath = join(root, 'src/lib/data/feats.json');
 writeFileSync(featsPath, JSON.stringify(featsOut));
 console.log(`Wrote ${featsOut.length} feats to ${featsPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Starting equipment: rows of options to choose between, for classes (with the gold to take instead) and backgrounds.
+// An entry is bundled gear by `ref` (with a shorter `name` if the book names it), a plain `name`, a `pick` the player
+// makes from a kind of gear, or `coins` in copper, held by the entry when it's a pouch.
+
+const KIT_PICKS = {
+	weaponSimple: 'Any simple weapon',
+	weaponSimpleMelee: 'Any simple melee weapon',
+	weaponMartial: 'Any martial weapon',
+	weaponMartialMelee: 'Any martial melee weapon',
+	instrumentMusical: 'Any musical instrument',
+	focusSpellcastingArcane: 'An arcane focus',
+	focusSpellcastingDruidic: 'A druidic focus',
+	focusSpellcastingHoly: 'A holy symbol',
+	toolArtisan: "Any artisan's tools",
+	setGaming: 'Any gaming set'
+};
+/** Where a book's description stops being the thing's name; the full text goes in the item's notes. */
+const KIT_DETAIL = /\s(?:used to|in the style|indicative|that depict|marking|representing|posing|to remember|taken from|from your|including|with which|stuffed|on the subject)\b.*$/;
+/** Generic things the books hand out that the gear list only has in forms. */
+const KIT_ITEMS = { 'holy symbol|phb': 'amulet|phb' };
+const capitalised = (s) => s[0].toUpperCase() + s.slice(1);
+const kitName = (text) => capitalised(text.replace(/\s*\(.*\)$/, '').replace(KIT_DETAIL, ''));
+const coinText = (cp) => (cp % 100 ? `${cp / 10} sp` : `${cp / 100} gp`);
+
+function kitEntry(raw) {
+	const e = typeof raw === 'string' ? { item: raw } : raw;
+	if (e.equipmentType) {
+		if (!KIT_PICKS[e.equipmentType]) fail(`Unknown starting equipment type ${e.equipmentType}`);
+		return Array.from({ length: e.quantity ?? 1 }, () => ({ pick: e.equipmentType, quantity: 1 }));
+	}
+	const coins = e.containsValue ?? e.value;
+	const money = coins ? { coins } : {};
+	const quantity = e.quantity ?? 1;
+	if (e.special) {
+		const name = kitName(e.special);
+		const text = `${capitalised(e.special)}${e.worthValue ? `, worth ${coinText(e.worthValue)}` : ''}`;
+		return [{ name, quantity, ...(text !== name ? { note: text } : {}), ...money }];
+	}
+	if (!e.item) return [{ quantity: 0, ...money }];
+	const id = KIT_ITEMS[e.item.toLowerCase()] ?? e.item.toLowerCase();
+	const b = bundles.get(id);
+	const ref = b?.ref ?? id;
+	if (!gearIds.has(ref)) fail(`Starting equipment names unknown item ${e.item}`);
+	const short = e.displayName && kitName(e.displayName);
+	return [
+		{
+			ref,
+			quantity: quantity * (b?.quantity ?? 1),
+			...(short && short.split(' ').length <= 3 ? { name: short } : {}),
+			...(e.displayName && capitalised(e.displayName) !== short ? { note: capitalised(e.displayName) } : {}),
+			...money
+		}
+	];
+}
+
+function kitLabel(e) {
+	if (e.pick) return KIT_PICKS[e.pick];
+	if (!e.ref && !e.name) return coinText(e.coins);
+	const name = e.name ?? gearOut.find((g) => g.id === e.ref).name;
+	return `${e.quantity > 1 ? `${e.quantity} × ` : ''}${name}${e.coins ? ` (${coinText(e.coins)})` : ''}`;
+}
+
+function kitRows(rows) {
+	return (rows ?? []).map((row) => {
+		const always = (row._ ?? []).flatMap(kitEntry);
+		const keys = Object.keys(row).filter((k) => k !== '_').sort();
+		const options = (keys.length ? keys : ['_']).map((k) => {
+			const items = [...always, ...(k === '_' ? [] : row[k].flatMap(kitEntry))];
+			return { label: items.map(kitLabel).join(', '), items };
+		});
+		return { options };
+	});
+}
+
+const equipmentOut = Object.fromEntries(
+	Object.entries(classKits).map(([key, kit]) => {
+		const [, count, sides, times] = /(\d+)d(\d+)(?: × (\d+))?/.exec(kit.goldAlternative) ?? fail(`No starting gold for ${key}`);
+		return [key, { gold: { count: +count, sides: +sides, times: +(times ?? 1) }, rows: kitRows(kit.defaultData) }];
+	})
+);
+const equipmentPath = join(root, 'src/lib/data/equipment.json');
+writeFileSync(equipmentPath, JSON.stringify(equipmentOut));
+console.log(`Wrote starting equipment for ${Object.keys(equipmentOut).length} classes to ${equipmentPath}`);
+
+// ---------------------------------------------------------------------------------------------
+// Backgrounds (PHB and SCAG, the player books that have them; XGE and TCE have none). Custom Background covers the rest.
+
+const BACKGROUND_SOURCES = ['PHB', 'SCAG'];
+const allBackgrounds = readJson('backgrounds.json').background;
+
+/** A variant's feature or summary list swapped into the entries it copies. */
+function modEntries(entries, mods) {
+	const out = [...entries];
+	for (const m of [mods].flat()) {
+		if (m.mode === 'insertArr') {
+			out.splice(m.index, 0, ...[m.items].flat());
+			continue;
+		}
+		if (m.mode !== 'replaceArr') fail(`Unknown background entry mod: ${m.mode}`);
+		const at = typeof m.replace === 'string' ? out.findIndex((e) => e.name === m.replace) : m.replace.index;
+		if (!out[at]) fail(`Background entry to replace not found: ${JSON.stringify(m.replace)}`);
+		out.splice(at, 1, ...[m.items].flat());
+	}
+	return out;
+}
+
+/** Variants copy a background and change its entries; their own fields (Guild Merchant's skills) win. */
+function resolveBackground(b) {
+	if (!b._copy) return b;
+	const base = allBackgrounds.find((x) => x.name === b._copy.name && x.source === b._copy.source);
+	if (!base) fail(`Background ${b.name} copies ${b._copy.name}, which is not in the 5etools data`);
+	const from = resolveBackground(base);
+	return { ...from, ...b, entries: b._copy._mod?.entries ? modEntries(from.entries, b._copy._mod.entries) : from.entries };
+}
+
+const backgroundsOut = allBackgrounds
+	.filter((b) => BACKGROUND_SOURCES.includes(b.source))
+	.map((raw) => {
+		const b = resolveBackground(raw);
+		if (b.skillProficiencies?.length !== 1) fail(`Background ${b.name} doesn't have one set of skills`);
+		const [p] = b.skillProficiencies;
+		const choose = p.any ? { count: p.any } : p.choose ? { count: p.choose.count ?? 1, from: p.choose.from.map(skillKey) } : undefined;
+		const summary = b.entries.find((e) => e.type === 'list')?.items ?? [];
+		return {
+			id: `${raw.name}|${raw.source}`.toLowerCase(),
+			name: raw.name.replace(/^Variant /, ''),
+			source: raw.source,
+			skills: Object.keys(p).filter((k) => p[k] === true).map(skillKey),
+			...(choose ? { choose } : {}),
+			// Custom Background's two are any mix of tools and languages.
+			...(raw.name === 'Custom Background' ? { pickEither: 2 } : toolLanguagesOf(b)),
+			equipment: kitRows(b.startingEquipment),
+			lines: summary.map((i) => ({ name: stripTags(i.name).replace(/:$/, ''), text: stripTags(i.entry) })),
+			features: b.entries
+				.filter((e) => e.data?.isFeature)
+				.map((e) => ({ name: stripTags(e.name).replace(/^Feature: /, ''), text: flatten(e.entries).join('\n') }))
+		};
+	})
+	.sort((a, b) => a.name.localeCompare(b.name));
+
+for (const b of backgroundsOut) {
+	if (!b.lines.length || !b.features.length) fail(`Background ${b.name} has no summary or feature`);
+	if (/\{[@=#]/.test(JSON.stringify([b.lines, b.features]))) fail(`Unresolved 5etools tag in background ${b.name}`);
+}
+const MIN_BACKGROUNDS = 33;
+if (backgroundsOut.length < MIN_BACKGROUNDS) fail(`Expected at least ${MIN_BACKGROUNDS} backgrounds, found ${backgroundsOut.length}.`);
+const backgroundsPath = join(root, 'src/lib/data/backgrounds.json');
+writeFileSync(backgroundsPath, JSON.stringify(backgroundsOut));
+console.log(`Wrote ${backgroundsOut.length} backgrounds to ${backgroundsPath}`);
 
 // ---------------------------------------------------------------------------------------------
 // Class options the player picks from a list: invocations, pact boons, maneuvers, arcane shots,

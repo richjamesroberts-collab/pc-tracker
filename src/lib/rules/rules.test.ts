@@ -76,10 +76,10 @@ import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
 import { defenses } from './defenses';
-import { skillChecks, skillChoices, SKILL_KEYS } from './skills';
+import { fixedSkills, skillChecks, skillChoices, SKILL_KEYS } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
-import type { ItemArmor, ItemWeapon } from '$lib/types';
+import type { ItemArmor, ItemWeapon, Skill } from '$lib/types';
 import { slotOf } from './slots';
 
 function pc(overrides: Partial<Character> = {}): Character {
@@ -1179,6 +1179,18 @@ describe('skills', () => {
 		expect(skillChoices(pc({ classKey: 'wizard', raceKey: 'kenku-vgm' }))[1]).toMatchObject({ count: 2, from: ['acrobatics', 'deception', 'sleight-of-hand', 'stealth'] });
 		for (const ch of ['artificer', 'barbarian', 'cleric', 'druid', 'monk', 'paladin', 'ranger', 'rogue', 'sorcerer', 'warlock', 'wizard'])
 			for (const k of skillChoices(pc({ classKey: ch }))[0].from!) expect(SKILL_KEYS).toContain(k);
+	});
+
+	it('adds what the background gives, and offers its picks', () => {
+		const acolyte = { ref: 'acolyte|phb', name: 'Acolyte', skills: ['insight', 'religion'] as Skill[] };
+		const c = pc({ classKey: 'fighter', level: 5, background: acolyte });
+		expect(skill(c, 'religion')).toMatchObject({ total: 3, level: 'proficient' });
+		expect(skill(c, 'religion').parts[1].from).toMatch(/^Acolyte \(background\)/);
+		expect(fixedSkills(pc({ raceKey: 'elf', background: acolyte }))).toEqual(['perception', 'insight', 'religion']);
+
+		const agent = { ref: 'faction agent|scag', name: 'Faction Agent', skills: ['insight'] as Skill[], choose: { count: 1, from: ['arcana', 'history'] as Skill[] } };
+		expect(skillChoices(pc({ classKey: 'fighter', background: agent }))[1]).toEqual({ source: 'Faction Agent (background)', count: 1, from: ['arcana', 'history'] });
+		expect(skillChoices(pc({ classKey: 'fighter', background: acolyte }))).toHaveLength(1);
 	});
 
 	it('gives Jack of All Trades and Remarkable Athlete to skills without proficiency', () => {

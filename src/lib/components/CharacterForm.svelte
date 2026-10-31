@@ -1,11 +1,12 @@
 <script lang="ts" module>
 	/** Parts of the form; a new character fills them in on separate screens, Edit shows them all. */
-	export type FormSection = 'basics' | 'abilities' | 'skills' | 'details';
+	export type FormSection = 'basics' | 'abilities' | 'skills' | 'tools' | 'details';
 </script>
 
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Portrait from './Portrait.svelte';
+	import ToolLanguagePicker from './ToolLanguagePicker.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { RACE_BOOKS, RACES, RACE_MAP } from '$lib/data/races';
 	import { portraitFromFile } from '$lib/image';
@@ -18,11 +19,23 @@
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { defenses, DEFENSE_NAMES } from '$lib/rules/defenses';
-	import { raceSkills, skillChoices, SKILLS } from '$lib/rules/skills';
+	import { backgroundSkills, fixedSkills, raceSkills, skillChoices, SKILLS } from '$lib/rules/skills';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
 	import { OPTION_INFO, optionCount, optionKinds } from '$lib/rules/levelup';
-	import { characterFeat, classOption, loadFeats, loadOptions, type ClassOptionData, type FeatData } from '$lib/data/content';
+	import {
+		BACKGROUND_BOOKS,
+		characterBackground,
+		characterFeat,
+		classOption,
+		CUSTOM_BACKGROUND,
+		loadBackgrounds,
+		loadFeats,
+		loadOptions,
+		type BackgroundData,
+		type ClassOptionData,
+		type FeatData
+	} from '$lib/data/content';
 	import type { Ability, Character, ClassOptionKind, Skill } from '$lib/types';
 
 	let {
@@ -104,13 +117,17 @@
 			: [...c.weaponProficiencies, key];
 	}
 
-	const givenSkills = $derived(raceSkills(c));
+	const givenSkills = $derived(fixedSkills(c));
+	/** The sources of the skills the character has without picking them. */
+	const skillSources = $derived([raceSkills(c), backgroundSkills(c)].filter((src) => src.skills.length));
+	/** Skills both give; the PHB lets the player take another instead. */
+	const twice = $derived(givenSkills.filter((k, i) => givenSkills.indexOf(k) !== i));
 	const choices = $derived(skillChoices(c));
-	/** Skills the class or race offers that aren't on yet, marked on the chips. */
+	/** Skills the class, race or background offers that aren't on yet, marked on the chips. */
 	const offered = $derived(new Set(choices.flatMap((ch) => ch.from ?? [])));
 	const skillName = (k: Skill) => SKILLS.find((s) => s.key === k)?.name ?? k;
 	/** The player's own picks from a choice's list. */
-	const pickedFrom = (from: Skill[]) => from.filter((k) => c.skillProficiencies.includes(k) && !givenSkills.skills.includes(k)).length;
+	const pickedFrom = (from: Skill[]) => from.filter((k) => c.skillProficiencies.includes(k) && !givenSkills.includes(k)).length;
 	/** Where each save's proficiency comes from without the player's picks. */
 	const givenSave = (a: Ability) => saveProficiencySource({ ...c, saveProficiencies: [] }, a);
 
@@ -120,7 +137,7 @@
 
 	/** Tapping a skill steps it from not proficient to proficient to expertise and back; racial skills start proficient. */
 	function stepSkill(key: Skill) {
-		const given = givenSkills.skills.includes(key);
+		const given = givenSkills.includes(key);
 		const prof = given || c.skillProficiencies.includes(key);
 		const expert = c.skillExpertise.includes(key);
 		if (expert) {
@@ -134,7 +151,7 @@
 	}
 
 	const skillLevel = (key: Skill) =>
-		c.skillExpertise.includes(key) ? 'expertise' : givenSkills.skills.includes(key) || c.skillProficiencies.includes(key) ? 'proficient' : 'none';
+		c.skillExpertise.includes(key) ? 'expertise' : givenSkills.includes(key) || c.skillProficiencies.includes(key) ? 'proficient' : 'none';
 
 	function toggleStyle(key: string) {
 		c.fightingStyles = c.fightingStyles.includes(key) ? c.fightingStyles.filter((k) => k !== key) : [...c.fightingStyles, key];
@@ -142,15 +159,24 @@
 
 	let featList = $state.raw<FeatData[]>([]);
 	let optionList = $state.raw<ClassOptionData[]>([]);
+	let backgroundList = $state.raw<BackgroundData[]>([]);
 	$effect(() => {
-		Promise.all([loadFeats(), loadOptions()]).then(
-			([f, o]) => {
+		Promise.all([loadFeats(), loadOptions(), loadBackgrounds()]).then(
+			([f, o, b]) => {
 				featList = f;
 				optionList = o;
+				backgroundList = b;
 			},
 			() => {}
 		);
 	});
+	const background = $derived(backgroundList.find((b) => b.id === c.background?.ref));
+
+	function setBackground(ref: string | undefined) {
+		const b = backgroundList.find((x) => x.id === ref);
+		c.background = b ? characterBackground(b) : undefined;
+	}
+
 	/** Option lists the class has at this level, plus any the character already has picks in. */
 	const kinds = $derived([...new Set<ClassOptionKind>([...optionKinds(c), ...c.classOptions.map((o) => o.kind)])]);
 
@@ -248,6 +274,7 @@
 		if (!valid) return;
 		const out = $state.snapshot(c) as Character;
 		out.name = out.name.trim();
+		if (out.background) out.background.name = out.background.name.trim() || (background?.name ?? 'Custom Background');
 		// Cleared number fields come back as null; optional stats are just left out.
 		for (const key of ['speed', 'initiativeOverride', 'passivePerception', 'spellModOverride'] as const) {
 			if (!whole(out[key])) out[key] = undefined;
@@ -342,6 +369,36 @@
 				<input type="number" inputmode="numeric" min="1" max="20" bind:value={c.level} required />
 			</label>
 		</div>
+
+		<label class="field">
+			<span>Background</span>
+			<select bind:value={() => c.background?.ref, setBackground}>
+				<option value={undefined}>Not set</option>
+				{#each BACKGROUND_BOOKS as book (book.key)}
+					<optgroup label={book.name}>
+						{#each backgroundList.filter((b) => b.source === book.key) as b (b.id)}
+							<option value={b.id}>{b.name}</option>
+						{/each}
+					</optgroup>
+				{/each}
+			</select>
+		</label>
+		{#if c.background?.ref === CUSTOM_BACKGROUND}
+			<label class="field">
+				<span>Background name</span>
+				<input bind:value={c.background.name} autocomplete="off" autocapitalize="words" />
+			</label>
+		{/if}
+		{#if background}
+			<ul class="sources">
+				{#each background.lines as line (line.name)}
+					<li><b>{line.name}</b> {line.text}</li>
+				{/each}
+				{#each background.features as f (f.name)}
+					<li><b>Feature</b> {f.name}</li>
+				{/each}
+			</ul>
+		{/if}
 	{/if}
 
 	{#if show('details')}
@@ -580,13 +637,13 @@
 			<legend class="label">Skills</legend>
 			<p class="hint">
 				Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
-				feats and racial choices; dashed ones are on your class or race's list.
+				feats and racial choices; dashed ones are on your class, race or background's list.
 			</p>
-			{#if givenSkills.skills.length || choices.length}
+			{#if skillSources.length || choices.length}
 				<ul class="sources">
-					{#if givenSkills.skills.length}
-						<li><b>{givenSkills.source}</b> {givenSkills.skills.map(skillName).join(', ')}</li>
-					{/if}
+					{#each skillSources as src (src.source)}
+						<li><b>{src.source}</b> {src.skills.map(skillName).join(', ')}</li>
+					{/each}
 					{#each choices as ch (ch.source)}
 						<li>
 							<b>{ch.source}</b>
@@ -598,6 +655,11 @@
 						</li>
 					{/each}
 				</ul>
+			{/if}
+			{#if twice.length}
+				<p class="hint">
+					{twice.map(skillName).join(', ')} {twice.length === 1 ? 'comes' : 'come'} from both your race and your background; you can take another skill instead.
+				</p>
 			{/if}
 			<div class="chips skills">
 				{#each SKILLS as s (s.key)}
@@ -612,6 +674,10 @@
 				{/each}
 			</div>
 		</fieldset>
+	{/if}
+
+	{#if show('tools')}
+		<ToolLanguagePicker character={c} bind:tools={c.toolProficiencies} bind:languages={c.languages} />
 	{/if}
 
 	<!-- A new character picks fighting styles, feats and class options level by level instead. -->
