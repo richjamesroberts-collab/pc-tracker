@@ -7,7 +7,8 @@
 	import { applyLevelUp, type LevelUpChoices } from '$lib/rules/levelup';
 	import { recompute } from '$lib/rules/stats';
 	import { MAX_LEVEL } from '$lib/rules/xp';
-	import { cacheSpell } from '$lib/library.svelte';
+	import { cacheSpell, characterSpells } from '$lib/library.svelte';
+	import { fillPrepared } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
 	// The character as it was when level up started; everything is applied in one change at the end.
@@ -23,6 +24,8 @@
 		session.mutate(`Level ${level}! Max HP ${start.hpMax} → ${maxAfter}`, (d) => {
 			applyLevelUp(d, choices);
 			for (const s of learned) cacheSpell(d, s);
+			recompute(d);
+			fillPrepared(d, characterSpells(d).filter((x) => !x.grant?.free).map((x) => x.spell), choices.learn ?? []);
 		});
 		goto(resolve('/c/[id]', { id: start.id }), { replaceState: true });
 	}

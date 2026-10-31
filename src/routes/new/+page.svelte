@@ -11,7 +11,8 @@
 	import { formula, recompute } from '$lib/rules/stats';
 	import { newKitChoices, type KitChoices } from '$lib/rules/starting';
 	import { hitDie, hpGain } from '$lib/rules/xp';
-	import { cacheSpell } from '$lib/library.svelte';
+	import { cacheSpell, characterSpells } from '$lib/library.svelte';
+	import { fillPrepared } from '$lib/rules/spellcasting';
 	import { db, requestPersistentStorage } from '$lib/db';
 	import type { Character, Spell } from '$lib/types';
 
@@ -152,6 +153,7 @@
 		c.hpBase = hpOverride ?? hpAuto;
 		for (const s of Object.values(learned).flat()) cacheSpell(c, s);
 		recompute(c);
+		fillPrepared(c, characterSpells(c).filter((x) => !x.grant?.free).map((x) => x.spell), c.spells.map((s) => s.id));
 		c.hpCurrent = c.hpMax;
 		await db.characters.put(c);
 		void requestPersistentStorage();

@@ -39,7 +39,8 @@
 		return [...options.filter((s) => grantHas(grant, s.id)), ...options.filter((s) => !grantHas(grant, s.id))].map((s) => ({
 			id: s.id,
 			name: s.name,
-			meta: `${grantHas(grant, s.id) ? `${s.id === swap.original ? 'Original' : grant.tag} · ` : ''}${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}`
+			meta: `${grantHas(grant, s.id) ? `${s.id === swap.original ? 'Original' : grant.tag} · ` : ''}${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}`,
+			tags: s.ritual ? ['Ritual'] : []
 		}));
 	});
 

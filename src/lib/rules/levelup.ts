@@ -362,7 +362,8 @@ export function applyChoices(c: Character, choices: LevelUpChoices, level: numbe
 	const learn = choices.learn ?? [];
 	const forget = new Set((choices.forget ?? []).filter((id) => !learn.includes(id)));
 	c.spells = c.spells.filter((s) => !forget.has(s.id));
-	for (const id of learn) if (!c.spells.some((s) => s.id === id)) c.spells.push({ id, prepared: true });
+	// A wizard's copies wait to be prepared; `fillPrepared` does that once the new limit is known.
+	for (const id of learn) if (!c.spells.some((s) => s.id === id)) c.spells.push({ id, prepared: prepStyle(c) !== 'spellbook' });
 	if (c.concentration && forget.size) {
 		// Concentration is kept by name; drop it if that spell was swapped out.
 		const name = c.concentration.toLowerCase();

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { ordinal } from '$lib/rules/spellcasting';
+	import { ordinal, prepStyle } from '$lib/rules/spellcasting';
 	import type { Spell } from '$lib/types';
 
 	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
@@ -39,7 +39,7 @@
 		};
 		session.mutate(`Added ${name}`, (c) => {
 			c.customSpells.push(spell);
-			c.spells.push({ id: spell.id, prepared: true });
+			c.spells.push({ id: spell.id, prepared: prepStyle(c) !== 'spellbook' });
 		});
 		onclose();
 	}
