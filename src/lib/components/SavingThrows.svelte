@@ -4,10 +4,18 @@
 	import { ABILITY_SHORT, signedMod } from '$lib/rules/abilities';
 	import { abilityBreakdown } from '$lib/rules/stats';
 	import { savingThrows } from '$lib/rules/saves';
+	import { shapeSaveInput } from '$lib/rules/wildshape';
 	import type { Ability, Character } from '$lib/types';
 
+	/** Show the Wild Shape form's saves. */
+	let { form = false }: { form?: boolean } = $props();
+
 	const c = $derived(session.character as Character);
-	const saves = $derived(savingThrows(c, abilityBreakdown(c)));
+	const saves = $derived.by(() => {
+		if (!form || !c.wildShape) return savingThrows(c, abilityBreakdown(c));
+		const { input, breakdown } = shapeSaveInput(c, c.wildShape.beast);
+		return savingThrows(input, breakdown);
+	});
 	/** The save whose sheet is open. */
 	let open = $state<Ability | null>(null);
 	const check = $derived.by((): Check | null => {

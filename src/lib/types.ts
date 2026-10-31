@@ -191,6 +191,38 @@ export interface InventoryItem {
 	notes: string;
 }
 
+/** A form from beasts.json. Copied onto the character while they're in it, so Vitals and backups don't need the file. */
+export interface Beast {
+	/** `name|source`, lowercased. */
+	id: string;
+	name: string;
+	source: string;
+	/** As written: "1/4". */
+	cr: string;
+	crValue: number;
+	size: string;
+	/** Circle of the Moon's Elemental Wild Shape, not a beast. */
+	elemental?: true;
+	ac: number;
+	/** "natural armor". */
+	acFrom?: string;
+	hp: number;
+	hpFormula: string;
+	speed: { walk?: number; fly?: number; swim?: number; climb?: number; burrow?: number };
+	str: number;
+	dex: number;
+	con: number;
+	passive: number;
+	senses: { name: string; range: number }[];
+	resist?: string[];
+	immune?: string[];
+	conditionImmune?: string[];
+	traits: { name: string; text: string }[];
+	attacks: { name: string; toHit: number; reach: string; damage: string; ranged: boolean; rider?: string }[];
+	/** Actions without an attack roll: Multiattack, Swallow. */
+	actions: { name: string; text: string }[];
+}
+
 export type Ability = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export type Skill =
 	| 'acrobatics'
@@ -341,6 +373,8 @@ export interface Character {
 	stable: boolean;
 	/** Hit dice spent (one per level in total, the class's hit die); half come back on a long rest. */
 	hitDiceUsed: number;
+	/** The form taken with Wild Shape: its own hit points, while `hpCurrent` waits for the character to revert. */
+	wildShape?: { hp: number; beast: Beast };
 
 	/**
 	 * Weapon proficiencies beyond class, subclass and race (feats, multiclassing, a Kensei's or Bladesinger's pick):

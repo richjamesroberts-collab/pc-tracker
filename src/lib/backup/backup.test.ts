@@ -329,6 +329,17 @@ describe('how the hero looks', () => {
 	});
 });
 
+describe('wild shape', () => {
+	const read = (wildShape: unknown) => readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'X', classKey: 'druid', wildShape } });
+
+	it('keeps the form, and drops one it can\'t show', () => {
+		expect(read(undefined)).not.toHaveProperty('wildShape');
+		expect(read({ hp: 3 })).not.toHaveProperty('wildShape');
+		const form = read({ hp: 90, beast: { name: 'Wolf', hp: 11, ac: 13, str: 12, dex: 15, con: 12, passive: 13, speed: { walk: 40 } } }).wildShape;
+		expect(form).toMatchObject({ hp: 11, beast: { name: 'Wolf', speed: { walk: 40 }, attacks: [], traits: [] } });
+	});
+});
+
 describe('tools and languages', () => {
 	it('start empty on older backups, and keep what was picked', () => {
 		const old = readBackup({ app: APP_ID, schemaVersion: 1, character: { id: 'a', name: 'Old', classKey: 'fighter' } });

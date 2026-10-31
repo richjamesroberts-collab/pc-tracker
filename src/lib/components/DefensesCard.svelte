@@ -3,10 +3,14 @@
 	import Sheet from './Sheet.svelte';
 	import { session } from '$lib/session.svelte';
 	import { defenses, type Defense } from '$lib/rules/defenses';
+	import { shapeDefenses } from '$lib/rules/wildshape';
 	import type { Character } from '$lib/types';
 
+	/** Show the Wild Shape form's defenses. */
+	let { form = false }: { form?: boolean } = $props();
+
 	const c = $derived(session.character as Character);
-	const d = $derived(defenses(c));
+	const d = $derived(form && c.wildShape ? shapeDefenses(c, c.wildShape.beast) : defenses(c));
 	const rows = $derived(
 		[
 			{ k: 'Resist', list: d.resistances },

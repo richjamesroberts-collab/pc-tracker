@@ -19,7 +19,8 @@
 		onspend,
 		onrestore,
 		onedit,
-		begin = false
+		begin = false,
+		hp
 	}: {
 		/** The counter whose details are showing; undefined when closed. */
 		counter: CounterRow | undefined;
@@ -35,9 +36,12 @@
 		onedit: () => void;
 		/** Opened from Use on the card: go straight to asking who it heals, or for the roll. */
 		begin?: boolean;
+		/** The hit points healing goes to, when they aren't the character's own (a Wild Shape form). */
+		hp?: { current: number; max: number };
 	} = $props();
 
 	const c = $derived(session.character as Character);
+	const mine = $derived(hp ?? { current: c.hpCurrent, max: c.hpMax });
 
 	/** More than this shows as a number with a give-back button instead of pips. */
 	const MAX_PIPS = 20;
@@ -125,7 +129,7 @@
 			<div class="ways">
 				<button type="button" class="way me" onclick={healMe}>
 					<strong>Me</strong>
-					<span>{c.hpCurrent >= c.hpMax ? 'You’re at full HP' : `You’re on ${Math.max(0, c.hpCurrent)} / ${c.hpMax} HP`}</span>
+					<span>{mine.current >= mine.max ? 'You’re at full HP' : `You’re on ${Math.max(0, mine.current)} / ${mine.max} HP`}</span>
 				</button>
 				<button type="button" class="way other" onclick={() => onuse(spend)}>
 					<strong>Someone else</strong>

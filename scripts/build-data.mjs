@@ -1199,6 +1199,91 @@ writeFileSync(featsPath, JSON.stringify(featsOut));
 console.log(`Wrote ${featsOut.length} feats to ${featsPath}`);
 
 // ---------------------------------------------------------------------------------------------
+// Wild Shape: beasts up to CR 6, the most a Circle of the Moon druid reaches, and the four elementals they can become.
+
+const BEAST_FILES = ['bestiary-mm.json', 'bestiary-vgm.json'];
+const ELEMENTALS = ['Air Elemental', 'Earth Elemental', 'Fire Elemental', 'Water Elemental'];
+const MAX_BEAST_CR = 6;
+const SIZES = { T: 'Tiny', S: 'Small', M: 'Medium', L: 'Large', H: 'Huge', G: 'Gargantuan' };
+const ATTACK_KINDS = { mw: 'Melee Weapon Attack:', rw: 'Ranged Weapon Attack:', 'mw,rw': 'Melee or Ranged Weapon Attack:', ms: 'Melee Spell Attack:', rs: 'Ranged Spell Attack:' };
+
+const crValue = (cr) => (cr === '1/8' ? 0.125 : cr === '1/4' ? 0.25 : cr === '1/2' ? 0.5 : Number(cr));
+/** Monster text, with the attack tags stripTags doesn't spell out. */
+const beastText = (entries) =>
+	flatten(entries.map((e) => (typeof e === 'string' ? e.replace(/\{@atk ([\w,]+)\}/g, (_, k) => ATTACK_KINDS[k] ?? fail(`Unknown attack kind ${k}`)).replace(/\{@h\}/g, 'Hit: ') : e))).join('\n');
+
+/** "Web (Recharge 5-6)": stripTags would leave a bare number. */
+const actionName = (name) => stripTags(name.replace(/\{@recharge(?: (\d))?\}/, (_, n) => `(Recharge ${n ? `${n}-6` : '6'})`));
+
+/** A stat block's attack as the app lists it, or nothing for an action that doesn't roll one. */
+function beastAttack(a) {
+	const raw = a.entries.find((e) => typeof e === 'string') ?? '';
+	const hit = /\{@hit (-?\d+)\}/.exec(raw);
+	const hurt = /\{@h\}(?:\d+ \(\{@damage ([^}]+)\}\)|(\d+)) (\w+) damage/.exec(raw);
+	if (!hit || !hurt) return undefined;
+	const reach = /reach (\d+) ft/.exec(raw);
+	const range = /range ([\d/]+) ft/.exec(raw);
+	const text = beastText(a.entries);
+	const rest = text.slice(text.indexOf(' damage') + ' damage'.length).replace(/^[.,]?\s*/, '');
+	return {
+		name: actionName(a.name),
+		toHit: Number(hit[1]),
+		reach: [reach && `Melee ${reach[1]} ft`, range && `Ranged ${range[1]} ft`].filter(Boolean).join(' · '),
+		damage: `${hurt[1] ?? hurt[2]} ${hurt[3]}`,
+		ranged: !reach,
+		...(rest ? { rider: rest } : {})
+	};
+}
+
+const walkOf = (v) => (typeof v === 'number' ? v : (v?.number ?? 0));
+
+function beastOf(m) {
+	const ac = m.ac[0];
+	const senses = (m.senses ?? []).flatMap((s) => {
+		const hit = /^(\w+) (\d+) ft/.exec(stripTags(s));
+		return hit ? [{ name: hit[1][0].toUpperCase() + hit[1].slice(1), range: Number(hit[2]) }] : [];
+	});
+	const actions = m.action ?? [];
+	const attacks = actions.map(beastAttack).filter(Boolean);
+	const speed = Object.fromEntries(['walk', 'fly', 'swim', 'climb', 'burrow'].flatMap((k) => (m.speed[k] ? [[k, walkOf(m.speed[k])]] : [])));
+	return {
+		id: `${m.name}|${m.source}`.toLowerCase(),
+		name: m.name,
+		source: m.source,
+		cr: typeof m.cr === 'object' ? m.cr.cr : m.cr,
+		crValue: crValue(typeof m.cr === 'object' ? m.cr.cr : m.cr),
+		size: SIZES[m.size[0]],
+		...(ELEMENTALS.includes(m.name) ? { elemental: true } : {}),
+		ac: typeof ac === 'number' ? ac : ac.ac,
+		...(ac.from ? { acFrom: stripTags(ac.from.join(', ')) } : {}),
+		hp: m.hp.average,
+		hpFormula: m.hp.formula,
+		speed,
+		str: m.str,
+		dex: m.dex,
+		con: m.con,
+		passive: m.passive,
+		senses,
+		...defensesOf(m),
+		traits: (m.trait ?? []).map((t) => ({ name: stripTags(t.name), text: beastText(t.entries) })),
+		attacks,
+		actions: actions.filter((a) => !beastAttack(a)).map((a) => ({ name: actionName(a.name), text: beastText(a.entries) }))
+	};
+}
+
+const beastsOut = BEAST_FILES.flatMap((file) => readJson(`bestiary/${file}`).monster)
+	.filter((m) => !m._copy && (((m.type === 'beast' || m.type?.type === 'beast') && crValue(typeof m.cr === 'object' ? m.cr.cr : m.cr) <= MAX_BEAST_CR) || (m.source === 'MM' && ELEMENTALS.includes(m.name))))
+	.map(beastOf)
+	.sort((a, b) => a.crValue - b.crValue || a.name.localeCompare(b.name));
+
+for (const b of beastsOut) if (/\{[@=#]/.test(JSON.stringify(b))) fail(`Unresolved 5etools tag in ${b.name}`);
+const MIN_BEASTS = 100;
+if (beastsOut.length < MIN_BEASTS) fail(`Expected at least ${MIN_BEASTS} beasts, found ${beastsOut.length}.`);
+const beastsPath = join(root, 'src/lib/data/beasts.json');
+writeFileSync(beastsPath, JSON.stringify(beastsOut));
+console.log(`Wrote ${beastsOut.length} beasts to ${beastsPath}`);
+
+// ---------------------------------------------------------------------------------------------
 // Starting equipment: rows of options to choose between, for classes (with the gold to take instead) and backgrounds.
 // An entry is bundled gear by `ref` (with a shorter `name` if the book names it), a plain `name`, a `pick` the player
 // makes from a kind of gear, or `coins` in copper, held by the entry when it's a pouch.

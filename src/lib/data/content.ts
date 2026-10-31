@@ -1,6 +1,7 @@
 import type {
 	Ability,
 	AbilityScores,
+	Beast,
 	Character,
 	CharacterBackground,
 	CharacterFeat,
@@ -548,6 +549,20 @@ export function loadBackgrounds(): Promise<BackgroundData[]> {
 export function characterBackground(b: BackgroundData): CharacterBackground {
 	const { id, source: _source, equipment: _equipment, lines: _lines, features: _features, ...rest } = b;
 	return { ref: id, ...structuredClone(rest) };
+}
+
+let beastCache: Promise<Beast[]> | undefined;
+
+/** Loads the Wild Shape forms as a separate chunk, once. */
+export function loadBeasts(): Promise<Beast[]> {
+	beastCache ??= import('./beasts.json').then(
+		(m) => m.default as Beast[],
+		(err) => {
+			beastCache = undefined;
+			throw err;
+		}
+	);
+	return beastCache;
 }
 
 let equipmentCache: Promise<Record<string, ClassKit>> | undefined;
