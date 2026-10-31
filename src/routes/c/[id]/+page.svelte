@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import Portrait from '$lib/components/Portrait.svelte';
 	import HeroStage from '$lib/components/HeroStage.svelte';
 	import AcShield from '$lib/components/AcShield.svelte';
 	import AcSheet from '$lib/components/AcSheet.svelte';
@@ -27,7 +28,7 @@
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { raceLabel } from '$lib/data/races';
-	import { isDown } from '$lib/rules/hp';
+	import { isDead, isDown } from '$lib/rules/hp';
 	import { longRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import {
 		isCaster,
@@ -198,7 +199,7 @@
 </script>
 
 <header>
-	<HeroStage />
+	<Portrait name={c.name} image={c.image} size={60} muted={isDead(c)} />
 	<div class="who">
 		<h1>{beast?.name ?? c.name}</h1>
 		<p>
@@ -284,16 +285,21 @@
 {/if}
 
 <div class="vitals-row" class:down>
-	<button
-		type="button"
-		class="card ac-card"
-		aria-label="Armor class {ac}. Tap to {shaped ? 'see how' : 'change'}."
-		onclick={() => (shaped ? (formAcOpen = true) : (acOpen = true))}
-	>
-		<span class="label">Armor class</span>
-		<AcShield {ac} size={76} />
-		<span class="ac-hint">{shaped ? 'Tap for details' : 'Tap to change'}</span>
-	</button>
+	<div class="card ac-card">
+		<HeroStage />
+		<button
+			type="button"
+			class="ac"
+			aria-label="Armor class {ac}. Tap to {shaped ? 'see how' : 'change'}."
+			onclick={() => (shaped ? (formAcOpen = true) : (acOpen = true))}
+		>
+			<AcShield {ac} />
+			<span class="ac-words">
+				<span class="label">Armor class</span>
+				<span class="ac-hint">{shaped ? 'Tap for details' : 'Tap to change'}</span>
+			</span>
+		</button>
+	</div>
 	{#if down}
 		<DeathSaves onheal={() => openHp('heal')} ondamage={() => openHp('damage')} />
 	{:else}
@@ -639,7 +645,7 @@
 		font-weight: 800;
 	}
 
-	/* AC on the left (a third of the row at most), hit points or death saves on the right. */
+	/* The hero over AC on the left (a third of the row at most), hit points or death saves on the right. */
 	.vitals-row {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
@@ -650,17 +656,33 @@
 	.ac-card {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
 		gap: 6px;
 		min-width: 0;
-		padding: 14px 6px;
+		padding: 6px;
+	}
+
+	.ac {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
 		color: var(--color-text);
 		font-weight: 400;
 	}
 
-	.ac-card .label {
-		text-align: center;
+	.ac-words {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		white-space: nowrap;
+	}
+
+	.ac .label {
+		font-size: 10px;
 	}
 
 	/* Death saves need the full width, so AC drops below as a strip. */
@@ -672,10 +694,15 @@
 		order: 2;
 		flex-direction: row;
 		gap: 12px;
-		padding: 10px 16px;
+		padding-right: 16px;
 	}
 
-	.ac-card:active :global(.shield) {
+	.vitals-row.down .ac {
+		flex-direction: row;
+		gap: 10px;
+	}
+
+	.ac:active :global(.shield) {
 		transform: scale(0.95);
 	}
 
