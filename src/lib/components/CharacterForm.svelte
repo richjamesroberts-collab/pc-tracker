@@ -19,7 +19,8 @@
 	import { fightingStyleCount, fightingStyleOptions, FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { defenses, DEFENSE_NAMES } from '$lib/rules/defenses';
-	import { backgroundSkills, fixedSkills, raceSkills, skillChoices, SKILLS } from '$lib/rules/skills';
+	import { backgroundSkills, canPickSkill, fixedSkills, givenBySubclass, raceSkills, skillChoices, skillsMade, SKILLS } from '$lib/rules/skills';
+	import { fittingPicks, toolChoices, toolSources } from '$lib/rules/tools';
 	import { saveProficiencySource } from '$lib/rules/saves';
 	import { levelForXp, xpForLevel } from '$lib/rules/xp';
 	import { OPTION_INFO, optionCount, optionKinds } from '$lib/rules/levelup';
@@ -63,6 +64,22 @@
 	// Edit a local copy; nothing is saved until the player taps Save.
 	let c = $state(untrack(() => structuredClone($state.snapshot(initial)) as Character));
 	let photoError = $state('');
+	// Going back and changing the class, race or background can leave picks that no longer fit; they go.
+	untrack(() => {
+		if (!isNew) return;
+		if (show('skills')) {
+			const given = fixedSkills(c);
+			c.skillProficiencies = skillsMade(skillChoices(c), c.skillProficiencies.filter((k) => !given.includes(k))).fitted;
+		}
+		if (show('tools')) {
+			const sources = toolSources(c);
+			const tools = c.toolProficiencies.filter((k) => !sources.some((s) => s.tools.includes(k)));
+			const languages = c.languages.filter((k) => !sources.some((s) => s.languages.includes(k)));
+			const fit = fittingPicks(toolChoices(c), tools, languages);
+			c.toolProficiencies = fit.tools;
+			c.languages = fit.languages;
+		}
+	});
 	// What's typed in each score box; only whole scores from 1 to 30 reach the character.
 	let scores = $state(untrack(() => ({ ...c.abilities }) as Record<Ability, number | null>));
 
@@ -119,15 +136,18 @@
 
 	const givenSkills = $derived(fixedSkills(c));
 	/** The sources of the skills the character has without picking them. */
-	const skillSources = $derived([raceSkills(c), backgroundSkills(c)].filter((src) => src.skills.length));
+	const skillSources = $derived([raceSkills(c), givenBySubclass(c), backgroundSkills(c)].filter((src) => src.skills.length));
 	/** Skills both give; the PHB lets the player take another instead. */
 	const twice = $derived(givenSkills.filter((k, i) => givenSkills.indexOf(k) !== i));
 	const choices = $derived(skillChoices(c));
 	/** Skills the class, race or background offers that aren't on yet, marked on the chips. */
 	const offered = $derived(new Set(choices.flatMap((ch) => ch.from ?? [])));
 	const skillName = (k: Skill) => SKILLS.find((s) => s.key === k)?.name ?? k;
-	/** The player's own picks from a choice's list. */
-	const pickedFrom = (from: Skill[]) => from.filter((k) => c.skillProficiencies.includes(k) && !givenSkills.includes(k)).length;
+	/** The player's own picks, without skills they have anyway. */
+	const mySkills = $derived(c.skillProficiencies.filter((k) => !givenSkills.includes(k)));
+	const skillPicks = $derived(skillsMade(choices, mySkills).made);
+	/** A new character only takes what their class, race and background offer, up to the limits; Edit takes anything. */
+	const skillOpen = (k: Skill) => !isNew || canPickSkill(choices, mySkills, k);
 	/** Where each save's proficiency comes from without the player's picks. */
 	const givenSave = (a: Ability) => saveProficiencySource({ ...c, saveProficiencies: [] }, a);
 
@@ -135,8 +155,15 @@
 		c.saveProficiencies = c.saveProficiencies.includes(a) ? c.saveProficiencies.filter((k) => k !== a) : [...c.saveProficiencies, a];
 	}
 
-	/** Tapping a skill steps it from not proficient to proficient to expertise and back; racial skills start proficient. */
+	/**
+	 * Tapping a skill steps it from not proficient to proficient to expertise and back; racial skills start proficient.
+	 * A new character's expertise comes up in the level steps, so for them it's just on and off.
+	 */
 	function stepSkill(key: Skill) {
+		if (isNew) {
+			c.skillProficiencies = c.skillProficiencies.includes(key) ? c.skillProficiencies.filter((k) => k !== key) : [...c.skillProficiencies, key];
+			return;
+		}
 		const given = givenSkills.includes(key);
 		const prof = given || c.skillProficiencies.includes(key);
 		const expert = c.skillExpertise.includes(key);
@@ -636,8 +663,12 @@
 		<fieldset>
 			<legend class="label">Skills</legend>
 			<p class="hint">
-				Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
-				feats and racial choices; dashed ones are on your class, race or background's list.
+				{#if isNew}
+					Choose from your class, race and background; dashed ones can be picked. Expertise and subclass skills come in the level steps.
+				{:else}
+					Tap to step: proficient, then expertise (double proficiency), then off. Pick those from your class, background,
+					feats and racial choices; dashed ones are on your class, race or background's list.
+				{/if}
 			</p>
 			{#if skillSources.length || choices.length}
 				<ul class="sources">
@@ -648,9 +679,9 @@
 						<li>
 							<b>{ch.source}</b>
 							{#if ch.from}
-								choose {ch.count} of {ch.from.map(skillName).join(', ')} ({pickedFrom(ch.from)} picked)
+								choose {ch.count} of {ch.from.map(skillName).join(', ')} ({skillPicks.get(ch) ?? 0}/{ch.count})
 							{:else}
-								choose any {ch.count === 1 ? 'skill' : `${ch.count} skills`}
+								choose any {ch.count === 1 ? 'skill' : `${ch.count} skills`} ({skillPicks.get(ch) ?? 0}/{ch.count})
 							{/if}
 						</li>
 					{/each}
@@ -666,9 +697,10 @@
 					{@const level = skillLevel(s.key)}
 					<button
 						type="button"
-						class={[level, level === 'none' && offered.has(s.key) && 'offered']}
+						class={[level, level === 'none' && (isNew ? skillOpen(s.key) : offered.has(s.key)) && 'offered']}
 						aria-pressed={level !== 'none'}
 						aria-label="{s.name}: {level === 'none' ? 'not proficient' : level}"
+						disabled={isNew && (givenSkills.includes(s.key) || (level === 'none' && !skillOpen(s.key)))}
 						onclick={() => stepSkill(s.key)}
 					>{s.name}{level === 'expertise' ? ' ×2' : ''}</button>
 				{/each}
@@ -677,7 +709,7 @@
 	{/if}
 
 	{#if show('tools')}
-		<ToolLanguagePicker character={c} bind:tools={c.toolProficiencies} bind:languages={c.languages} />
+		<ToolLanguagePicker character={c} strict={isNew} bind:tools={c.toolProficiencies} bind:languages={c.languages} />
 	{/if}
 
 	<!-- A new character picks fighting styles, feats and class options level by level instead. -->
@@ -1083,6 +1115,10 @@
 		min-height: 36px;
 		padding: 0 10px;
 		font-size: 14px;
+	}
+
+	.chips.skills button[aria-pressed='true']:disabled {
+		opacity: 1;
 	}
 
 	/* Off, but one the class or race lets the player pick. */

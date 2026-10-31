@@ -28,6 +28,8 @@ export interface RaceDefenses {
 }
 
 interface RaceAbilities extends RaceDefenses, ToolLanguages {
+	/** Can be Small, for feats that ask for a Small race. */
+	small?: true;
 	asi?: RaceAsi;
 	/** Walking speed in feet; a subrace's own speed replaces it (Wood Elf). */
 	speed?: number;

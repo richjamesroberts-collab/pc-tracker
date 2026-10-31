@@ -9,7 +9,7 @@ import { applyChoices } from './levelup';
 import { armorClass, recompute } from './stats';
 import { chosenEntries, giveKit, newKitChoices, rollGold, type KitChoices, type KitRow } from './starting';
 import { carryState } from './carry';
-import { languageList, picksMade, toolChoices, toolList, toolPickCount, toolSources, type ToolChoice } from './tools';
+import { canPick, fittingPicks, LANGUAGE_INSTEAD, languageList, picksMade, toolChoices, toolList, toolPickCount, toolSources, type ToolChoice } from './tools';
 
 const pc = (over: Partial<Character>): Character => ({ ...newCharacter(), ...over });
 
@@ -53,6 +53,37 @@ describe('tools and languages', () => {
 		expect(picksMade([either], ['lute'], ['Orc']).get(either)).toBe(2);
 	});
 
+	it('only lets a pick in while a choice has room for it', () => {
+		const dwarf: ToolChoice = { source: 'Dwarf', kind: 'tool', count: 1, from: ["smith's tools", "mason's tools"] };
+		const human: ToolChoice = { source: 'Human', kind: 'language', count: 1 };
+		expect(canPick([dwarf, human], [], [], 'tool', "smith's tools")).toBe(true);
+		expect(canPick([dwarf, human], [], [], 'tool', 'lute')).toBe(false);
+		expect(canPick([dwarf, human], ["smith's tools"], [], 'tool', "mason's tools")).toBe(false);
+		expect(canPick([dwarf, human], [], ['Orc'], 'language', 'Elvish')).toBe(false);
+		// Something typed in only fits an "any" choice.
+		expect(canPick([human], [], [], 'language', 'Aquan')).toBe(true);
+		expect(canPick([dwarf], [], [], 'tool', 'a banjo')).toBe(false);
+		expect(fittingPicks([dwarf], ['lute', "mason's tools"], ['Orc'])).toEqual({ tools: ["mason's tools"], languages: [] });
+	});
+
+	it('moves picks around to fit overlapping lists', () => {
+		const artisan: ToolChoice = { source: 'Monk', kind: 'tool', count: 1, from: ['drum', "smith's tools"] };
+		const crafter: ToolChoice = { source: 'Clan Crafter', kind: 'tool', count: 1, from: ["smith's tools"] };
+		// The smith's tools first went to the monk's list; the drum still fits, with the tools moved to the other.
+		expect(canPick([artisan, crafter], ["smith's tools"], [], 'tool', 'drum')).toBe(true);
+	});
+
+	it('offers another pick for a proficiency from two places', () => {
+		const c = pc({ raceKey: 'dwarf', background: { ref: 'clan crafter|scag', name: 'Clan Crafter', skills: [], languages: ['Dwarvish'] } });
+		expect(toolChoices(c)).toContainEqual({ source: 'From two places', kind: 'language', count: 1 });
+	});
+
+	it('owes a Cavalier or Samurai a language only if they took it instead of the skill', () => {
+		const samurai = { classKey: 'fighter', subclassKey: 'samurai', level: 3 };
+		expect(toolPickCount(pc(samurai))).toBe(0);
+		expect(toolChoices(pc({ ...samurai, grantVariants: { 'fighter/samurai': LANGUAGE_INSTEAD } }))).toEqual([{ source: 'Samurai', kind: 'language', count: 1 }]);
+	});
+
 	it('gives rangers a favored enemy language at 1st, 6th and 14th level', () => {
 		expect([1, 6, 14].map((level) => toolPickCount(pc({ classKey: 'ranger', level })))).toEqual([1, 2, 3]);
 	});
@@ -73,8 +104,6 @@ describe('tools and languages', () => {
 			['cleric', 'forge'],
 			['cleric', 'knowledge'],
 			['fighter', 'battle-master'],
-			['fighter', 'cavalier'],
-			['fighter', 'samurai'],
 			['fighter', 'rune-knight'],
 			['monk', 'drunken-master'],
 			['monk', 'kensei'],

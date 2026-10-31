@@ -1,7 +1,7 @@
 import type { Character, ToolLanguages } from '$lib/types';
 import { CLASS_MAP } from '$lib/data/classes';
 import { raceLabel } from '$lib/data/races';
-import { backgroundSkills } from './skills';
+import { backgroundSkills, fillChoices, subclassSkills } from './skills';
 import { RACE_ABILITIES } from './stats';
 
 /** Tools by group, lowercase as stored on the character; a pick's `from` can name a group. */
@@ -64,9 +64,6 @@ const SUBCLASS_GIVES: Record<string, ToolLanguages> = {
 	'cleric/forge': { tools: ["smith's tools"] },
 	'cleric/knowledge': { pickLanguages: 2 },
 	'fighter/battle-master': { pickTools: [{ count: 1, from: ['artisan'] }] },
-	// Both are "one skill, or one language": the skill is picked on the character's skills instead.
-	'fighter/cavalier': { pickLanguages: 1 },
-	'fighter/samurai': { pickLanguages: 1 },
 	'fighter/rune-knight': { tools: ["smith's tools"], languages: ['Giant'] },
 	'monk/drunken-master': { tools: ["brewer's supplies"] },
 	'monk/kensei': { pickTools: [{ count: 1, from: ["calligrapher's supplies", "painter's supplies"] }] },
@@ -85,7 +82,10 @@ const FEAT_GIVES: Record<string, ToolLanguages> = {
 	'prodigy|xge': { pickTools: [{ count: 1 }], pickLanguages: 1 }
 };
 
-export type ToolInput = Pick<Character, 'classKey' | 'subclassKey' | 'raceKey' | 'subraceKey' | 'level' | 'feats'> & Partial<Pick<Character, 'background'>>;
+export type ToolInput = Pick<Character, 'classKey' | 'subclassKey' | 'raceKey' | 'subraceKey' | 'level' | 'feats'> & Partial<Pick<Character, 'background' | 'grantVariants'>>;
+
+/** What `grantVariants` holds for a subclass whose skill pick was taken as a language (Cavalier, Samurai). */
+export const LANGUAGE_INSTEAD = 'language';
 
 /** What each thing about the character gives, named as the player knows it. */
 function givers(c: ToolInput): { source: string; gives: ToolLanguages }[] {
@@ -93,11 +93,16 @@ function givers(c: ToolInput): { source: string; gives: ToolLanguages }[] {
 	const out: { source: string; gives: ToolLanguages | undefined }[] = [
 		{ source: raceLabel(c), gives: mergeGives(c.raceKey ? RACE_ABILITIES[c.raceKey] : undefined, c.subraceKey ? RACE_ABILITIES[c.raceKey ?? '']?.subraces[c.subraceKey] : undefined) },
 		{ source: cls?.name ?? c.classKey, gives: c.classKey === 'ranger' ? { pickLanguages: favoredEnemies(c.level) } : CLASS_GIVES[c.classKey] },
-		{ source: cls?.subclasses.find((s) => s.key === c.subclassKey)?.name ?? '', gives: SUBCLASS_GIVES[`${c.classKey}/${c.subclassKey}`] },
+		{ source: cls?.subclasses.find((s) => s.key === c.subclassKey)?.name ?? '', gives: subclassGives(c) },
 		{ source: backgroundSkills(c).source, gives: c.background },
 		...c.feats.map((f) => ({ source: f.name, gives: f.ref ? FEAT_GIVES[f.ref] : undefined }))
 	];
 	return out.filter((x): x is { source: string; gives: ToolLanguages } => !!x.gives);
+}
+
+function subclassGives(c: ToolInput): ToolLanguages | undefined {
+	const key = `${c.classKey}/${c.subclassKey}`;
+	return subclassSkills(c).orLanguage && c.grantVariants?.[key] === LANGUAGE_INSTEAD ? { pickLanguages: 1 } : SUBCLASS_GIVES[key];
 }
 
 /** Favored Enemy: one language at 1st level, and another at 6th and 14th. */
@@ -140,34 +145,44 @@ const toolsIn = (from: string[]) => from.flatMap((k) => TOOL_GROUPS.find((g) => 
 
 /** The tool and language picks the character is owed, for the form to point out; none of them are enforced. */
 export function toolChoices(c: ToolInput): ToolChoice[] {
-	return givers(c).flatMap(({ source, gives }) => [
-		...(gives.pickTools ?? []).map((p): ToolChoice => ({ source, kind: 'tool', count: p.count, ...(p.from ? { from: toolsIn(p.from) } : {}) })),
-		...(gives.pickLanguages ? [{ source, kind: 'language' as const, count: gives.pickLanguages }] : []),
-		...(gives.pickEither ? [{ source, kind: 'either' as const, count: gives.pickEither }] : [])
-	]);
+	const sources = toolSources(c);
+	const repeats = (list: string[]) => list.length - new Set(list).size;
+	// The PHB: a proficiency from two sources lets the player take another of the same kind.
+	const twiceTools = repeats(sources.flatMap((s) => s.tools));
+	const twiceLanguages = repeats(sources.flatMap((s) => s.languages));
+	return [
+		...givers(c).flatMap(({ source, gives }) => [
+			...(gives.pickTools ?? []).map((p): ToolChoice => ({ source, kind: 'tool', count: p.count, ...(p.from ? { from: toolsIn(p.from) } : {}) })),
+			...(gives.pickLanguages ? [{ source, kind: 'language' as const, count: gives.pickLanguages }] : []),
+			...(gives.pickEither ? [{ source, kind: 'either' as const, count: gives.pickEither }] : [])
+		]),
+		...(twiceTools ? [{ source: 'From two places', kind: 'tool' as const, count: twiceTools }] : []),
+		...(twiceLanguages ? [{ source: 'From two places', kind: 'language' as const, count: twiceLanguages }] : [])
+	];
 }
 
-/**
- * How many of each choice's picks are made, each pick counting once: two "choose a language" with one picked are
- * one made and one open. Lists go first, so a tool on one isn't used up on an "any tool".
- */
-export function picksMade(choices: ToolChoice[], tools: string[], languages: string[]): Map<ToolChoice, number> {
-	const made = new Map<ToolChoice, number>();
-	const freeTools = [...tools];
-	let freeLanguages = languages.length;
-	for (const ch of choices.filter((x) => x.from)) {
-		const fits = freeTools.filter((t) => ch.from!.includes(t)).slice(0, ch.count);
-		for (const t of fits) freeTools.splice(freeTools.indexOf(t), 1);
-		made.set(ch, fits.length);
-	}
-	for (const ch of choices.filter((x) => !x.from)) {
-		const fromLanguages = ch.kind === 'tool' ? 0 : Math.min(ch.count, freeLanguages);
-		const fromTools = ch.kind === 'language' ? 0 : Math.min(ch.count - fromLanguages, freeTools.length);
-		freeLanguages -= fromLanguages;
-		freeTools.splice(0, fromTools);
-		made.set(ch, fromLanguages + fromTools);
-	}
-	return made;
+type ToolPick = { kind: 'tool' | 'language'; key: string };
+
+const fits = (ch: ToolChoice, p: ToolPick) => ch.kind === 'either' || (ch.kind === p.kind && (!ch.from || ch.from.includes(p.key)));
+const asPicks = (tools: string[], languages: string[]): ToolPick[] => [
+	...tools.map((key) => ({ kind: 'tool' as const, key })),
+	...languages.map((key) => ({ kind: 'language' as const, key }))
+];
+
+/** How the player's picks fill the choices, each counting once; they should leave out what the character has anyway. */
+export const picksMade = (choices: ToolChoice[], tools: string[], languages: string[]) => fillChoices(choices, asPicks(tools, languages), fits).made;
+
+/** Only the picks that fit a choice. */
+export function fittingPicks(choices: ToolChoice[], tools: string[], languages: string[]): { tools: string[]; languages: string[] } {
+	const { fitted } = fillChoices(choices, asPicks(tools, languages), fits);
+	const of = (kind: ToolPick['kind']) => fitted.filter((p) => p.kind === kind).map((p) => p.key);
+	return { tools: of('tool'), languages: of('language') };
+}
+
+/** Whether a choice still has room for this tool or language; `key` can be one no list names, which only "any" choices take. */
+export function canPick(choices: ToolChoice[], tools: string[], languages: string[], kind: ToolPick['kind'], key: string): boolean {
+	const now = asPicks(tools, languages);
+	return fillChoices(choices, [...now, { kind, key }], fits).fitted.length > fillChoices(choices, now, fits).fitted.length;
 }
 
 /** How many picks the character is owed, to tell when a level brings more. */

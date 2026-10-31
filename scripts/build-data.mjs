@@ -680,6 +680,8 @@ for (const r of raceList) {
 	// Powerful Build, Little Giant, Equine Build: one size larger for carrying capacity.
 	const traits = racesOut.find((x) => x.key === raceKey(r)).traits;
 	if (traits.some((t) => /count as one size larger when determining your carrying/.test(t.text))) entry.powerfulBuild = true;
+	// Races that can be Small, for feats that ask for one.
+	if (r.size?.includes('S')) entry.small = true;
 	const subSpeed = (s) => {
 		const own = walkSpeed(s.speed);
 		return own && own !== speed ? own : undefined;
@@ -1142,6 +1144,21 @@ function featSkills(f) {
 	return undefined;
 }
 
+/** A feat's prerequisite for the app to check; `prerequisite` is the same thing as the player reads it. */
+function featRequires(list) {
+	if (!list?.length) return undefined;
+	if (list.length > 1) fail('A feat has alternative prerequisites; teach featRequires about them');
+	const [p] = list;
+	const [proficiency] = p.proficiency ?? [];
+	return {
+		...(p.race ? { race: p.race.map((r) => ({ name: r.name, ...(r.subrace ? { subrace: r.subrace } : {}) })) } : {}),
+		...(p.ability ? { ability: p.ability } : {}),
+		...(proficiency?.armor ? { armor: proficiency.armor } : {}),
+		...(proficiency?.weapon ? { weapon: proficiency.weapon } : {}),
+		...(p.spellcasting || p.spellcasting2020 ? { spellcasting: true } : {})
+	};
+}
+
 // Feats that change numbers the app works out, beyond ability scores, skills and saves.
 const FEAT_HP_PER_LEVEL = { 'tough|phb': 2 };
 
@@ -1152,6 +1169,7 @@ const featsOut = readJson('feats.json')
 		const ability = featAbility(f.ability);
 		const skills = featSkills(f);
 		const prerequisite = prerequisiteText(f.prerequisite);
+		const requires = featRequires(f.prerequisite);
 		const save = f.savingThrowProficiencies?.[0]?.choose?.from;
 		const expertise = f.expertise?.[0]?.anyProficientSkill;
 		const weapons = f.weaponProficiencies?.[0]?.choose?.count;
@@ -1160,6 +1178,7 @@ const featsOut = readJson('feats.json')
 			name: f.name,
 			source: f.source,
 			...(prerequisite ? { prerequisite } : {}),
+			...(requires ? { requires } : {}),
 			...(ability ? { ability } : {}),
 			...(save ? { save } : {}),
 			...(skills ? { skills } : {}),
@@ -1344,6 +1363,8 @@ const optionsOut = [...optionalFeatureIndex.values()]
 		const level = prereq.find((p) => p.level)?.level?.level;
 		const pact = prereq.find((p) => p.pact)?.pact;
 		const prerequisite = prerequisiteText(f.prerequisite);
+		// Spells it needs: bundled ids, or 'hex/curse' for "Hex or a warlock feature that curses".
+		const spells = prereq.flatMap((p) => p.spell ?? []).map((s) => s.split('#')[0]).map((s) => (s === 'hex/curse' ? s : `${s}|phb`));
 		return [
 			{
 				id: `${f.name}|${f.source}`.toLowerCase(),
@@ -1353,6 +1374,7 @@ const optionsOut = [...optionalFeatureIndex.values()]
 				...(prerequisite ? { prerequisite } : {}),
 				...(level ? { level } : {}),
 				...(pact ? { pact: pact.toLowerCase() } : {}),
+				...(spells.length ? { spells } : {}),
 				text: flatten(f.entries).join('\n')
 			}
 		];

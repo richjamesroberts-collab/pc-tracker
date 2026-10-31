@@ -60,11 +60,49 @@ export function backgroundSkills(c: Partial<Pick<Character, 'background'>>): { s
 	return b ? { skills: b.skills, source: `${b.name} (background)` } : { skills: [], source: '' };
 }
 
-/** Every skill the character has without picking it. */
-export const fixedSkills = (c: Pick<Character, 'raceKey'> & Partial<Pick<Character, 'background'>>): Skill[] => [
-	...raceSkills(c).skills,
-	...backgroundSkills(c).skills
-];
+interface SubclassSkills {
+	/** Skills it gives outright. */
+	skills?: Skill[];
+	/** Skills to pick when the subclass is taken; any skill when `from` is left out. */
+	choose?: { count: number; from?: Skill[] };
+	/** Its skills also get expertise. */
+	expertise?: true;
+	/** The pick can be a language instead. */
+	orLanguage?: true;
+}
+
+/** Skills from subclasses, by `class/subclass`. */
+const SUBCLASS_SKILLS: Record<string, SubclassSkills> = {
+	'bard/lore': { choose: { count: 3 } },
+	'cleric/arcana': { skills: ['arcana'] },
+	'cleric/knowledge': { choose: { count: 2, from: ['arcana', 'history', 'nature', 'religion'] }, expertise: true },
+	'cleric/nature': { choose: { count: 1, from: ['animal-handling', 'nature', 'survival'] } },
+	'cleric/order': { choose: { count: 1, from: ['intimidation', 'persuasion'] } },
+	'cleric/peace': { choose: { count: 1, from: ['insight', 'performance', 'persuasion'] } },
+	'fighter/arcane-archer': { choose: { count: 1, from: ['arcana', 'nature'] } },
+	'fighter/cavalier': { choose: { count: 1, from: ['animal-handling', 'history', 'insight', 'performance', 'persuasion'] }, orLanguage: true },
+	'fighter/samurai': { choose: { count: 1, from: ['history', 'insight', 'performance', 'persuasion'] }, orLanguage: true },
+	'monk/drunken-master': { skills: ['performance'] },
+	'monk/mercy': { skills: ['insight', 'medicine'] },
+	'ranger/fey-wanderer': { choose: { count: 1, from: ['deception', 'performance', 'persuasion'] } },
+	'rogue/scout': { skills: ['nature', 'survival'], expertise: true },
+	'wizard/bladesinging': { skills: ['performance'] }
+};
+
+/** What the character's subclass does for their skills. */
+export const subclassSkills = (c: Partial<Pick<Character, 'classKey' | 'subclassKey'>>): SubclassSkills => SUBCLASS_SKILLS[`${c.classKey}/${c.subclassKey}`] ?? {};
+
+/** Who gave a subclass's skills: "Way of Mercy". */
+const subclassName = (c: Partial<Pick<Character, 'classKey' | 'subclassKey'>>) =>
+	CLASS_MAP.get(c.classKey ?? '')?.subclasses.find((s) => s.key === c.subclassKey)?.name ?? '';
+
+/** The skills the character's subclass gives outright, and where from. */
+export const givenBySubclass = (c: Partial<Pick<Character, 'classKey' | 'subclassKey'>>) => ({ skills: subclassSkills(c).skills ?? [], source: subclassName(c) });
+
+type FixedInput = Pick<Character, 'raceKey'> & Partial<Pick<Character, 'background' | 'classKey' | 'subclassKey'>>;
+
+/** Every skill the character has without picking it; one from two places is listed twice. */
+export const fixedSkills = (c: FixedInput): Skill[] => [...raceSkills(c).skills, ...givenBySubclass(c).skills, ...backgroundSkills(c).skills];
 
 /** Skills a class picks from at 1st level (PHB, TCE), and how many; Bard picks any three. */
 const CLASS_SKILLS: Record<string, { count: number; from?: Skill[] }> = {
@@ -113,15 +151,59 @@ export interface SkillChoice {
 }
 
 /** The skill picks the character's class, race and background offer at 1st level, for the form to point out. */
-export function skillChoices(c: Pick<Character, 'classKey' | 'raceKey' | 'subraceKey' | 'background'>): SkillChoice[] {
+export function skillChoices(c: Pick<Character, 'classKey' | 'raceKey' | 'subraceKey' | 'subclassKey' | 'background'>): SkillChoice[] {
 	const out: SkillChoice[] = [];
 	const cls = CLASS_SKILLS[c.classKey];
 	if (cls) out.push({ source: CLASS_MAP.get(c.classKey)?.name ?? c.classKey, ...cls });
 	const race = c.raceKey ? (RACE_SKILL_CHOICES[`${c.raceKey}/${c.subraceKey}`] ?? RACE_SKILL_CHOICES[c.raceKey]) : undefined;
 	if (race) out.push({ source: `${RACE_MAP.get(c.raceKey!)?.name ?? c.raceKey} (${race.trait})`, count: race.count, from: race.from });
 	if (c.background?.choose) out.push({ source: backgroundSkills(c).source, ...c.background.choose });
+	const sub = subclassSkills(c).choose;
+	if (sub) out.push({ source: subclassName(c), ...sub });
+	// The PHB: a proficiency from two sources lets the player take another of the same kind.
+	const fixed = fixedSkills(c);
+	const twice = fixed.length - new Set(fixed).size;
+	if (twice) out.push({ source: 'From two places', count: twice });
 	return out;
 }
+
+/**
+ * How many picks each choice holds, each pick used once and at most `count` to a choice, arranged so that as many
+ * as possible fit: a pick on two lists goes where it leaves room for the rest.
+ */
+export function fillChoices<C extends { count: number; from?: readonly string[] }, P>(
+	choices: C[],
+	picks: P[],
+	accepts: (choice: C, pick: P) => boolean
+): { made: Map<C, number>; fitted: P[] } {
+	// Narrow lists first, so a pick counts for the list that needs it rather than an "any".
+	const size = (ch: C) => ch.from?.length ?? Infinity;
+	const slots = [...choices].sort((a, b) => size(a) - size(b)).flatMap((ch) => Array.from({ length: ch.count }, () => ch));
+	const held = slots.map(() => -1);
+	const place = (pick: number, seen: Set<number>): boolean => {
+		for (let s = 0; s < slots.length; s++) {
+			if (seen.has(s) || !accepts(slots[s], picks[pick])) continue;
+			seen.add(s);
+			if (held[s] < 0 || place(held[s], seen)) {
+				held[s] = pick;
+				return true;
+			}
+		}
+		return false;
+	};
+	picks.forEach((_, i) => place(i, new Set()));
+	const made = new Map(choices.map((ch) => [ch, slots.filter((slot, s) => slot === ch && held[s] >= 0).length]));
+	return { made, fitted: held.filter((p) => p >= 0).sort((a, b) => a - b).map((p) => picks[p]) };
+}
+
+const onList = (ch: SkillChoice, skill: Skill) => !ch.from || ch.from.includes(skill);
+
+/** How the player's skill picks fill the choices; `picks` leaves out skills they have anyway. */
+export const skillsMade = (choices: SkillChoice[], picks: Skill[]) => fillChoices(choices, picks, onList);
+
+/** Whether a choice still has room for this skill. */
+export const canPickSkill = (choices: SkillChoice[], picks: Skill[], skill: Skill) =>
+	skillsMade(choices, [...picks, skill]).fitted.length > skillsMade(choices, picks).fitted.length;
 
 /** Item bonuses and advantage on skills, by the bundled item's id, while the item is in use. */
 const ITEM_SKILLS: Record<string, { skill?: Skill; bonus?: number; note?: string }[]> = {
@@ -182,6 +264,7 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 	const prof = proficiencyBonus(c.level);
 	const race = raceSkills(c);
 	const background = backgroundSkills(c);
+	const given = givenBySubclass(c);
 	const picks = new Set(c.skillProficiencies ?? []);
 	const expertise = new Set(c.skillExpertise ?? []);
 	const cls = CLASS_MAP.get(c.classKey);
@@ -201,18 +284,20 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 
 		const fromRace = race.skills.includes(s.key);
 		const fromBackground = background.skills.includes(s.key);
-		if (picks.has(s.key) || fromRace || fromBackground || expertise.has(s.key)) {
+		const fromSubclass = given.skills.includes(s.key);
+		const expert = expertise.has(s.key) || (fromSubclass && !!subclassSkills(c).expertise);
+		if (picks.has(s.key) || fromRace || fromBackground || fromSubclass || expert) {
 			level = 'proficient';
 			total += prof;
 			parts.push({
 				label: 'Proficiency',
 				value: signedMod(prof),
-				from: `${fromRace ? race.source : fromBackground ? background.source : 'Your pick (class, background or feat)'} · level ${c.level} bonus`
+				from: `${fromRace ? race.source : fromSubclass ? given.source : fromBackground ? background.source : 'Your pick (class, background or feat)'} · level ${c.level} bonus`
 			});
-			if (expertise.has(s.key)) {
+			if (expert) {
 				level = 'expertise';
 				total += prof;
-				parts.push({ label: 'Expertise', value: signedMod(prof), from: 'Your pick: proficiency bonus doubled' });
+				parts.push({ label: 'Expertise', value: signedMod(prof), from: `${fromSubclass ? given.source : 'Your pick'}: proficiency bonus doubled` });
 			}
 		} else if (c.classKey === 'bard' && c.level >= 2) {
 			level = 'half';

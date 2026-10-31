@@ -78,6 +78,62 @@ const RACE_WEAPONS: Record<string, string[]> = {
 	'elf/drow': ['rapier', 'shortsword', 'hand crossbow']
 };
 
+const LIGHT_MEDIUM_SHIELD = ['light', 'medium', 'shield'];
+
+/** Armor proficiencies from each class (PHB, TCE artificer). */
+const CLASS_ARMOR: Record<string, string[]> = {
+	artificer: LIGHT_MEDIUM_SHIELD,
+	barbarian: LIGHT_MEDIUM_SHIELD,
+	bard: ['light'],
+	cleric: LIGHT_MEDIUM_SHIELD,
+	druid: LIGHT_MEDIUM_SHIELD,
+	fighter: [...LIGHT_MEDIUM_SHIELD, 'heavy'],
+	paladin: [...LIGHT_MEDIUM_SHIELD, 'heavy'],
+	ranger: LIGHT_MEDIUM_SHIELD,
+	rogue: ['light'],
+	warlock: ['light']
+};
+
+/** Subclasses that add armor proficiencies, keyed '<class>/<subclass>'. */
+const SUBCLASS_ARMOR: Record<string, string[]> = {
+	'artificer/armorer': ['heavy'],
+	'bard/swords': ['medium'],
+	'bard/valor': ['medium', 'shield'],
+	'cleric/forge': ['heavy'],
+	'cleric/life': ['heavy'],
+	'cleric/nature': ['heavy'],
+	'cleric/order': ['heavy'],
+	'cleric/tempest': ['heavy'],
+	'cleric/twilight': ['heavy'],
+	'cleric/war': ['heavy'],
+	'warlock/hexblade': ['medium', 'shield'],
+	'wizard/bladesinging': ['light']
+};
+
+/** Racial armor training, keyed by race or '<race>/<subrace>'. */
+const RACE_ARMOR: Record<string, string[]> = {
+	'dwarf/mountain': ['light', 'medium'],
+	'hobgoblin-vgm': ['light']
+};
+
+/** Feats that add armor proficiencies, by the bundled feat's id. */
+const FEAT_ARMOR: Record<string, string[]> = {
+	'heavily armored|phb': ['heavy'],
+	'lightly armored|phb': ['light'],
+	'moderately armored|phb': ['medium', 'shield']
+};
+
+/** The kinds of armor the character is proficient with: 'light', 'medium', 'heavy' and 'shield'. */
+export function armorProficiencies(c: Pick<Character, 'classKey' | 'subclassKey' | 'raceKey' | 'subraceKey' | 'feats'>): Set<string> {
+	return new Set([
+		...(CLASS_ARMOR[c.classKey] ?? []),
+		...(SUBCLASS_ARMOR[`${c.classKey}/${c.subclassKey}`] ?? []),
+		...((c.raceKey && RACE_ARMOR[c.raceKey]) || []),
+		...(RACE_ARMOR[`${c.raceKey}/${c.subraceKey}`] ?? []),
+		...c.feats.flatMap((f) => (f.ref && FEAT_ARMOR[f.ref]) || [])
+	]);
+}
+
 export interface ProficiencySource {
 	/** Class, subclass or race name; "Your choice" for the player's own. */
 	source: string;
