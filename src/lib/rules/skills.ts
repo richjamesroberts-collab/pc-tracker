@@ -54,6 +54,18 @@ export function raceSkills(c: Pick<Character, 'raceKey'>): { skills: Skill[]; so
 	return { skills: r.skills, source: `${RACE_MAP.get(c.raceKey!)?.name ?? c.raceKey} (${r.trait})` };
 }
 
+/** The skills the character's background gives outright, and where from ("Acolyte (background)"). */
+export function backgroundSkills(c: Partial<Pick<Character, 'background'>>): { skills: Skill[]; source: string } {
+	const b = c.background;
+	return b ? { skills: b.skills, source: `${b.name} (background)` } : { skills: [], source: '' };
+}
+
+/** Every skill the character has without picking it. */
+export const fixedSkills = (c: Pick<Character, 'raceKey'> & Partial<Pick<Character, 'background'>>): Skill[] => [
+	...raceSkills(c).skills,
+	...backgroundSkills(c).skills
+];
+
 /** Skills a class picks from at 1st level (PHB, TCE), and how many; Bard picks any three. */
 const CLASS_SKILLS: Record<string, { count: number; from?: Skill[] }> = {
 	artificer: { count: 2, from: ['arcana', 'history', 'investigation', 'medicine', 'nature', 'perception', 'sleight-of-hand'] },
@@ -100,13 +112,14 @@ export interface SkillChoice {
 	from?: Skill[];
 }
 
-/** The skill picks the character's class and race offer at 1st level, for the form to point out. */
-export function skillChoices(c: Pick<Character, 'classKey' | 'raceKey' | 'subraceKey'>): SkillChoice[] {
+/** The skill picks the character's class, race and background offer at 1st level, for the form to point out. */
+export function skillChoices(c: Pick<Character, 'classKey' | 'raceKey' | 'subraceKey' | 'background'>): SkillChoice[] {
 	const out: SkillChoice[] = [];
 	const cls = CLASS_SKILLS[c.classKey];
 	if (cls) out.push({ source: CLASS_MAP.get(c.classKey)?.name ?? c.classKey, ...cls });
 	const race = c.raceKey ? (RACE_SKILL_CHOICES[`${c.raceKey}/${c.subraceKey}`] ?? RACE_SKILL_CHOICES[c.raceKey]) : undefined;
 	if (race) out.push({ source: `${RACE_MAP.get(c.raceKey!)?.name ?? c.raceKey} (${race.trait})`, count: race.count, from: race.from });
+	if (c.background?.choose) out.push({ source: backgroundSkills(c).source, ...c.background.choose });
 	return out;
 }
 
@@ -159,15 +172,16 @@ type SkillInput = Pick<
 	| 'skillProficiencies'
 	| 'skillExpertise'
 > &
-	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule'>>;
+	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule' | 'background'>>;
 
 /**
- * Every skill's modifier with how it was worked out: ability modifier, proficiency (the player's picks or
- * the race's), expertise, Jack of All Trades or Remarkable Athlete, and item bonuses.
+ * Every skill's modifier with how it was worked out: ability modifier, proficiency (the player's picks, or
+ * the race's or background's), expertise, Jack of All Trades or Remarkable Athlete, and item bonuses.
  */
 export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = abilityBreakdown(c)): SkillCheck[] {
 	const prof = proficiencyBonus(c.level);
 	const race = raceSkills(c);
+	const background = backgroundSkills(c);
 	const picks = new Set(c.skillProficiencies ?? []);
 	const expertise = new Set(c.skillExpertise ?? []);
 	const cls = CLASS_MAP.get(c.classKey);
@@ -186,13 +200,14 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 		let level: SkillLevel = 'none';
 
 		const fromRace = race.skills.includes(s.key);
-		if (picks.has(s.key) || fromRace || expertise.has(s.key)) {
+		const fromBackground = background.skills.includes(s.key);
+		if (picks.has(s.key) || fromRace || fromBackground || expertise.has(s.key)) {
 			level = 'proficient';
 			total += prof;
 			parts.push({
 				label: 'Proficiency',
 				value: signedMod(prof),
-				from: `${fromRace ? race.source : 'Your pick (class, background or feat)'} · level ${c.level} bonus`
+				from: `${fromRace ? race.source : fromBackground ? background.source : 'Your pick (class, background or feat)'} · level ${c.level} bonus`
 			});
 			if (expertise.has(s.key)) {
 				level = 'expertise';

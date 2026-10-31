@@ -3,11 +3,13 @@
 	import { resolve } from '$app/paths';
 	import CharacterForm, { type FormSection } from '$lib/components/CharacterForm.svelte';
 	import LevelUpFlow, { newPicks, type FlowPicks } from '$lib/components/LevelUpFlow.svelte';
+	import StartingEquipment from '$lib/components/StartingEquipment.svelte';
 	import { newCharacter } from '$lib/character';
 	import { CLASS_MAP } from '$lib/data/classes';
 	import { signedMod } from '$lib/rules/abilities';
 	import { applyChoices, applyLevelUp, hasChoices, levelUpNeeds, startingHp, type LevelUpChoices } from '$lib/rules/levelup';
 	import { formula, recompute } from '$lib/rules/stats';
+	import { newKitChoices, type KitChoices } from '$lib/rules/starting';
 	import { hitDie, hpGain } from '$lib/rules/xp';
 	import { cacheSpell } from '$lib/library.svelte';
 	import { db, requestPersistentStorage } from '$lib/db';
@@ -15,9 +17,10 @@
 
 	/**
 	 * The screens in order: the required basics, ability scores, skills, each level from 1st up to the
-	 * starting level that asks for something, the remaining details, then hit points.
+	 * starting level that asks for something, tools and languages, starting equipment, the remaining
+	 * details, then hit points.
 	 */
-	type Stage = FormSection | 'level' | 'hp';
+	type Stage = FormSection | 'level' | 'equipment' | 'hp';
 
 	let stage = $state<Stage>('basics');
 	/** The character as entered on the form screens, at 1st-level values (no level choices applied). */
@@ -30,6 +33,9 @@
 	/** Picks for the levels visited, so going back to one keeps them. */
 	let picks = $state<FlowPicks[]>([]);
 	let hpOverride = $state<number | null>(null);
+	let kit = $state<KitChoices>(newKitChoices());
+	/** What the equipment screen handed over. */
+	let carried = $state.raw<Pick<Character, 'items' | 'coins'> | null>(null);
 	/** Each finished level's choices as last made, to tell whether going back changed anything. */
 	let lastChoices: Record<number, string> = {};
 
@@ -38,10 +44,12 @@
 
 	/** What the level steps depend on; when any of it changes, the levels start over. */
 	const levelKey = (c: Character) =>
-		JSON.stringify([c.classKey, c.raceKey, c.subraceKey, c.level, c.abilities, c.raceAbilityChoices, c.skillProficiencies, c.skillExpertise]);
+		JSON.stringify([c.classKey, c.raceKey, c.subraceKey, c.background, c.level, c.abilities, c.raceAbilityChoices, c.skillProficiencies, c.skillExpertise]);
 
 	/** Details entered after the levels, copied back onto `base`. */
 	const DETAIL_FIELDS = [
+		'toolProficiencies',
+		'languages',
 		'xp',
 		'milestone',
 		'acAuto',
@@ -61,6 +69,8 @@
 			learned = {};
 			picks = [];
 			lastChoices = {};
+			kit = newKitChoices();
+			carried = null;
 		}
 		base = c;
 	}
@@ -103,7 +113,7 @@
 			learned = { ...learned, [l]: [] };
 			l++;
 		}
-		if (l > target) return show('details');
+		if (l > target) return show('tools');
 		picks[l] ??= newPicks(before(l));
 		show('level', l);
 	}
@@ -130,8 +140,8 @@
 
 	// ---- Details and hit points ----------------------------------------------------------------
 
-	/** The character with every level's choices, once the levels are done. */
-	const final = $derived(stage === 'details' || stage === 'hp' ? before(target + 1) : null);
+	/** The character with every level's choices and starting equipment, once the levels are done. */
+	const final = $derived(stage === 'tools' || stage === 'equipment' || stage === 'details' || stage === 'hp' ? recompute({ ...before(target + 1), ...structuredClone(carried) }) : null);
 	const gain = $derived(final ? hpGain(final) : null);
 	const hpAuto = $derived(final ? startingHp(final) : 0);
 	const hpOk = $derived(hpOverride === null || (Number.isInteger(hpOverride) && hpOverride >= 1));
@@ -153,6 +163,8 @@
 		abilities: 'Ability scores',
 		skills: 'Skills',
 		level: '',
+		tools: 'Tools and languages',
+		equipment: 'Starting equipment',
 		details: 'Details',
 		hp: 'Hit points'
 	};
@@ -205,6 +217,23 @@
 				onback={() => retreat(current)}
 			/>
 		{/key}
+	{:else if stage === 'tools' && final}
+		<p class="lead">What your race, class, background and feats give. Dashed ones are on a list you can pick from.</p>
+		<CharacterForm
+			initial={final}
+			isNew
+			sections={['tools']}
+			cancelLabel="Back"
+			onsave={(c) => (keepDetails(c), show('equipment'))}
+			oncancel={(c) => (keepDetails(c), retreat(target + 1))}
+		/>
+	{:else if stage === 'equipment' && final}
+		<StartingEquipment
+			character={before(target + 1)}
+			bind:choices={kit}
+			onnext={(got) => ((carried = got), show('details'))}
+			onback={() => show('tools')}
+		/>
 	{:else if stage === 'details' && final}
 		<p class="lead">All optional: XP, armor class, speed and the rest. Change any of it later in Edit.</p>
 		<CharacterForm
@@ -213,7 +242,7 @@
 			sections={['details']}
 			cancelLabel="Back"
 			onsave={(c) => (keepDetails(c), show('hp'))}
-			oncancel={(c) => (keepDetails(c), retreat(target + 1))}
+			oncancel={(c) => (keepDetails(c), show('equipment'))}
 		/>
 	{:else if stage === 'hp' && final && gain}
 		<p class="lead">

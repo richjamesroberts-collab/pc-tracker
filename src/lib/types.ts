@@ -246,6 +246,29 @@ export interface CharacterFeat {
 	hpPerLevel?: number;
 }
 
+/** Tools and languages something gives: fixed ones (tools lowercase, as in `TOOL_GROUPS` in rules/tools.ts) and picks it owes. */
+export interface ToolLanguages {
+	tools?: string[];
+	languages?: string[];
+	/** Tools to pick; `from` lists tools or `TOOL_GROUPS` keys, and any tool when left out. */
+	pickTools?: { count: number; from?: string[] }[];
+	pickLanguages?: number;
+	/** Picks that can be tools or languages (Custom Background). */
+	pickEither?: number;
+}
+
+/** The character's background, copying what the app needs from backgrounds.json. */
+export interface CharacterBackground extends ToolLanguages {
+	/** Bundled background id (`name|source`). */
+	ref: string;
+	/** The bundled name, or the player's own for a Custom Background. */
+	name: string;
+	/** Skills it gives outright; picks from `choose` go in `skillProficiencies` like any other. */
+	skills: Skill[];
+	/** Skills it lets the player pick; any skill when `from` is left out. */
+	choose?: { count: number; from?: Skill[] };
+}
+
 /** Invocations, pact boons, maneuvers, arcane shots, runes, infusions and elemental disciplines (options.json `kind`). */
 export type ClassOptionKind = 'invocation' | 'pact-boon' | 'maneuver' | 'arcane-shot' | 'rune' | 'infusion' | 'discipline';
 
@@ -286,6 +309,7 @@ export interface Character {
 	raceKey?: string;
 	/** Subrace (or dragon ancestry) key within the race. */
 	subraceKey?: string;
+	background?: CharacterBackground;
 	level: number;
 	/** Experience points. */
 	xp: number;
@@ -323,12 +347,16 @@ export interface Character {
 	 * 'simple', 'martial', or a PHB weapon's lowercase name.
 	 */
 	weaponProficiencies: string[];
-	/** Skill proficiencies the player picked (class, background, feats, racial choices); fixed racial ones are added in rules/skills.ts. */
+	/** Skill proficiencies the player picked (class, background, feats, racial choices); fixed racial and background ones are added in rules/skills.ts. */
 	skillProficiencies: Skill[];
 	/** Skills with expertise (double proficiency): Rogue, Bard, feats. */
 	skillExpertise: Skill[];
 	/** Saving throw proficiencies beyond the class's (Resilient feat); see rules/saves.ts. */
 	saveProficiencies: Ability[];
+	/** Tool proficiencies the player picked, lowercase; what class, race, background and feats give is in rules/tools.ts. */
+	toolProficiencies: string[];
+	/** Languages the player picked; what class, race, background and feats give is in rules/tools.ts. */
+	languages: string[];
 	/** Fighting style keys from `FIGHTING_STYLES` in rules/attacks.ts. */
 	fightingStyles: string[];
 	/** Feats taken at level up (or added in Edit). */

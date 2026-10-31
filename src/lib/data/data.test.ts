@@ -6,10 +6,13 @@ import itemsJson from './items.json';
 import gearJson from './gear.json';
 import featsJson from './feats.json';
 import optionsJson from './options.json';
+import backgroundsJson from './backgrounds.json';
+import equipmentJson from './equipment.json';
 import { CLASSES } from './classes';
 import { RACE_BOOKS, RACES, raceLabel } from './races';
 import { RESOURCES } from '../rules/features';
 import {
+	CUSTOM_BACKGROUND,
 	featureGroups,
 	fillItemData,
 	fillItemDetails,
@@ -20,6 +23,7 @@ import {
 	inventoryItem,
 	RARITIES,
 	unpack,
+	type BackgroundData,
 	type ClassContent,
 	type ClassOptionData,
 	type FeatData,
@@ -30,6 +34,8 @@ import {
 } from './content';
 import { parseRegain } from '../rules/items';
 import { SKILL_KEYS } from '../rules/skills';
+import { chosenEntries, KIT_PICKS, newKitChoices, type ClassKit } from '../rules/starting';
+import { TOOL_GROUPS, toolChoices, toolSources } from '../rules/tools';
 import { OPTION_INFO } from '../rules/levelup';
 import raceAbilities from './race-abilities.json';
 import { newCharacter } from '$lib/character';
@@ -378,6 +384,48 @@ describe('bundled feats and class options', () => {
 		expect(feats.find((f) => f.id === 'skilled|phb')?.skills).toEqual({ from: 'any', count: 3 });
 		for (const f of feats) {
 			if (Array.isArray(f.skills?.from)) for (const k of f.skills.from) expect(SKILL_KEYS).toContain(k);
+		}
+	});
+
+	it('has the PHB and SCAG backgrounds, with skills the app can apply', () => {
+		const backgrounds = backgroundsJson as BackgroundData[];
+		expect(backgrounds.length).toBeGreaterThanOrEqual(33);
+		expect(new Set(backgrounds.map((b) => b.id)).size).toBe(backgrounds.length);
+		for (const b of backgrounds) {
+			for (const k of [...b.skills, ...(b.choose?.from ?? [])]) expect(SKILL_KEYS).toContain(k);
+			// Two skills in all, as in the PHB.
+			expect(b.skills.length + (b.choose?.count ?? 0)).toBe(2);
+			expect(b.features.length).toBeGreaterThan(0);
+		}
+		expect(backgrounds.find((b) => b.id === CUSTOM_BACKGROUND)?.choose).toEqual({ count: 2 });
+		// A variant takes the skills of what it copies, with its own feature.
+		const spy = backgrounds.find((b) => b.name === 'Criminal (Spy)')!;
+		expect(spy.skills).toEqual(['deception', 'stealth']);
+		expect(spy.features.map((f) => f.name)).toEqual(['Spy Contact']);
+	});
+
+	it('has starting equipment for every class and background, in gear the app knows', () => {
+		const kits = equipmentJson as Record<string, ClassKit>;
+		const rows = [...Object.values(kits).flatMap((k) => k.rows), ...(backgroundsJson as BackgroundData[]).flatMap((b) => b.equipment)];
+		expect(Object.keys(kits).sort()).toEqual(CLASSES.map((c) => c.key).sort());
+		expect(kits.monk.gold).toEqual({ count: 5, sides: 4, times: 1 });
+		for (const entry of rows.flatMap((r) => r.options.flatMap((o) => o.items))) {
+			if (entry.ref) expect(gearById.has(entry.ref)).toBe(true);
+			if (entry.pick) expect(gear.filter(KIT_PICKS[entry.pick].fits).length).toBeGreaterThan(0);
+			expect(entry.ref || entry.name || entry.pick || entry.coins).toBeTruthy();
+		}
+		// A background's money is in its pouch, and a bundle arrives as single items.
+		const soldier = (backgroundsJson as BackgroundData[]).find((b) => b.name === 'Soldier')!;
+		expect(chosenEntries(soldier.equipment, 'background', newKitChoices()).find((e) => e.ref === 'pouch|phb')?.coins).toBe(1000);
+		expect(kits.ranger.rows.at(-1)?.options[0].items).toContainEqual({ ref: 'arrow|phb', quantity: 20 });
+	});
+
+	it('has languages for every race, and tools the app lists', () => {
+		const known = new Set(gear.map((g) => g.name.toLowerCase()));
+		for (const g of TOOL_GROUPS) for (const t of g.tools) if (!t.startsWith('vehicles')) expect(known).toContain(t);
+		for (const r of RACES) {
+			const c = { classKey: 'fighter', raceKey: r.key, level: 1, feats: [] };
+			expect(toolSources(c).flatMap((s) => s.languages).length + toolChoices(c).length).toBeGreaterThan(0);
 		}
 	});
 

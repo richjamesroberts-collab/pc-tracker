@@ -41,6 +41,7 @@
 		moveItem,
 		overLimit,
 		placed,
+		packPlan,
 		putCoinsAway,
 		samePlace,
 		stashCapacity,
@@ -368,21 +369,6 @@
 		if (!p) return;
 		const added = commit(p, to);
 		if (added && (p.items.length === 1 || p.pack)) expanded = added;
-	}
-
-	/** Pack contents that fit in the pack's own container (a backpack's 30 lb), in order; the rest is strapped on. */
-	function packPlan(items: InventoryItem[]): Pending['pack'] {
-		const box = items.find((i) => i.container);
-		if (!box) return undefined;
-		let room = box.container!.lb ?? Infinity;
-		const inside: string[] = [];
-		for (const i of items) {
-			const w = (i.weight ?? 0) * i.quantity;
-			if (i === box || w > room) continue;
-			inside.push(i.id);
-			room -= w;
-		}
-		return { box: box.id, inside };
 	}
 
 	function putAway() {

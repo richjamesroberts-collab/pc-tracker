@@ -13,6 +13,9 @@
 		featSkills: Skill[];
 		featExpertise: Skill[];
 		featWeapons: string[];
+		/** Picked tools and languages, starting from those already known. */
+		tools: string[];
+		languages: string[];
 		styles: string[];
 		expertise: string[];
 		metamagic: string[];
@@ -47,6 +50,8 @@
 			featSkills: [],
 			featExpertise: [],
 			featWeapons: [],
+			tools: [...start.toolProficiencies],
+			languages: [...start.languages],
 			styles: [...start.fightingStyles],
 			expertise: [],
 			metamagic: [...start.metamagic],
@@ -67,6 +72,7 @@
 <script lang="ts">
 	import PickList, { type PickItem } from './PickList.svelte';
 	import SpellDetails from './SpellDetails.svelte';
+	import ToolLanguagePicker from './ToolLanguagePicker.svelte';
 	import { CLASS_MAP } from '$lib/data/classes';
 	import { classOption, loadContent, loadFeats, loadOptions, type ClassOptionData, type Content, type FeatData } from '$lib/data/content';
 	import { ABILITIES, ABILITY_SHORT, abilityMod, signedMod } from '$lib/rules/abilities';
@@ -85,8 +91,9 @@
 	import { proficiencyLabel, WEAPONS, weaponProficiencies } from '$lib/rules/proficiency';
 	import { METAMAGIC } from '$lib/rules/resources';
 	import { saveProficiencySource } from '$lib/rules/saves';
-	import { raceSkills, SKILLS } from '$lib/rules/skills';
+	import { fixedSkills, SKILLS } from '$lib/rules/skills';
 	import { ordinal, pactSlots, slotMax } from '$lib/rules/spellcasting';
+	import { toolPickCount } from '$lib/rules/tools';
 	import { abilityBreakdown, formula, recompute } from '$lib/rules/stats';
 	import { hitDie, hpForLevel, hpGain, xpForLevel } from '$lib/rules/xp';
 	import { characterSpells, spellListClass, spellPool } from '$lib/library.svelte';
@@ -222,6 +229,10 @@
 		return swaps.find((x) => x.grant.key === grant && x.original === original);
 	});
 	const hasGrants = $derived(variantsToPick.length > 0 || arrivingChoices.size > 0 || swaps.length > 0);
+	/** The character at this level with the feat being taken, for the tools and languages it's owed. */
+	const toolChar = $derived({ ...next, feats: [...start.feats, ...(featNow ? [{ id: '', ref: featNow, name: feat?.name ?? '' }] : [])] });
+	/** A subclass or feat can bring more picks; a new character makes them all on one screen after the levels. */
+	const needsTools = $derived(!create && toolPickCount(toolChar) > toolPickCount(start));
 
 	const choices = $derived<LevelUpChoices>({
 		hp: 0,
@@ -236,6 +247,8 @@
 		fightingStyles: needs.fightingStyles ? picks.styles : undefined,
 		weapons: needs.weapons ? picks.weapons : undefined,
 		expertise: needs.expertise ? (picks.expertise as Skill[]) : undefined,
+		tools: needsTools ? picks.tools : undefined,
+		languages: needsTools ? picks.languages : undefined,
 		metamagic: needs.metamagic ? picks.metamagic : undefined,
 		optionKinds: needs.options.map((o) => o.kind),
 		options: needs.options.flatMap((o) => pickedOptions(o.kind)),
@@ -271,6 +284,7 @@
 		| 'styles'
 		| 'weapons'
 		| 'expertise'
+		| 'tools'
 		| 'metamagic'
 		| 'spells'
 		| 'grants'
@@ -287,6 +301,7 @@
 			needs.fightingStyles && 'styles',
 			needs.weapons && 'weapons',
 			needs.expertise && 'expertise',
+			needsTools && 'tools',
 			needs.metamagic && 'metamagic',
 			...needs.options.map((o) => o.kind),
 			hasSpells && 'spells',
@@ -301,6 +316,7 @@
 		styles: 'Fighting style',
 		weapons: 'Weapon proficiencies',
 		expertise: 'Expertise',
+		tools: 'Tools and languages',
 		metamagic: 'Metamagic',
 		spells: 'Spells',
 		grants: 'Granted spells',
@@ -349,7 +365,7 @@
 			};
 		})
 	);
-	const proficientNow = $derived(new Set<Skill>([...start.skillProficiencies, ...raceSkills(start).skills]));
+	const proficientNow = $derived(new Set<Skill>([...start.skillProficiencies, ...fixedSkills(start)]));
 	const featSkillOptions = $derived(
 		feat?.skills ? SKILLS.filter((s) => (feat.skills!.from === 'any' || feat.skills!.from.includes(s.key)) && !proficientNow.has(s.key)) : []
 	);
@@ -403,7 +419,7 @@
 	const expertiseOptions = $derived(
 		SKILLS.filter(
 			(s) =>
-				(preview.skillProficiencies.includes(s.key) || raceSkills(start).skills.includes(s.key)) &&
+				(preview.skillProficiencies.includes(s.key) || fixedSkills(start).includes(s.key)) &&
 				!start.skillExpertise.includes(s.key) &&
 				!(choices.improvement?.kind === 'feat' && choices.improvement.expertise.includes(s.key))
 		)
@@ -568,6 +584,7 @@
 				return grantsOk;
 			case 'overview':
 			case 'spells':
+			case 'tools':
 			case 'review':
 				return true;
 			default:
@@ -829,6 +846,9 @@
 			{/each}
 		</div>
 		{#if !expertiseOptions.length}<p class="muted">No proficient skills without expertise. Add skill proficiencies in Edit.</p>{/if}
+	{:else if step === 'tools'}
+		<p class="lead">This level brings more tools or languages to pick.</p>
+		<ToolLanguagePicker character={toolChar} bind:tools={picks.tools} bind:languages={picks.languages} />
 	{:else if step === 'metamagic'}
 		<p class="lead">You know {needs.metamagic} Metamagic options at level {level} ({picks.metamagic.length}/{needs.metamagic}).</p>
 		<PickList items={metamagicItems} bind:selected={picks.metamagic} max={needs.metamagic} label="Metamagic" />

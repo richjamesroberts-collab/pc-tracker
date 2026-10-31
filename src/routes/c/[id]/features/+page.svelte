@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { session } from '$lib/session.svelte';
-	import { loadContent, loadFeats, loadOptions, featureGroups, type ClassOptionData, type Content, type FeatData } from '$lib/data/content';
+	import { loadBackgrounds, loadContent, loadFeats, loadOptions, featureGroups, type BackgroundData, type ClassOptionData, type Content, type FeatData } from '$lib/data/content';
 	import { OPTION_INFO } from '$lib/rules/levelup';
 	import { proficiencyBonus } from '$lib/rules/features';
 	import { signedMod } from '$lib/rules/abilities';
 	import { FIGHTING_STYLE_MAP } from '$lib/rules/attacks';
 	import { proficiencyLabel, proficiencyList, weaponProficiencies } from '$lib/rules/proficiency';
 	import { senses } from '$lib/rules/senses';
+	import { languageList, toolLabel, toolList } from '$lib/rules/tools';
 	import type { Character } from '$lib/types';
 
 	const c = $derived(session.character as Character);
@@ -15,6 +16,7 @@
 	let content = $state<Content | null>(null);
 	let featData = $state.raw<Map<string, FeatData>>(new Map());
 	let optionData = $state.raw<Map<string, ClassOptionData>>(new Map());
+	let backgroundData = $state.raw<Map<string, BackgroundData>>(new Map());
 	let failed = $state(false);
 	let attempt = $state(0);
 
@@ -22,12 +24,13 @@
 		void attempt;
 		failed = false;
 		let live = true;
-		Promise.all([loadContent(), loadFeats(), loadOptions()]).then(
-			([x, f, o]) => {
+		Promise.all([loadContent(), loadFeats(), loadOptions(), loadBackgrounds()]).then(
+			([x, f, o, b]) => {
 				if (!live) return;
 				content = x;
 				featData = new Map(f.map((d) => [d.id, d]));
 				optionData = new Map(o.map((d) => [d.id, d]));
+				backgroundData = new Map(b.map((d) => [d.id, d]));
 			},
 			() => live && (failed = true)
 		);
@@ -35,8 +38,19 @@
 	});
 
 	const groups = $derived(content ? featureGroups(content, c) : []);
-	/** Feats, then each kind of class option the character knows, with their text where it's bundled. */
+	const background = $derived(c.background && backgroundData.get(c.background.ref));
+	/** The background, feats, then each kind of class option the character knows, with their text where it's bundled. */
 	const picks = $derived([
+		{
+			key: 'background',
+			title: `Background: ${c.background?.name}`,
+			list: background
+				? [
+						...background.features.map((f) => ({ ...f, meta: '' })),
+						{ name: 'Proficiencies and equipment', meta: '', text: background.lines.map((l) => `${l.name}: ${l.text}`).join('\n') }
+					]
+				: []
+		},
 		{
 			key: 'feats',
 			title: 'Feats',
@@ -55,6 +69,8 @@
 		}))
 	].filter((g) => g.list.length));
 	const weapons = $derived(proficiencyList(weaponProficiencies(c)).map(proficiencyLabel));
+	const tools = $derived(toolList(c).map(toolLabel));
+	const languages = $derived(languageList(c));
 	const styles = $derived(c.fightingStyles.map((k) => FIGHTING_STYLE_MAP.get(k)).filter((s) => !!s));
 	const senseList = $derived(senses(c));
 </script>
@@ -65,6 +81,8 @@
 <div class="card profs">
 	<p><b>Proficiency bonus</b> {signedMod(proficiencyBonus(c.level))}</p>
 	<p><b>Weapons</b> {weapons.length ? weapons.join(', ') : 'None'}</p>
+	<p><b>Tools</b> {tools.length ? tools.join(', ') : 'None'}</p>
+	<p><b>Languages</b> {languages.length ? languages.join(', ') : 'None'}</p>
 	{#each styles as st (st.key)}
 		<p><b>{st.name}</b> {st.text}</p>
 	{/each}
