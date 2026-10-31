@@ -14,6 +14,7 @@
 	import XpSheet from '$lib/components/XpSheet.svelte';
 	import ShortRestSheet from '$lib/components/ShortRestSheet.svelte';
 	import SpellcastingSheet from '$lib/components/SpellcastingSheet.svelte';
+	import CheckSheet, { type Check } from '$lib/components/CheckSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
 	import CountersCard from '$lib/components/CountersCard.svelte';
 	import PotionIcon from '$lib/components/PotionIcon.svelte';
@@ -43,6 +44,7 @@
 	import { abilityBreakdown, walkingSpeed } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
+	import { passivePerception } from '$lib/rules/skills';
 	import { healingDice, isPotion } from '$lib/rules/potions';
 	import { isUsable, type UseFx as UseFxKind } from '$lib/rules/usable';
 	import { CARRY_STATUS, carrySpeed, encumbrance } from '$lib/rules/carry';
@@ -63,12 +65,17 @@
 	const slowed = $derived(load.status !== 'light');
 
 	const speed = $derived(walkingSpeed(c)?.total);
+	const passive = $derived(passivePerception(c));
+	let passiveOpen = $state(false);
+	const passiveCheck = $derived<Check | null>(
+		passiveOpen ? { name: 'Passive Perception', sub: passive.own ? 'Your own number' : '10 + your Perception', total: passive.total, parts: passive.parts, notes: passive.notes, flat: true } : null
+	);
 	const stats = $derived(
 		[
 			speed != null && { k: slowed ? `Speed · ${CARRY_STATUS[load.status].label}` : 'Speed', v: `${carrySpeed(speed, load.status)} ft`, warn: slowed },
-			c.passivePerception != null && { k: 'Passive', v: `${c.passivePerception}` },
+			{ k: 'Passive', v: `${passive.total}`, open: () => (passiveOpen = true) },
 			...senses(c).map((s) => ({ k: s.name, v: `${s.range} ft` }))
-		].filter((s): s is { k: string; v: string; warn?: boolean } => !!s)
+		].filter((s): s is { k: string; v: string; warn?: boolean; open?: () => void } => !!s)
 	);
 
 	const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
@@ -290,7 +297,11 @@
 {#if stats.length}
 	<div class="stats" style:--cols={Math.min(stats.length, 4)}>
 		{#each stats as s (s.k)}
-			<div class="stat" class:warn={s.warn}><strong>{s.v}</strong><span>{s.k}</span></div>
+			{#if s.open}
+				<button type="button" class="stat tap" aria-label="{s.k} Perception {s.v}. Tap for details." onclick={s.open}><strong>{s.v}</strong><span>{s.k}</span></button>
+			{:else}
+				<div class="stat" class:warn={s.warn}><strong>{s.v}</strong><span>{s.k}</span></div>
+			{/if}
 		{/each}
 	</div>
 {/if}
@@ -431,6 +442,7 @@
 <XpSheet open={xpOpen} onclose={() => (xpOpen = false)} />
 <ShortRestSheet open={restOpen} onclose={() => (restOpen = false)} />
 <SpellcastingSheet open={spellcastingOpen} onclose={() => (spellcastingOpen = false)} />
+<CheckSheet check={passiveCheck} edit="Change passive Perception in Edit" onclose={() => (passiveOpen = false)} />
 <FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
 <AcSheet open={acOpen} onclose={() => (acOpen = false)} />
 <BackupSheet open={backupOpen} onclose={() => (backupOpen = false)} />
@@ -1078,6 +1090,12 @@
 		font-family: var(--font-display);
 		font-size: 20px;
 		font-weight: 900;
+	}
+
+	.stat.tap {
+		height: auto;
+		border: 0;
+		color: var(--color-text);
 	}
 
 	.stat.warn strong,

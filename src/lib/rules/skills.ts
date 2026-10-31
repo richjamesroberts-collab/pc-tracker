@@ -254,7 +254,11 @@ type SkillInput = Pick<
 	| 'skillProficiencies'
 	| 'skillExpertise'
 > &
-	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule' | 'background'>>;
+	Partial<Pick<Character, 'coins' | 'stashes' | 'encumbranceRule' | 'background' | 'feats'>>;
+
+/** Observant adds this to passive Perception and Investigation. */
+const OBSERVANT_BONUS = 5;
+const observant = (c: Partial<Pick<Character, 'feats'>>) => !!c.feats?.some((f) => f.ref === 'observant|phb');
 
 /**
  * Every skill's modifier with how it was worked out: ability modifier, proficiency (the player's picks, or
@@ -337,8 +341,43 @@ export function skillChecks(c: SkillInput, breakdown: AbilityBreakdown = ability
 			}
 		}
 		if (c.classKey === 'bard' && c.subclassKey === 'lore' && c.level >= 14) notes.push('Peerless Skill: spend a Bardic Inspiration die and add it');
-		if (s.key === 'perception' || s.key === 'investigation' || s.key === 'insight') notes.push(`Passive ${s.name.toLowerCase()}: ${10 + total}`);
+		if (s.key === 'perception' || s.key === 'investigation' || s.key === 'insight') {
+			const bonus = s.key !== 'insight' && observant(c) ? OBSERVANT_BONUS : 0;
+			notes.push(`Passive ${s.name.toLowerCase()}: ${10 + total + bonus}`);
+		}
 
 		return { key: s.key, name: s.name, ability: s.ability, total, level, parts, notes };
 	});
+}
+
+export interface PassivePerception {
+	/** What's shown: the player's own number if they set one. */
+	total: number;
+	/** What it comes to without the player's own number. */
+	worked: number;
+	/** The player's own number replaces the worked-out one. */
+	own: boolean;
+	parts: StatSource[];
+	notes: string[];
+}
+
+/** Passive Perception: 10 plus the Perception check, and Observant's bonus; `c.passivePerception` replaces it. */
+export function passivePerception(c: SkillInput & Partial<Pick<Character, 'passivePerception'>>, breakdown: AbilityBreakdown = abilityBreakdown(c)): PassivePerception {
+	const check = skillChecks(c, breakdown).find((s) => s.key === 'perception')!;
+	const bonus = observant(c) ? OBSERVANT_BONUS : 0;
+	const worked = 10 + check.total + bonus;
+	const parts: StatSource[] = [
+		{ label: 'Base', value: '10', from: 'Every passive check' },
+		...check.parts,
+		...(bonus ? [{ label: 'Observant', value: signedMod(bonus), from: 'Feat' }] : [])
+	];
+	const notes = [...check.notes.filter((n) => !n.startsWith('Passive') && !n.startsWith('Reliable')), 'Advantage on the check adds 5, disadvantage takes 5 off'];
+	if (c.passivePerception == null) return { total: worked, worked, own: false, parts, notes };
+	return {
+		total: c.passivePerception,
+		worked,
+		own: true,
+		parts: [{ label: 'Your own number', value: `${c.passivePerception}`, from: 'Set in Edit' }],
+		notes: [`Worked out it would be ${worked}: clear the box in Edit to use that`, ...notes]
+	};
 }

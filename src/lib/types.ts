@@ -373,6 +373,7 @@ export interface Character {
 	initiativeModifier?: number;
 	/** Player-set initiative that replaces the worked-out one (Alert feat, a DM ruling). */
 	initiativeOverride?: number;
+	/** Player-set passive Perception that replaces the worked-out one (`passivePerception` in rules/skills.ts). */
 	passivePerception?: number;
 
 	/** Spellcasting ability modifier as worked out from ability scores, or `spellModOverride`; don't set directly. */

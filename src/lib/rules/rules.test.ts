@@ -78,7 +78,7 @@ import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
 import { defenses } from './defenses';
-import { canPickSkill, fillChoices, fixedSkills, skillChecks, skillChoices, skillsMade, subclassSkills, SKILL_KEYS, type SkillChoice } from './skills';
+import { canPickSkill, fillChoices, fixedSkills, passivePerception, skillChecks, skillChoices, skillsMade, subclassSkills, SKILL_KEYS, type SkillChoice } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
 import type { ItemArmor, ItemWeapon, Skill } from '$lib/types';
@@ -1222,6 +1222,28 @@ describe('skills', () => {
 		const agent = { ref: 'faction agent|scag', name: 'Faction Agent', skills: ['insight'] as Skill[], choose: { count: 1, from: ['arcana', 'history'] as Skill[] } };
 		expect(skillChoices(pc({ classKey: 'fighter', background: agent }))[1]).toEqual({ source: 'Faction Agent (background)', count: 1, from: ['arcana', 'history'] });
 		expect(skillChoices(pc({ classKey: 'fighter', background: acolyte }))).toHaveLength(1);
+	});
+
+	it('works out passive Perception, and takes the player\'s own number instead', () => {
+		const c = pc({ classKey: 'rogue', level: 5, raceKey: 'elf', abilities: scores({ dex: 16, wis: 14 }) });
+		expect(passivePerception(c)).toMatchObject({ total: 15, worked: 15, own: false }); // 10 + WIS 2 + Keen Senses 3
+		expect(passivePerception(c).parts.map((p) => p.label)).toEqual(['Base', 'WIS modifier', 'Proficiency']);
+		expect(passivePerception({ ...c, skillExpertise: ['perception'] }).total).toBe(18);
+
+		const set = passivePerception({ ...c, passivePerception: 20 });
+		expect(set).toMatchObject({ total: 20, worked: 15, own: true });
+		expect(set.notes[0]).toContain('15');
+		expect(passivePerception({ ...c, passivePerception: 0 })).toMatchObject({ total: 0, own: true });
+	});
+
+	it('adds Observant to passive Perception and Investigation, not Insight or the check', () => {
+		const c = pc({ abilities: scores({ wis: 14, int: 12 }), feats: [{ id: 'a', ref: 'observant|phb', name: 'Observant' }] });
+		expect(passivePerception(c).total).toBe(17);
+		expect(passivePerception(c).parts.at(-1)).toMatchObject({ label: 'Observant', value: '+5' });
+		expect(skill(c, 'perception').total).toBe(2);
+		expect(skill(c, 'perception').notes).toContain('Passive perception: 17');
+		expect(skill(c, 'investigation').notes).toContain('Passive investigation: 16');
+		expect(skill(c, 'insight').notes).toContain('Passive insight: 12');
 	});
 
 	it('only lets a skill in while a choice has room for it', () => {
