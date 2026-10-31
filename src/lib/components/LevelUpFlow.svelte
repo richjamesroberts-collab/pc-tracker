@@ -528,7 +528,8 @@
 		return {
 			id: s.id,
 			name: s.name,
-			meta: `${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${s.ritual ? ' · Ritual' : ''}${expanded && !s.classes.includes(listClass) ? ` · ${expanded.tag}` : ''}`
+			meta: `${s.level === 0 ? 'Cantrip' : `${ordinal(s.level)} level`} · ${s.school}${s.concentration ? ' · Conc' : ''}${expanded && !s.classes.includes(listClass) ? ` · ${expanded.tag}` : ''}`,
+			tags: s.ritual ? ['Ritual'] : []
 		};
 	};
 	/** On the class list, or one a patron or Divine Soul adds, and not already known. */
@@ -945,7 +946,11 @@
 		{/if}
 		{#if spellGoal}
 			<h2 class="label">{needs.prep === 'spellbook' ? 'Copy into your spellbook' : 'New spells'} · {picks.spells.length}/{spellGoal}</h2>
-			<p class="hint">Up to {ordinal(learnLevel)} level.{schoolNote ? ` ${schoolNote}` : ''}</p>
+			<p class="hint">
+				Up to {ordinal(learnLevel)} level.{schoolNote ? ` ${schoolNote}` : ''}{needs.prep === 'spellbook'
+					? ' They’re prepared for you as far as your limit goes, rituals aside; change that in your Spellbook.'
+					: ''}
+			</p>
 			<PickList items={spellItems} bind:selected={picks.spells} max={spellGoal} label="Spells" search>
 				{#snippet details(item)}{@const s = spellById.get(item.id)}{#if s}<SpellDetails spell={s} compact />{/if}{/snippet}
 			</PickList>

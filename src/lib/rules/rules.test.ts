@@ -3,6 +3,7 @@ import { newCharacter } from '$lib/character';
 import { CLASS_MAP } from '$lib/data/classes';
 import type { Character, InventoryItem } from '$lib/types';
 import { applyDamage, applyHealing, applyTempHp, rollDeathSave, isDead } from './hp';
+import { fillPrepared } from './spellcasting';
 import {
 	arcanumLevels,
 	cantripsKnown,
@@ -1153,6 +1154,35 @@ describe("Volo's and Monsters of the Multiverse races", () => {
 		expect(keys(pc({ raceKey: 'genasi', subraceKey: 'earth', level: 5 }))).toEqual(['merge-with-stone', 'genasi-pass-without-trace']);
 		expect(keys(pc({ raceKey: 'aasimar-vgm', subraceKey: 'scourge', level: 3 }))).toEqual(['healing-hands-vgm', 'radiant-consumption']);
 		expect(resourcesFor(pc({ raceKey: 'aasimar', level: 5 }))[0].die!(pc({ level: 5 }))).toBe('3d4');
+	});
+});
+
+describe('preparing a wizard\'s spells', () => {
+	const spell = (id: string, level: number, ritual = false) => ({ id, level, ritual });
+	const wizard = (over: Partial<Character> = {}) => pc({ classKey: 'wizard', level: 3, spellMod: 1, ...over }); // 4 prepared, 2nd-level slots
+
+	it('fills up to the limit, highest level first, leaving rituals and what has no slot', () => {
+		const list = [spell('a', 1), spell('b', 1), spell('c', 2), spell('d', 1), spell('e', 2), spell('f', 1), spell('find', 1, true), spell('high', 3), spell('cantrip', 0)];
+		const c = wizard({ spells: list.map((s) => ({ id: s.id, prepared: false })) });
+		fillPrepared(c, list, list.map((s) => s.id));
+		expect(c.spells.filter((s) => s.prepared).map((s) => s.id).sort()).toEqual(['a', 'b', 'c', 'e']);
+	});
+
+	it('keeps what is prepared, counting it, and leaves other classes alone', () => {
+		const list = [spell('a', 1), spell('b', 1)];
+		const full = wizard({ spellMod: -2, spells: [{ id: 'a', prepared: true }, { id: 'b', prepared: false }] }); // 1 prepared
+		fillPrepared(full, list, ['a', 'b']);
+		expect(full.spells.map((s) => s.prepared)).toEqual([true, false]);
+		const cleric = pc({ classKey: 'cleric', level: 3, spells: [{ id: 'a', prepared: false }] });
+		fillPrepared(cleric, list, ['a']);
+		expect(cleric.spells[0].prepared).toBe(false);
+	});
+
+	it('only touches spells just learned, so one left unprepared stays that way', () => {
+		const list = [spell('old', 1), spell('new', 1)];
+		const c = wizard({ spells: list.map((s) => ({ id: s.id, prepared: false })) });
+		fillPrepared(c, list, ['new']);
+		expect(c.spells.map((s) => s.prepared)).toEqual([false, true]);
 	});
 });
 

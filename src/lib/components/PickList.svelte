@@ -4,6 +4,8 @@
 		name: string;
 		/** Short line under the name: prerequisite, school, level. */
 		meta?: string;
+		/** Chips beside the name ("Ritual"). */
+		tags?: string[];
 		/** Plain paragraphs joined by `\n`, shown when the row is opened. */
 		text?: string;
 		/** Can't be picked (prerequisite not met, already known); `meta` says why. */
@@ -69,7 +71,7 @@
 				>
 					<span class="box" aria-hidden="true">{on ? '✓' : ''}</span>
 					<span class="body">
-						<span class="name">{item.name}</span>
+						<span class="name">{item.name}{#each item.tags ?? [] as tag (tag)}{' '}<span class="tag">{tag}</span>{/each}</span>
 						{#if item.meta}<span class="meta">{item.meta}</span>{/if}
 					</span>
 				</button>
@@ -196,6 +198,17 @@
 		font-size: 16px;
 		font-weight: 700;
 		overflow-wrap: anywhere;
+	}
+
+	.tag {
+		font-size: 11px;
+		font-weight: 800;
+		padding: 1px 6px;
+		border-radius: 6px;
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
+		box-shadow: inset 0 0 0 1px var(--color-spell-edge);
+		vertical-align: 2px;
 	}
 
 	.meta {

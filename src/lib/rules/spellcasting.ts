@@ -1,4 +1,4 @@
-import type { Ability, Character } from '$lib/types';
+import type { Ability, Character, Spell } from '$lib/types';
 import { itemSpellBonus } from './items';
 
 export type Progression = 'full' | 'half' | 'artificer' | 'third' | 'pact' | 'none';
@@ -185,6 +185,25 @@ export function spellLimit(c: Pick<Character, 'classKey' | 'subclassKey' | 'leve
 			return Math.max(1, Math.floor(c.level / 2) + c.spellMod);
 		default:
 			return 0;
+	}
+}
+
+/**
+ * Prepare a wizard's new spells while there's room: highest level first, and not rituals, which a wizard casts from
+ * their book without preparing. `spells` are the ones that count against the limit, and `fresh` the ids just learned;
+ * what's prepared stays, and a spell the player left unprepared stays that way.
+ */
+export function fillPrepared(c: Character, spells: Pick<Spell, 'id' | 'level' | 'ritual'>[], fresh: string[]): void {
+	if (prepStyle(c) !== 'spellbook') return;
+	const entry = (id: string) => c.spells.find((s) => s.id === id);
+	const levelled = spells.filter((s) => s.level > 0);
+	let room = spellLimit(c) - levelled.filter((s) => entry(s.id)?.prepared).length;
+	const top = slotMax(c).length;
+	for (const s of [...levelled].sort((a, b) => b.level - a.level)) {
+		const e = entry(s.id);
+		if (room <= 0 || !e || e.prepared || s.ritual || s.level > top || !fresh.includes(s.id)) continue;
+		e.prepared = true;
+		room--;
 	}
 }
 

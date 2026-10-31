@@ -15,10 +15,13 @@
 		spell,
 		onclose,
 		oncast,
-		onreplace
+		onreplace,
+		ritualOnly = false
 	}: {
 		spell: Spell | null;
 		onclose: () => void;
+		/** A ritual in a wizard's book that isn't prepared: it can only be cast as a ritual. */
+		ritualOnly?: boolean;
 		/** A spell in a swappable list (Aberrant Mind, Clockwork Soul): offer to replace it. */
 		onreplace?: () => void;
 		/** After a cast: what it used (slots, points, counters) and how it was cast ("1st", "ritual", "at will"). */
@@ -52,7 +55,7 @@
 		if (spell.ritual && (slots || granted?.cast.some((x) => x.kind === 'ritual'))) {
 			out.push({ key: 'ritual', label: 'As a ritual', detail: '+10 minutes, no slot', left: 1, level: spell.level, kind: 'ritual' });
 		}
-		return out;
+		return ritualOnly ? out.filter((o) => o.kind === 'ritual') : out;
 	});
 
 	function addSlots(spell: Spell, out: Option[]) {
@@ -205,7 +208,7 @@
 		{/if}
 
 		<button type="button" class="cast" disabled={!canCast} onclick={() => cast()}>{castLabel}</button>
-		{#if spell.level > 0}
+		{#if spell.level > 0 && !ritualOnly}
 			<button type="button" class="free" onclick={() => cast(true)}>Cast without a slot (item or feature)</button>
 		{/if}
 		{#if onreplace}

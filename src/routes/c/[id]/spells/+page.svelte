@@ -29,6 +29,8 @@
 	const c = $derived(session.character as Character);
 	const style = $derived(prepStyle(c));
 	const prepares = $derived(style === 'prepared' || style === 'spellbook');
+	/** A wizard prepares from their spellbook, on the Spellbook screen. */
+	const book = $derived(style === 'spellbook');
 	const pact = $derived(pactSlots(c));
 	const arcanum = $derived(arcanumLevels(c));
 	const spMax = $derived(sorceryPointsMax(c));
@@ -39,6 +41,8 @@
 	// Free granted spells (domain, oath, circle) are always prepared and don't count.
 	const preparedCount = $derived(levelled.filter((x) => x.prepared && !x.grant?.free).length);
 	const limit = $derived(spellLimit(c));
+	/** A wizard casts any ritual in their book without preparing it. */
+	const rituals = $derived(book ? levelled.filter((x) => !x.prepared && x.spell.ritual) : []);
 	/** How each granted spell is cast besides a slot: "At will", "1 / long rest", "2 ki". */
 	const castWays = $derived(new Map(grantedSpells(c).map((g) => [g.id, castSummary(c, g)])));
 	/** Non-casters with granted spells (Shadow monk, tiefling fighter) have no slots to show. */
@@ -241,9 +245,13 @@
 	{#if prepares && levelled.length}
 		<div class="prep">
 			<span>Prepared <b class:over={preparedCount > limit}>{preparedCount} / {limit}</b></span>
-			<button type="button" aria-pressed={preparing} onclick={() => (preparing = !preparing)}>
-				{preparing ? 'Done' : 'Change prepared'}
-			</button>
+			{#if book}
+				<a href={resolve('/c/[id]/book', { id: c.id })}>Change prepared</a>
+			{:else}
+				<button type="button" aria-pressed={preparing} onclick={() => (preparing = !preparing)}>
+					{preparing ? 'Done' : 'Change prepared'}
+				</button>
+			{/if}
 		</div>
 	{/if}
 
@@ -259,6 +267,7 @@
 								<span class="name">
 									{spell.name}
 									{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
+									{#if spell.ritual}<span class="tag ritual">Ritual</span>{/if}
 								</span>
 								<span class="meta">{grant?.free ? `Always prepared · ${grant.name}` : spellMeta(spell)}</span>
 							</span>
@@ -270,7 +279,7 @@
 									{spell.name}
 									{#if grant}<span class="tag grant">{grant.tag}</span>{/if}
 									{#if spell.concentration}<span class="tag">Conc</span>{/if}
-									{#if spell.ritual}<span class="tag">Ritual</span>{/if}
+									{#if spell.ritual}<span class="tag ritual">Ritual</span>{/if}
 								</span>
 								<span class="meta">{[spellMeta(spell), castWays.get(spell.id)].filter(Boolean).join(' · ')}</span>
 							</span>
@@ -282,6 +291,29 @@
 			{/each}
 		</ul>
 	{/each}
+
+	{#if rituals.length}
+		<h2 class="label group">Rituals in your book</h2>
+		<p class="note">No need to prepare these: cast them as rituals, 10 minutes longer and no slot.</p>
+		<ul class="card list">
+			{#each rituals as { spell } (spell.id)}
+				<li bind:this={rowEls[spell.id]}>
+					<button type="button" class="spell" onclick={() => (casting = spell)}>
+						<span class="info">
+							<span class="name">
+								{spell.name}
+								{#if spell.concentration}<span class="tag">Conc</span>{/if}
+								<span class="tag ritual">Ritual</span>
+							</span>
+							<span class="meta">{ordinal(spell.level)} level · {spellMeta(spell)}</span>
+						</span>
+						<span class="cast" class:pop={castFx?.id === spell.id}>Cast</span>
+					</button>
+					{@render played(spell.id)}
+				</li>
+			{/each}
+		</ul>
+	{/if}
 
 	{#if prepares && !preparing && levelled.length > 0 && preparedCount === 0}
 		<p class="hint">No spells prepared. Tap "Change prepared" to pick today's spells.</p>
@@ -298,6 +330,7 @@
 
 <CastSheet
 	spell={casting}
+	ritualOnly={rituals.some((x) => x.spell.id === casting?.id)}
 	onclose={() => (casting = null)}
 	oncast={onCast}
 	onreplace={replaceable
@@ -440,12 +473,21 @@
 		color: var(--color-danger);
 	}
 
-	.prep button {
+	.prep button,
+	.prep a {
+		display: inline-flex;
+		align-items: center;
 		min-height: 40px;
 		background: var(--color-surface);
 		border: 1.5px solid var(--color-spell-edge);
 		color: var(--color-spell-ink);
 		font-weight: 800;
+	}
+
+	.prep a {
+		padding: 0 14px;
+		border-radius: var(--radius-pill);
+		text-decoration: none;
 	}
 
 	.prep button[aria-pressed='true'] {
@@ -517,6 +559,18 @@
 	.tag.grant {
 		background: var(--color-spell-ink);
 		color: var(--color-surface);
+	}
+
+	.tag.ritual {
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
+		box-shadow: inset 0 0 0 1px var(--color-spell-edge);
+	}
+
+	.note {
+		margin: 0 4px 6px;
+		font-size: 13px;
+		color: var(--color-text-muted);
 	}
 
 	.meta {

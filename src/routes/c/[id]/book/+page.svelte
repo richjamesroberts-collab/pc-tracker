@@ -5,7 +5,7 @@
 	import CustomSpellSheet from '$lib/components/CustomSpellSheet.svelte';
 	import SwapSpellSheet from '$lib/components/SwapSpellSheet.svelte';
 	import { session } from '$lib/session.svelte';
-	import { cacheSpell, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
+	import { cacheSpell, characterSpells, library, spellListClass, spellPool, uncacheSpell } from '$lib/library.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import {
 		expandedBy,
@@ -20,7 +20,7 @@
 		variantPicks,
 		type GrantChoice
 	} from '$lib/rules/grants';
-	import { cantripsKnown, isCaster, ordinal, prepStyle, spellLimit } from '$lib/rules/spellcasting';
+	import { cantripsKnown, isCaster, ordinal, prepStyle, slotMax, spellLimit } from '$lib/rules/spellcasting';
 	import type { Character, Spell } from '$lib/types';
 
 	/** `grant:<tag>` shows one grant list (Psionic, Domain), every level of it. */
@@ -30,11 +30,17 @@
 	const listClass = $derived(spellListClass(c));
 	const listName = $derived(CLASSES.find((x) => x.key === listClass)?.name ?? listClass);
 	const style = $derived(prepStyle(c));
+	/** A wizard's own book: spells go in it, and are prepared from it, on this screen. */
+	const book = $derived(style === 'spellbook');
 
 	let query = $state('');
 	const caster = $derived(isCaster(c));
-	// Non-casters (a Shadow monk, a fighter with Magic Initiate) only have granted spells.
-	let filter = $state<Filter>(isCaster(session.character as Character) ? 'class' : 'mine');
+	/** Opens on what the character has if that's the job here: a wizard's book, or a non-caster's granted spells. */
+	function firstFilter(ch: Character): Filter {
+		if (!isCaster(ch)) return 'mine';
+		return prepStyle(ch) === 'spellbook' && ch.spells.length ? 'mine' : 'class';
+	}
+	let filter = $state<Filter>(firstFilter(session.character as Character));
 	let level = $state<number | null>(null);
 	let source = $state<string | null>(null);
 	let expanded = $state<string | null>(null);
@@ -90,6 +96,11 @@
 	const myLevelled = $derived(pool.filter((s) => s.level > 0 && counted(s)).length);
 	const cantripLimit = $derived(cantripsKnown(c));
 	const knownLimit = $derived(style === 'known' ? spellLimit(c) : null);
+	const prepLimit = $derived(spellLimit(c));
+	/** Prepared spells that count against the limit; a wizard's limit, so only worked out for one. */
+	const preparedIds = $derived(new Set(book ? characterSpells(c).filter((x) => x.prepared && !x.grant?.free && x.spell.level > 0).map((x) => x.spell.id) : []));
+	const hasSlotFor = (s: Spell) => s.level <= slotMax(c).length;
+	const canPrepare = (s: Spell) => preparedIds.size < prepLimit && hasSlotFor(s);
 	/** Eldritch Knight / Arcane Trickster spells from outside their two schools. */
 	const offSchool = $derived(schools ? pool.filter((s) => s.level > 0 && counted(s) && !schools.schools.includes(s.school)).length : 0);
 
@@ -141,11 +152,20 @@
 				if (ch.concentration === s.name) ch.concentration = undefined;
 			});
 		} else {
-			session.mutate(`Added ${s.name}`, (ch) => {
-				ch.spells.push({ id: s.id, prepared: true });
+			// A new spell in a wizard's book is ready to cast while there's room; rituals don't need to be.
+			const prepared = !book || s.level === 0 || (!s.ritual && canPrepare(s));
+			session.mutate(book && s.level > 0 && prepared ? `Added and prepared ${s.name}` : `Added ${s.name}`, (ch) => {
+				ch.spells.push({ id: s.id, prepared });
 				cacheSpell(ch, s);
 			});
 		}
+	}
+
+	function togglePrepared(s: Spell) {
+		session.mutate(null, (ch) => {
+			const entry = ch.spells.find((x) => x.id === s.id);
+			if (entry) entry.prepared = !entry.prepared;
+		});
 	}
 
 	function deleteCustom(s: Spell) {
@@ -162,7 +182,8 @@
 	<h1>Spells</h1>
 	<p class="counts">
 		{#if cantripLimit}Cantrips <b>{myCantrips}/{cantripLimit}</b> · {/if}
-		{#if knownLimit !== null}Known <b>{myLevelled}/{knownLimit}</b>{:else}{style === 'spellbook' ? 'In book' : 'On list'} <b>{myLevelled}</b>{/if}
+		{#if knownLimit !== null}Known <b>{myLevelled}/{knownLimit}</b>{:else}{book ? 'In book' : 'On list'} <b>{myLevelled}</b>{/if}
+		{#if book} · Prepared <b class:over={preparedIds.size > prepLimit}>{preparedIds.size}/{prepLimit}</b>{/if}
 		{#each grantCounts as g (g.tag)} · <b>+{g.n}</b> {g.tag}{/each}
 		{#if schools}
 			· Off-school <b class:over={offSchool > schools.anyMax}>{offSchool}/{schools.anyMax}</b>
@@ -178,11 +199,16 @@
 </label>
 
 <div class="filters" role="radiogroup" aria-label="Which spells">
+	{#if book}
+		<button type="button" role="radio" aria-checked={filter === 'mine'} onclick={() => (filter = 'mine')}>In my book</button>
+	{/if}
 	{#if caster}
 		<button type="button" role="radio" aria-checked={filter === 'class'} onclick={() => (filter = 'class')}>{listName} list</button>
 	{/if}
 	<button type="button" role="radio" aria-checked={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
-	<button type="button" role="radio" aria-checked={filter === 'mine'} onclick={() => (filter = 'mine')}>My spells</button>
+	{#if !book}
+		<button type="button" role="radio" aria-checked={filter === 'mine'} onclick={() => (filter = 'mine')}>My spells</button>
+	{/if}
 	{#each [...grantLists.keys()] as tag (tag)}
 		<button type="button" role="radio" aria-checked={filter === `grant:${tag}`} onclick={() => (filter = `grant:${tag}`)}>{tag} spells</button>
 	{/each}
@@ -207,6 +233,10 @@
 			· <b class:done={ch.picked.length >= ch.count}>{ch.picked.length}/{ch.count}</b>
 		</p>
 	{/each}
+{/if}
+
+{#if book && preparedIds.size >= prepLimit}
+	<p class="choice-note">All {prepLimit} prepared. Tap ✓ Prepared on one to free a place.</p>
 {/if}
 
 {#if sources.length > 1}
@@ -250,9 +280,9 @@
 			<li>
 				<div class="row">
 					<button type="button" class="info" aria-expanded={expanded === s.id} onclick={() => (expanded = expanded === s.id ? null : s.id)}>
-						<span class="name">{s.name}</span>
+						<span class="name">{s.name}{#if s.ritual}{' '}<span class="tag">Ritual</span>{/if}</span>
 						<span class="meta">
-							{s.school || 'Custom'} · {s.time}{s.concentration ? ' · Conc' : ''}{s.ritual ? ' · Ritual' : ''}{s.source !== 'PHB' && s.source !== 'SRD' ? ` · ${s.source}` : ''}{expandedTag ? ` · ${expandedTag}` : ''}
+							{s.school || 'Custom'} · {s.time}{s.concentration ? ' · Conc' : ''}{s.source !== 'PHB' && s.source !== 'SRD' ? ` · ${s.source}` : ''}{expandedTag ? ` · ${expandedTag}` : ''}
 						</span>
 					</button>
 					{#if tag && arrives !== undefined}
@@ -264,6 +294,19 @@
 						<button type="button" class="add added" aria-label="Remove {s.name}" onclick={() => toggle(s)}>✓ {pickedFor.grant.tag}</button>
 					{:else if open}
 						<button type="button" class="add" aria-label="Add {s.name} ({open.grant.name})" onclick={() => pickFor(s, open)}>+ {open.grant.tag}</button>
+					{:else if book && added && s.level > 0}
+						{@const prepared = preparedIds.has(s.id)}
+						<button
+							type="button"
+							class="add"
+							class:added={prepared}
+							aria-pressed={prepared}
+							aria-label="Prepare {s.name}"
+							disabled={!prepared && !canPrepare(s)}
+							onclick={() => togglePrepared(s)}
+						>
+							{prepared ? '✓ Prepared' : hasSlotFor(s) ? 'Prepare' : 'No slots'}
+						</button>
 					{:else}
 						<button type="button" class="add" class:added aria-label="{added ? 'Remove' : 'Add'} {s.name}" onclick={() => toggle(s)}>
 							{added ? '✓ Added' : '+ Add'}
@@ -273,6 +316,9 @@
 				{#if expanded === s.id}
 					<div class="details">
 						<SpellDetails spell={s} compact />
+						{#if book && added && s.level > 0 && !fixed && !pickedFor}
+							<button type="button" class="delete" onclick={() => toggle(s)}>Remove from spellbook</button>
+						{/if}
 						{#if swaps.has(s.id)}
 							<button type="button" class="swap" onclick={() => (swapping = swaps.get(s.id) ?? null)}>Replace with another spell</button>
 						{/if}
@@ -508,6 +554,17 @@
 		font-weight: 700;
 	}
 
+	.tag {
+		font-size: 11px;
+		font-weight: 800;
+		padding: 1px 6px;
+		border-radius: 6px;
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
+		box-shadow: inset 0 0 0 1px var(--color-spell-edge);
+		vertical-align: 2px;
+	}
+
 	.meta {
 		font-size: 12px;
 		color: var(--color-text-muted);
@@ -526,6 +583,10 @@
 	.add.added {
 		background: var(--color-spell-ink);
 		color: var(--color-bg);
+	}
+
+	.add:disabled {
+		opacity: 0.45;
 	}
 
 	.granted {
