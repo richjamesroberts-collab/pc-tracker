@@ -1,4 +1,5 @@
 import { slotOf } from '$lib/rules/slots';
+import type { UseFx } from '$lib/rules/usable';
 import type { ArmorType, Character, Gender } from '$lib/types';
 
 /**
@@ -812,3 +813,48 @@ export function runs(g: Map<string, Pixel>): { x: number; y: number; w: number; 
 	}
 	return out;
 }
+
+/** What the hero acts out: being hit, healing, a melee swing, a shot, a cast, using something, resting. */
+export type HeroPose = 'hit' | 'heal' | 'temp' | 'swing' | 'shoot' | 'cast' | 'use' | 'rest';
+
+/** The moment the hero is acting out; `n` starts the animation over. */
+export interface HeroAct {
+	pose: HeroPose;
+	/** A colour token, the same one the animation on the card uses. */
+	tint: string;
+	n: number;
+}
+
+const POSE_TINT: Record<HeroPose, string> = {
+	hit: '--color-hit',
+	heal: '--color-heal',
+	temp: '--color-accent',
+	swing: '--color-px-steel-dk',
+	shoot: '--color-px-steel-dk',
+	cast: '--color-lair',
+	use: '--color-px-gold',
+	rest: '--color-accent'
+};
+
+/** A feature, item or spell's kind as a colour, matching `UseFx.svelte`. */
+const FX_TINT: Record<UseFx, string> = {
+	fire: '--color-warning',
+	lightning: '--color-accent',
+	frost: '--color-accent',
+	poison: '--color-hp-high',
+	radiant: '--color-warning',
+	necrotic: '--color-lair',
+	heal: '--color-heal',
+	light: '--color-warning',
+	force: '--color-accent',
+	vanish: '--color-lair',
+	summon: '--color-lair',
+	music: '--color-lair',
+	wind: '--color-text-muted',
+	strike: '--color-cond-ink',
+	scroll: '--color-px-gold',
+	arcane: '--color-lair',
+	gear: '--color-px-steel'
+};
+
+export const heroTint = (pose: HeroPose, fx?: UseFx) => (fx ? FX_TINT[fx] : POSE_TINT[pose]);

@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Pips from '$lib/components/Pips.svelte';
 	import SpellNav from '$lib/components/SpellNav.svelte';
+	import HeroStage from '$lib/components/HeroStage.svelte';
 	import CastSheet from '$lib/components/CastSheet.svelte';
 	import SwapSpellSheet from '$lib/components/SwapSpellSheet.svelte';
 	import FontOfMagicSheet from '$lib/components/FontOfMagicSheet.svelte';
@@ -72,6 +73,7 @@
 	};
 
 	function onCast({ spell, spent, how }: { spell: Spell; spent: Spent[]; how: string }) {
+		session.act('cast', spellFx(spell));
 		const label = spent.length ? spent.map((s) => `−${s.tag}`).join(' ') : how === 'cantrip' ? '' : how.charAt(0).toUpperCase() + how.slice(1);
 		clearTimeout(fxTimer);
 		castFx = { id: spell.id, kind: spellFx(spell), label, n: (castFx?.n ?? 0) + 1 };
@@ -347,6 +349,7 @@
 	{/key}
 {/if}
 <FontOfMagicSheet open={fontOpen} onclose={() => (fontOpen = false)} />
+<HeroStage floating />
 
 <style>
 	.top {

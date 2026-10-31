@@ -88,7 +88,8 @@
 			if (r?.instantDeath) session.notify('Massive damage: instant death', { tone: 'warn', canUndo: true });
 			if (r?.concentrationDC && spell) session.concentrationCheck = { spell, dc: r.concentrationDC };
 			onclose();
-			if (r && !r.reverted) onchanged?.({ kind: 'damage', amount });
+			if (r?.reverted) session.act('hit');
+			else if (r) onchanged?.({ kind: 'damage', amount });
 			return;
 		}
 		if (shape && mode === 'heal') {

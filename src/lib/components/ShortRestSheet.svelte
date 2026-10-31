@@ -42,6 +42,7 @@
 
 	function finish() {
 		session.mutate('Short rest taken', shortRest);
+		session.act('rest');
 		onclose();
 	}
 </script>

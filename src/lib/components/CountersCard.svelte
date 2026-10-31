@@ -160,6 +160,7 @@
 		const taken = session.mutate(`Became ${beast.name}`, (d) => transform(d, beast));
 		shaping = false;
 		if (!taken) return;
+		session.act('cast', 'summon');
 		ontransformed?.();
 		clearTimeout(fxTimer);
 		fx = { id: row.id, kind: row.fx, label: `${beast.name}`, n: (fx?.n ?? 0) + 1 };
@@ -199,6 +200,8 @@
 			session.mutate(`Used ${what}, ${left} left`, (d) => spendOne(row, d, n));
 		}
 		viewing = null;
+		// A healing feature used on the character shows as healing, from `onhealed`.
+		if (!key) session.act(song ? 'cast' : 'use', row.fx);
 		clearTimeout(fxTimer);
 		fx = { id: row.id, kind: row.fx, label: row.unit[0] === 'use' ? `−${n}` : `−${count(n, row.unit)}`, n: (fx?.n ?? 0) + 1 };
 		fxTimer = setTimeout(() => (fx = null), 1900);

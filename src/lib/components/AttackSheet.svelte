@@ -14,6 +14,12 @@
 		if (attack) shown = attack;
 	});
 
+	/** There's nothing to roll or spend here: this is the hero acting it out. */
+	function strike(a: Attack) {
+		session.act(a.reach.startsWith('Ranged') ? 'shoot' : 'swing');
+		onclose();
+	}
+
 	function useAmmo(a: Attack) {
 		const ammo = a.ammo;
 		if (!ammo?.itemId || ammo.count < 1) return;
@@ -50,6 +56,8 @@
 			</ul>
 		{/if}
 
+		<button type="button" class="strike" onclick={() => strike(live)}>Attack</button>
+
 		{#if live.ammo}
 			<div class="ammo">
 				<span><b>{live.ammo.count}</b> {live.ammo.name.toLowerCase()} left</span>
@@ -60,6 +68,18 @@
 </Sheet>
 
 <style>
+	.strike {
+		width: 100%;
+		height: 52px;
+		margin-top: 14px;
+		border: 0;
+		border-radius: 14px;
+		background: var(--color-accent);
+		color: var(--color-on-accent);
+		font-size: 17px;
+		font-weight: 800;
+	}
+
 	h2 {
 		font-size: 22px;
 	}
