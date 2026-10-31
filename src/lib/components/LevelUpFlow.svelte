@@ -13,6 +13,8 @@
 		featSkills: Skill[];
 		featExpertise: Skill[];
 		featWeapons: string[];
+		/** Skills picked for the subclass taken at this level. */
+		skills: Skill[];
 		/** Picked tools and languages, starting from those already known. */
 		tools: string[];
 		languages: string[];
@@ -50,6 +52,7 @@
 			featSkills: [],
 			featExpertise: [],
 			featWeapons: [],
+			skills: [],
 			tools: [...start.toolProficiencies],
 			languages: [...start.languages],
 			styles: [...start.fightingStyles],
@@ -70,6 +73,7 @@
 </script>
 
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import PickList, { type PickItem } from './PickList.svelte';
 	import SpellDetails from './SpellDetails.svelte';
 	import ToolLanguagePicker from './ToolLanguagePicker.svelte';
@@ -90,10 +94,11 @@
 	} from '$lib/rules/levelup';
 	import { proficiencyLabel, WEAPONS, weaponProficiencies } from '$lib/rules/proficiency';
 	import { METAMAGIC } from '$lib/rules/resources';
+	import { meetsFeat, meetsOptionSpells } from '$lib/rules/prereqs';
 	import { saveProficiencySource } from '$lib/rules/saves';
-	import { fixedSkills, SKILLS } from '$lib/rules/skills';
-	import { ordinal, pactSlots, slotMax } from '$lib/rules/spellcasting';
-	import { toolPickCount } from '$lib/rules/tools';
+	import { fixedSkills, subclassSkills, SKILLS } from '$lib/rules/skills';
+	import { cantripsKnown, ordinal, pactSlots, slotMax } from '$lib/rules/spellcasting';
+	import { LANGUAGE_INSTEAD, toolPickCount } from '$lib/rules/tools';
 	import { abilityBreakdown, formula, recompute } from '$lib/rules/stats';
 	import { hitDie, hpForLevel, hpGain, xpForLevel } from '$lib/rules/xp';
 	import { characterSpells, spellListClass, spellPool } from '$lib/library.svelte';
@@ -230,11 +235,21 @@
 	});
 	const hasGrants = $derived(variantsToPick.length > 0 || arrivingChoices.size > 0 || swaps.length > 0);
 	/** The character at this level with the feat being taken, for the tools and languages it's owed. */
-	const toolChar = $derived({ ...next, feats: [...start.feats, ...(featNow ? [{ id: '', ref: featNow, name: feat?.name ?? '' }] : [])] });
+	const toolChar = $derived({
+		...next,
+		feats: [...start.feats, ...(featNow ? [{ id: '', ref: featNow, name: feat?.name ?? '' }] : [])],
+		grantVariants: { ...start.grantVariants, ...picks.variants }
+	});
 	/** A subclass or feat can bring more picks; a new character makes them all on one screen after the levels. */
 	const needsTools = $derived(!create && toolPickCount(toolChar) > toolPickCount(start));
 
-	const choices = $derived<LevelUpChoices>({
+	/** Skills the subclass taken at this level has the player pick. */
+	const bonus = $derived(subclassSkills(next));
+	const bonusSkills = $derived(needsSubclass ? bonus.choose : undefined);
+	const bonusKey = $derived(`${start.classKey}/${subclassKey}`);
+	const languageInstead = $derived(picks.variants[bonusKey] === LANGUAGE_INSTEAD);
+
+		const choices = $derived<LevelUpChoices>({
 		hp: 0,
 		subclassKey: needsSubclass ? subclassKey : undefined,
 		improvement: needs.asi
@@ -246,7 +261,8 @@
 				: undefined,
 		fightingStyles: needs.fightingStyles ? picks.styles : undefined,
 		weapons: needs.weapons ? picks.weapons : undefined,
-		expertise: needs.expertise ? (picks.expertise as Skill[]) : undefined,
+		skills: bonusSkills ? picks.skills : undefined,
+		expertise: [...(needs.expertise ? (picks.expertise as Skill[]) : []), ...(bonusSkills && bonus.expertise ? picks.skills : [])],
 		tools: needsTools ? picks.tools : undefined,
 		languages: needsTools ? picks.languages : undefined,
 		metamagic: needs.metamagic ? picks.metamagic : undefined,
@@ -280,6 +296,7 @@
 		| 'overview'
 		| 'subclass'
 		| 'improvement'
+		| 'skills'
 		| 'hp'
 		| 'styles'
 		| 'weapons'
@@ -297,6 +314,7 @@
 			!create && 'overview',
 			needsSubclass && 'subclass',
 			(needs.asi || needs.raceFeat) && 'improvement',
+			bonusSkills && 'skills',
 			!create && 'hp',
 			needs.fightingStyles && 'styles',
 			needs.weapons && 'weapons',
@@ -312,6 +330,7 @@
 	const STEP_TITLE: Record<string, string> = {
 		overview: "What's new",
 		subclass: 'Subclass',
+		skills: 'Skills',
 		hp: 'Hit points',
 		styles: 'Fighting style',
 		weapons: 'Weapon proficiencies',
@@ -348,6 +367,9 @@
 	/** Feats can be taken once, except Elemental Adept (a different damage type each time). */
 	const REPEATABLE = new Set(['elemental adept|phb']);
 	const takenFeats = $derived(new Set(start.feats.map((f) => f.ref)));
+	/** Can cast a spell at this level, by their class or something else (a racial spell). */
+	const canCast = $derived(Math.max(slotMax(next).length, pactSlots(next)?.level ?? 0, cantripsKnown(next), grantedIds(grantChar).size) > 0);
+	const featOpen = (f: FeatData) => meetsFeat(f, next, scoresNow, canCast);
 	const featItems = $derived<PickItem[]>(
 		feats.map((f) => {
 			const taken = takenFeats.has(f.id) && !REPEATABLE.has(f.id);
@@ -361,19 +383,36 @@
 				name: f.name,
 				meta: [f.prerequisite, raises, taken ? 'Already taken' : ''].filter(Boolean).join(' · '),
 				text: f.text,
-				disabled: taken
+				disabled: taken || !featOpen(f)
 			};
-		})
+		}).sort((a, b) => +!!a.disabled - +!!b.disabled)
 	);
 	const proficientNow = $derived(new Set<Skill>([...start.skillProficiencies, ...fixedSkills(start)]));
 	const featSkillOptions = $derived(
 		feat?.skills ? SKILLS.filter((s) => (feat.skills!.from === 'any' || feat.skills!.from.includes(s.key)) && !proficientNow.has(s.key)) : []
+	);
+	/** What the subclass offers, without skills the character has or picked for a feat at this level. */
+	const bonusOptions = $derived(
+		bonusSkills
+			? SKILLS.filter(
+					(s) =>
+						(!bonusSkills.from || bonusSkills.from.includes(s.key)) && !proficientNow.has(s.key) && !fixedSkills(next).includes(s.key) && !picks.featSkills.includes(s.key)
+				)
+			: []
 	);
 	const featExpertiseOptions = $derived(
 		SKILLS.filter((s) => (proficientNow.has(s.key) || picks.featSkills.includes(s.key)) && !start.skillExpertise.includes(s.key))
 	);
 	const featAbilityOk = (a: Ability) =>
 		scoresNow[a] + (feat?.ability?.amount ?? 1) <= 20 && !(feat?.save && saveProficiencySource(start, a));
+
+	// Another subclass starts its skill picks over.
+	let lastSubclass = untrack(() => subclassKey);
+	$effect(() => {
+		if (subclassKey === lastSubclass) return;
+		lastSubclass = subclassKey;
+		picks.skills = [];
+	});
 
 	// Picking another feat starts its choices over.
 	let lastFeat = picks.feat[0] ?? '';
@@ -386,6 +425,12 @@
 		picks.featExpertise = [];
 		picks.featWeapons = [];
 	});
+
+	function toggleLanguageInstead() {
+		const { [bonusKey]: on, ...rest } = picks.variants;
+		picks.variants = on ? rest : { ...rest, [bonusKey]: LANGUAGE_INSTEAD };
+		picks.skills = [];
+	}
 
 	function togglePick<T>(list: T[], value: T, max: number): T[] {
 		if (list.includes(value)) return list.filter((x) => x !== value);
@@ -406,7 +451,7 @@
 
 	const improvementOk = $derived.by(() => {
 		if (!featOnly && picks.improvementKind === 'asi') return picks.asi.length === 2;
-		if (!feat) return false;
+		if (!feat || !featOpen(feat)) return false;
 		if (feat.ability?.choose && !picks.featAbility) return false;
 		if (feat.skills && picks.featSkills.length < Math.min(feat.skills.count, featSkillOptions.length)) return false;
 		if (feat.expertise && picks.featExpertise.length < Math.min(feat.expertise, featExpertiseOptions.length)) return false;
@@ -421,6 +466,7 @@
 			(s) =>
 				(preview.skillProficiencies.includes(s.key) || fixedSkills(start).includes(s.key)) &&
 				!start.skillExpertise.includes(s.key) &&
+				!(bonus.expertise && (picks.skills.includes(s.key) || bonus.skills?.includes(s.key))) &&
 				!(choices.improvement?.kind === 'feat' && choices.improvement.expertise.includes(s.key))
 		)
 	);
@@ -446,6 +492,8 @@
 	const pact = $derived(
 		pactName(pickedOptions('pact-boon')[0]?.name) ?? pactName(start.classOptions.find((o) => o.kind === 'pact-boon')?.name)
 	);
+	/** Every spell the character has at this level, for invocations that need one. */
+	const spellsNow = $derived(new Set([...start.spells.map((s) => s.id), ...grantedIds(grantChar), ...picks.cantrips, ...picks.spells]));
 	const optionItems = (kind: ClassOptionKind): PickItem[] =>
 		options
 			.filter((o) => o.kind === kind)
@@ -454,7 +502,8 @@
 				name: o.name,
 				meta: o.prerequisite,
 				text: o.text,
-				disabled: (o.level ?? 0) > level || (!!o.pact && o.pact !== pact)
+				// One the character already knows stays, even if it wouldn't be offered now.
+				disabled: !start.classOptions.some((x) => x.ref === o.id) && ((o.level ?? 0) > level || (!!o.pact && o.pact !== pact) || !meetsOptionSpells(o, next, spellsNow))
 			}));
 	const optionTotal = (kind: ClassOptionKind) => needs.options.find((o) => o.kind === kind)?.total ?? 0;
 	/** Asks for the full count unless there aren't that many to pick from. */
@@ -486,7 +535,9 @@
 	const onList = (s: Spell) => (s.classes.includes(listClass) || s.pack === 'custom' || !!expandedBy(grantChar, s)) && !knownIds.has(s.id);
 	const cantripItems = $derived(pool.filter((s) => s.level === 0 && onList(s)).map(spellItem));
 	const spellItems = $derived(
-		pool.filter((s) => s.level > 0 && s.level <= learnLevel && onList(s) && !picks.arcanum.includes(s.id)).map(spellItem)
+		pool
+			.filter((s) => s.level > 0 && s.level <= learnLevel && onList(s) && !picks.arcanum.includes(s.id))
+			.map((s) => ({ ...spellItem(s), disabled: !!schools && offSchool >= schools.anyMax && !schools.schools.includes(s.school) }))
 	);
 	const arcanumItems = $derived(needs.arcanum ? pool.filter((s) => s.level === needs.arcanum && onList(s)).map(spellItem) : []);
 	const spellById = $derived(new Map(pool.map((s) => [s.id, s])));
@@ -568,6 +619,8 @@
 		switch (s) {
 			case 'subclass':
 				return !!subclassKey;
+			case 'skills':
+				return languageInstead || picks.skills.length === Math.min(bonusSkills?.count ?? 0, bonusOptions.length);
 			case 'improvement':
 				return improvementOk;
 			case 'hp':
@@ -588,7 +641,8 @@
 			case 'review':
 				return true;
 			default:
-				return (picks.options[s]?.length ?? 0) === optionGoal(s);
+				// A pact boon changed since can leave a pick that isn't open any more.
+				return (picks.options[s]?.length ?? 0) === optionGoal(s) && optionItems(s).every((i) => !i.disabled || !picks.options[s]?.includes(i.id));
 		}
 	}
 
@@ -741,8 +795,8 @@
 			</div>
 		{:else}
 			<p class="lead">
-				{featOnly ? 'Your race gives you a feat at 1st level. ' : ''}Prerequisites are shown but not checked. Ability increases, skills,
-				saves, weapons and Tough's hit points are applied for you.
+				{featOnly ? 'Your race gives you a feat at 1st level. ' : ''}Feats you don't meet the prerequisites for can't be picked. Ability increases,
+				skills, saves, weapons and Tough's hit points are applied for you.
 			</p>
 			<PickList items={featItems} bind:selected={picks.feat} max={1} label="Feats" search />
 			{#if feat}
@@ -760,7 +814,7 @@
 					{/if}
 					{#if feat.skills}
 						<p class="sub">
-							Skill proficiency: choose {feat.skills.count} ({picks.featSkills.length}/{feat.skills.count}){feat.skills.from === 'any' ? '. Tools count too; add those in your notes.' : ''}
+							Skill proficiency: choose {feat.skills.count} ({picks.featSkills.length}/{feat.skills.count}){feat.skills.from === 'any' ? '. Tools count too; add those in Edit.' : ''}
 						</p>
 						<div class="chips skills">
 							{#each featSkillOptions as s (s.key)}
@@ -796,6 +850,27 @@
 					<p class="hint">Anything else it gives (spells, armor proficiencies, initiative) goes in Spells or Edit afterwards.</p>
 				</div>
 			{/if}
+		{/if}
+	{:else if step === 'skills' && bonusSkills}
+		<p class="lead">
+			{subclassName} gives you {bonusSkills.count === 1 ? 'a skill' : `${bonusSkills.count} skills`}: choose ({picks.skills.length}/{bonusSkills.count}).{bonus.expertise ? ' Your proficiency bonus is doubled for them.' : ''}
+		</p>
+		<div class="chips skills">
+			{#each bonusOptions as s (s.key)}
+				<button
+					type="button"
+					aria-pressed={picks.skills.includes(s.key)}
+					disabled={languageInstead || (!picks.skills.includes(s.key) && bonusSkills.count > 1 && picks.skills.length >= bonusSkills.count)}
+					onclick={() => (picks.skills = togglePick(picks.skills, s.key, bonusSkills.count))}>{s.name}</button
+				>
+			{/each}
+		</div>
+		{#if !bonusOptions.length}<p class="muted">You're proficient in all of them already.</p>{/if}
+		{#if bonus.orLanguage}
+			<p class="sub">Or</p>
+			<div class="chips skills">
+				<button type="button" aria-pressed={languageInstead} onclick={toggleLanguageInstead}>A language instead</button>
+			</div>
 		{/if}
 	{:else if step === 'hp'}
 		<p class="lead">
@@ -848,7 +923,7 @@
 		{#if !expertiseOptions.length}<p class="muted">No proficient skills without expertise. Add skill proficiencies in Edit.</p>{/if}
 	{:else if step === 'tools'}
 		<p class="lead">This level brings more tools or languages to pick.</p>
-		<ToolLanguagePicker character={toolChar} bind:tools={picks.tools} bind:languages={picks.languages} />
+		<ToolLanguagePicker character={toolChar} strict bind:tools={picks.tools} bind:languages={picks.languages} />
 	{:else if step === 'metamagic'}
 		<p class="lead">You know {needs.metamagic} Metamagic options at level {level} ({picks.metamagic.length}/{needs.metamagic}).</p>
 		<PickList items={metamagicItems} bind:selected={picks.metamagic} max={needs.metamagic} label="Metamagic" />
@@ -956,6 +1031,7 @@
 						.join('')}
 				</li>
 			{/if}
+			{#if bonusSkills && picks.skills.length}<li><b>Skills</b> {picks.skills.map(skillName).join(', ')}</li>{/if}
 			{#if needs.fightingStyles}<li><b>Fighting styles</b> {picks.styles.map((k) => FIGHTING_STYLE_MAP.get(k)?.name ?? k).join(', ')}</li>{/if}
 			{#if needs.weapons}<li><b>Weapon proficiencies</b> {picks.weapons.map(proficiencyLabel).join(', ') || 'None'}</li>{/if}
 			{#if needs.expertise}<li><b>Expertise</b> {picks.expertise.map(skillName).join(', ') || 'None'}</li>{/if}
@@ -968,7 +1044,9 @@
 			{#if picks.arcanum.length}<li><b>Mystic Arcanum</b> {names(picks.arcanum)}</li>{/if}
 			{#if picks.forget}<li><b>Replaced</b> {names([picks.forget])}</li>{/if}
 			{#each grantsGained as g (g.name)}<li><b>{g.name}</b> {g.spells.join(', ')}</li>{/each}
-			{#each Object.entries(picks.variants) as [owner, name] (owner)}<li><b>{variantsToPick.find((v) => v.owner === owner)?.label ?? 'List'}</b> {name}</li>{/each}
+			{#each Object.entries(picks.variants) as [owner, name] (owner)}
+				{#if name === LANGUAGE_INSTEAD}<li><b>Skills</b> A language instead</li>{:else}<li><b>{variantsToPick.find((v) => v.owner === owner)?.label ?? 'List'}</b> {name}</li>{/if}
+			{/each}
 			{#each openChoices as ch (ch.key)}
 				{#if picks.grantPicks[ch.key]?.length}<li><b>{ch.grant.name}</b> {names(picks.grantPicks[ch.key])}</li>{/if}
 			{/each}

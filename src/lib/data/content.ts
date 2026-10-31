@@ -435,8 +435,16 @@ export interface FeatData {
 	id: string;
 	name: string;
 	source: string;
-	/** As the player reads it: "Dexterity 13 or higher", "Elf or Half-Elf". Not enforced. */
+	/** As the player reads it: "Dexterity 13 or higher", "Elf or Half-Elf". */
 	prerequisite?: string;
+	/** The same for the app to check (`meetsFeat` in rules/prereqs.ts); `race` and `ability` are alternatives. */
+	requires?: {
+		race?: { name: string; subrace?: string }[];
+		ability?: Partial<AbilityScores>[];
+		armor?: string;
+		weapon?: string;
+		spellcasting?: true;
+	};
 	/** +1 to a fixed ability, or to one of `choose` (by `amount`). */
 	ability?: { fixed?: Partial<AbilityScores>; choose?: Ability[]; amount?: number };
 	/** Saving throw proficiency in the ability chosen for `ability` (Resilient). */
@@ -465,6 +473,8 @@ export interface ClassOptionData {
 	level?: number;
 	/** Pact boon needed ("blade", "chain", "tome", "talisman"). */
 	pact?: string;
+	/** Spells needed, by id; 'hex/curse' is Hex or a warlock feature that curses. */
+	spells?: string[];
 	text: string;
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newCharacter } from '$lib/character';
+import { CLASS_MAP } from '$lib/data/classes';
 import type { Character, InventoryItem } from '$lib/types';
 import { applyDamage, applyHealing, applyTempHp, rollDeathSave, isDead } from './hp';
 import {
@@ -76,7 +77,7 @@ import { attacks, attacksPerAction, damageText, fightingStyleCount, isMonkWeapon
 import { isProficient, proficiencyList, weaponProficiencies, weaponProficiencySources } from './proficiency';
 import { senses } from './senses';
 import { defenses } from './defenses';
-import { fixedSkills, skillChecks, skillChoices, SKILL_KEYS } from './skills';
+import { canPickSkill, fillChoices, fixedSkills, skillChecks, skillChoices, skillsMade, subclassSkills, SKILL_KEYS, type SkillChoice } from './skills';
 import { savingThrows } from './saves';
 import { hpGain, hpForLevel, levelForXp, levelUp, xpProgress } from './xp';
 import type { ItemArmor, ItemWeapon, Skill } from '$lib/types';
@@ -1191,6 +1192,55 @@ describe('skills', () => {
 		const agent = { ref: 'faction agent|scag', name: 'Faction Agent', skills: ['insight'] as Skill[], choose: { count: 1, from: ['arcana', 'history'] as Skill[] } };
 		expect(skillChoices(pc({ classKey: 'fighter', background: agent }))[1]).toEqual({ source: 'Faction Agent (background)', count: 1, from: ['arcana', 'history'] });
 		expect(skillChoices(pc({ classKey: 'fighter', background: acolyte }))).toHaveLength(1);
+	});
+
+	it('only lets a skill in while a choice has room for it', () => {
+		const choices = skillChoices(pc({ classKey: 'fighter' }));
+		expect(canPickSkill(choices, [], 'athletics')).toBe(true);
+		expect(canPickSkill(choices, [], 'arcana')).toBe(false);
+		expect(canPickSkill(choices, ['athletics', 'history'], 'perception')).toBe(false);
+		expect(skillsMade(choices, ['athletics', 'arcana', 'history', 'perception']).fitted).toEqual(['athletics', 'history']);
+	});
+
+	it('moves picks around to fit overlapping lists', () => {
+		// Fighter and Tortle share Animal Handling and Perception; Stealth is only Tortle's.
+		const choices = skillChoices(pc({ classKey: 'fighter', raceKey: 'tortle' }));
+		expect(canPickSkill(choices, ['animal-handling', 'perception'], 'stealth')).toBe(true);
+		expect(canPickSkill(choices, ['animal-handling', 'perception', 'stealth'], 'history')).toBe(false);
+		const limited: SkillChoice[] = [{ source: 'A', count: 1, from: ['arcana', 'history'] }, { source: 'B', count: 1, from: ['arcana'] }];
+		expect(fillChoices(limited, ['arcana', 'history'], (ch, k) => ch.from!.includes(k as never)).fitted).toHaveLength(2);
+	});
+
+	it('offers another pick for a skill from two places', () => {
+		const soldier = { ref: 'soldier|phb', name: 'Soldier', skills: ['athletics', 'intimidation'] as Skill[] };
+		expect(skillChoices(pc({ classKey: 'rogue', raceKey: 'half-orc', background: soldier })).at(-1)).toEqual({ source: 'From two places', count: 1 });
+	});
+
+	it('adds what a subclass gives', () => {
+		const mercy = pc({ classKey: 'monk', subclassKey: 'mercy', level: 3 });
+		expect(skill(mercy, 'medicine')).toMatchObject({ level: 'proficient' });
+		expect(skill(mercy, 'medicine').parts[1].from).toMatch(/^Way of Mercy/);
+		expect(skill(pc({ classKey: 'rogue', subclassKey: 'scout', level: 3 }), 'nature')).toMatchObject({ level: 'expertise' });
+		expect(skillChoices(pc({ classKey: 'cleric', subclassKey: 'knowledge' })).at(-1)).toMatchObject({ source: 'Knowledge Domain', count: 2 });
+		for (const [classKey, subclassKey] of [
+			['bard', 'lore'],
+			['cleric', 'arcana'],
+			['cleric', 'knowledge'],
+			['cleric', 'nature'],
+			['cleric', 'order'],
+			['cleric', 'peace'],
+			['fighter', 'arcane-archer'],
+			['fighter', 'cavalier'],
+			['fighter', 'samurai'],
+			['monk', 'drunken-master'],
+			['monk', 'mercy'],
+			['ranger', 'fey-wanderer'],
+			['rogue', 'scout'],
+			['wizard', 'bladesinging']
+		]) {
+			expect(Object.keys(subclassSkills({ classKey, subclassKey })).length).toBeGreaterThan(0);
+			expect(CLASS_MAP.get(classKey)?.subclasses.map((s) => s.key)).toContain(subclassKey);
+		}
 	});
 
 	it('gives Jack of All Trades and Remarkable Athlete to skills without proficiency', () => {

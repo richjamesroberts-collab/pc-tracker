@@ -1,16 +1,19 @@
 <script lang="ts">
-	import { LANGUAGES, picksMade, TOOL_GROUPS, toolChoices, toolLabel, toolSources, type ToolChoice, type ToolInput } from '$lib/rules/tools';
+	import { canPick, LANGUAGES, picksMade, TOOL_GROUPS, toolChoices, toolLabel, toolSources, type ToolChoice, type ToolInput } from '$lib/rules/tools';
 
 	let {
 		character,
 		tools = $bindable(),
-		languages = $bindable()
+		languages = $bindable(),
+		strict = false
 	}: {
 		/** Who the picks are for: what they're given and owed is worked out from this. */
 		character: ToolInput;
 		/** The player's own picks. */
 		tools: string[];
 		languages: string[];
+		/** Only what the character's choices allow, up to their limits (a new character, a level up); Edit takes anything. */
+		strict?: boolean;
 	} = $props();
 
 	let newTool = $state('');
@@ -37,17 +40,20 @@
 	};
 	const made = $derived(picksMade(choices, myTools, myLanguages));
 
+	const toolOpen = (key: string) => !strict || canPick(choices, myTools, myLanguages, 'tool', key);
+	const languageOpen = (key: string) => !strict || canPick(choices, myTools, myLanguages, 'language', key);
+
 	const toggle = (list: string[], key: string) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
 
 	function addTool() {
 		const name = newTool.trim().toLowerCase();
-		if (name && !tools.includes(name) && !givenTools.includes(name)) tools = [...tools, name];
+		if (name && !tools.includes(name) && !givenTools.includes(name) && toolOpen(name)) tools = [...tools, name];
 		newTool = '';
 	}
 
 	function addLanguage() {
 		const name = newLanguage.trim();
-		if (name && !languages.includes(name) && !givenLanguages.includes(name)) languages = [...languages, name];
+		if (name && !languages.includes(name) && !givenLanguages.includes(name) && languageOpen(name)) languages = [...languages, name];
 		newLanguage = '';
 	}
 
@@ -59,8 +65,8 @@
 	};
 </script>
 
-{#snippet chip(given: boolean, on: boolean, dashed: boolean, label: string, onclick: () => void)}
-	<button type="button" class:offered={dashed && !on && !given} aria-pressed={given || on} disabled={given} {onclick}>{label}</button>
+{#snippet chip(given: boolean, on: boolean, open: boolean, dashed: boolean, label: string, onclick: () => void)}
+	<button type="button" class:offered={dashed && !on && !given} aria-pressed={given || on} disabled={given || (!on && !open)} {onclick}>{label}</button>
 {/snippet}
 
 <fieldset>
@@ -78,13 +84,13 @@
 	<p class="sub">Standard</p>
 	<div class="chips">
 		{#each LANGUAGES.standard as k (k)}
-			{@render chip(givenLanguages.includes(k), languages.includes(k), languageChoiceList.length > 0, k, () => (languages = toggle(languages, k)))}
+			{@render chip(givenLanguages.includes(k), languages.includes(k), languageOpen(k), strict ? languageOpen(k) : languageChoiceList.length > 0, k, () => (languages = toggle(languages, k)))}
 		{/each}
 	</div>
 	<p class="sub">Exotic</p>
 	<div class="chips">
 		{#each LANGUAGES.exotic as k (k)}
-			{@render chip(givenLanguages.includes(k), languages.includes(k), false, k, () => (languages = toggle(languages, k)))}
+			{@render chip(givenLanguages.includes(k), languages.includes(k), languageOpen(k), strict && languageOpen(k), k, () => (languages = toggle(languages, k)))}
 		{/each}
 	</div>
 	{#if myLanguages.some((k) => !listedLanguages.has(k))}
@@ -94,10 +100,12 @@
 			{/each}
 		</div>
 	{/if}
-	<div class="add">
-		<input bind:value={newLanguage} aria-label="Another language" placeholder="Another language" autocapitalize="words" autocomplete="off" onkeydown={onEnter(addLanguage)} />
-		<button type="button" onclick={addLanguage} disabled={!newLanguage.trim()}>Add</button>
-	</div>
+	{#if languageOpen('')}
+		<div class="add">
+			<input bind:value={newLanguage} aria-label="Another language" placeholder="Another language" autocapitalize="words" autocomplete="off" onkeydown={onEnter(addLanguage)} />
+			<button type="button" onclick={addLanguage} disabled={!newLanguage.trim()}>Add</button>
+		</div>
+	{/if}
 </fieldset>
 
 <fieldset>
@@ -116,7 +124,7 @@
 		<p class="sub">{g.name}</p>
 		<div class="chips">
 			{#each g.tools as k (k)}
-				{@render chip(givenTools.includes(k), tools.includes(k), offered.has(k), toolLabel(k), () => (tools = toggle(tools, k)))}
+				{@render chip(givenTools.includes(k), tools.includes(k), toolOpen(k), strict ? toolOpen(k) : offered.has(k), toolLabel(k), () => (tools = toggle(tools, k)))}
 			{/each}
 		</div>
 	{/each}
@@ -127,10 +135,12 @@
 			{/each}
 		</div>
 	{/if}
-	<div class="add">
-		<input bind:value={newTool} aria-label="Another tool" placeholder="Another tool" autocomplete="off" onkeydown={onEnter(addTool)} />
-		<button type="button" onclick={addTool} disabled={!newTool.trim()}>Add</button>
-	</div>
+	{#if toolOpen('')}
+		<div class="add">
+			<input bind:value={newTool} aria-label="Another tool" placeholder="Another tool" autocomplete="off" onkeydown={onEnter(addTool)} />
+			<button type="button" onclick={addTool} disabled={!newTool.trim()}>Add</button>
+		</div>
+	{/if}
 </fieldset>
 
 {#if twice.length}
@@ -199,8 +209,12 @@
 		color: var(--color-on-accent);
 	}
 
-	/* What's given can't be turned off, but reads as on. */
 	.chips button:disabled {
+		opacity: 0.4;
+	}
+
+	/* What's given can't be turned off, but reads as on. */
+	.chips button[aria-pressed='true']:disabled {
 		opacity: 1;
 	}
 
