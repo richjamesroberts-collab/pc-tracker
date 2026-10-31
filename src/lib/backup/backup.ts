@@ -471,6 +471,7 @@ export function readBackup(data: unknown): Character {
 		...look(raw.look),
 		...background(raw.background),
 		...wildShape(raw.wildShape),
+		...(raw.bladesong === true ? { bladesong: true } : {}),
 		notes: str(raw.notes),
 		createdAt: str(raw.createdAt, base.createdAt),
 		updatedAt: str(raw.updatedAt, base.updatedAt),

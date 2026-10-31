@@ -46,13 +46,16 @@ class Session {
 		const prev = $state.snapshot(this.character) as Character;
 		const next = structuredClone(prev);
 		const result = fn(next);
+		const singing = next.bladesong;
 		recompute(next);
 		next.updatedAt = new Date().toISOString();
 		this.character = next;
 		this.undoStack.push(prev);
 		if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
 		void this.save(next);
-		if (label) this.notify(label, { canUndo: true });
+		// Armor going on (in Inventory) or the character dropping ends Bladesong out of sight of Vitals.
+		const said = [label, singing && !next.bladesong ? 'Bladesong ended' : null].filter(Boolean).join('. ');
+		if (said) this.notify(said, { canUndo: true });
 		return result;
 	}
 

@@ -1,7 +1,7 @@
 import type { Ability, Character } from '$lib/types';
 import { abilityMod } from './abilities';
 import { proficiencyBonus } from './spellcasting';
-import { abilityScores } from './stats';
+import { abilityScores, bladesongBlocked } from './stats';
 import { applyHealing, applyTempHp, isDead } from './hp';
 import type { UseFx } from './usable';
 
@@ -368,6 +368,13 @@ export function spendResource(c: Character, key: string, n = 1): boolean {
 	const def = resourcesFor(c).find((r) => r.key === key);
 	if (!def || !Number.isInteger(n) || n <= 0 || n > resourceLeft(c, def)) return false;
 	c.resourcesUsed[key] = (c.resourcesUsed[key] ?? 0) + n;
+	return true;
+}
+
+/** Start Bladesong, spending a use; it can't start while it's going, or in medium or heavy armor or with a shield. */
+export function startBladesong(c: Character): boolean {
+	if (c.bladesong || bladesongBlocked(c) || !spendResource(c, 'bladesong')) return false;
+	c.bladesong = true;
 	return true;
 }
 

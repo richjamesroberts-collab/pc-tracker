@@ -41,7 +41,7 @@
 	} from '$lib/rules/spellcasting';
 	import { backupReminder } from '$lib/backup/reminder.svelte';
 	import { signedMod } from '$lib/rules/abilities';
-	import { abilityBreakdown, walkingSpeed } from '$lib/rules/stats';
+	import { abilityBreakdown, bladesongActive, bladesongBonus, walkingSpeed } from '$lib/rules/stats';
 	import { attacks as attackList, attacksPerAction } from '$lib/rules/attacks';
 	import { senses } from '$lib/rules/senses';
 	import { passivePerception } from '$lib/rules/skills';
@@ -74,6 +74,9 @@
 	const slowed = $derived(!shaped && load.status !== 'light');
 
 	const speed = $derived(walkingSpeed(c)?.total);
+	const singing = $derived(!shaped && bladesongActive(c));
+	/** What Bladesong adds to AC and concentration saves. */
+	const songBonus = $derived(signedMod(bladesongBonus(abilityBreakdown(c).scores)));
 	const passive = $derived(beast ? shapePassive(c, beast) : passivePerception(c));
 	let passiveOpen = $state(false);
 	const passiveCheck = $derived<Check | null>(
@@ -228,7 +231,10 @@
 
 {#if session.concentrationCheck}
 	<div class="alert" role="alert">
-		<p>Roll a CON save, <strong>DC {session.concentrationCheck.dc}</strong>, to keep concentrating on {session.concentrationCheck.spell}.</p>
+		<p>
+			Roll a CON save, <strong>DC {session.concentrationCheck.dc}</strong>{singing ? `, ${songBonus} from Bladesong` : ''}, to keep concentrating on
+			{session.concentrationCheck.spell}.
+		</p>
 		<div class="alert-actions">
 			<button type="button" onclick={() => resolveConcentration(true)}>Kept it</button>
 			<button type="button" onclick={() => resolveConcentration(false)}>Lost it</button>
@@ -257,6 +263,13 @@
 			{/if}
 		</p>
 		<button type="button" onclick={() => session.mutate(`Back to normal form: ${c.hpCurrent} HP`, revert)}>Revert</button>
+	</div>
+{/if}
+
+{#if singing}
+	<div class="card shape-bar song">
+		<p><b>Bladesong</b> {songBonus} AC, +10 ft speed, advantage on Acrobatics, {songBonus} to concentration saves{c.level >= 14 ? `, ${songBonus} melee damage` : ''}. Up to 1 minute.</p>
+		<button type="button" onclick={() => session.mutate('Bladesong ended', (d) => (d.bladesong = undefined))}>Revert</button>
 	</div>
 {/if}
 
@@ -1177,6 +1190,13 @@
 	.shape-bar p {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.shape-bar.song {
+		margin-top: 12px;
+		border-color: var(--color-spell-edge);
+		background: var(--color-spell-bg);
+		color: var(--color-spell-ink);
 	}
 
 	.shape-bar button {
