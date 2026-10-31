@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import Portrait from '$lib/components/Portrait.svelte';
+	import HeroStage from '$lib/components/HeroStage.svelte';
 	import AcShield from '$lib/components/AcShield.svelte';
 	import AcSheet from '$lib/components/AcSheet.svelte';
 	import HpSheet, { type HpChange, type HpMode } from '$lib/components/HpSheet.svelte';
@@ -27,7 +27,7 @@
 	import { session } from '$lib/session.svelte';
 	import { CLASSES } from '$lib/data/classes';
 	import { raceLabel } from '$lib/data/races';
-	import { isDead, isDown } from '$lib/rules/hp';
+	import { isDown } from '$lib/rules/hp';
 	import { longRest, sorceryPointsLeft, sorceryPointsMax } from '$lib/rules/resources';
 	import {
 		isCaster,
@@ -144,6 +144,7 @@
 	let usableCard: HTMLElement | undefined = $state();
 
 	function used(u: { kind: UseFxKind; label: string }) {
+		session.act('use', u.kind);
 		clearTimeout(useFxTimer);
 		useFx = { ...u, n: (useFx?.n ?? 0) + 1 };
 		useFxTimer = setTimeout(() => (useFx = null), 1900);
@@ -161,6 +162,7 @@
 
 	function hpChanged(change: HpChange) {
 		if (change.amount <= 0) return;
+		session.act(change.kind === 'damage' ? 'hit' : change.kind);
 		clearTimeout(hpFxTimer);
 		hpFx = { ...change, n: (hpFx?.n ?? 0) + 1 };
 		hpFxTimer = setTimeout(() => (hpFx = null), 1800);
@@ -188,13 +190,15 @@
 
 	function rest(kind: 'short' | 'long') {
 		menuOpen = false;
-		if (kind === 'long') session.mutate('Long rest: HP, slots, points, features and hit dice restored', longRest);
-		else restOpen = true;
+		if (kind === 'long') {
+			session.mutate('Long rest: HP, slots, points, features and hit dice restored', longRest);
+			session.act('rest');
+		} else restOpen = true;
 	}
 </script>
 
 <header>
-	<Portrait name={c.name} image={c.image} size={60} muted={isDead(c)} />
+	<HeroStage />
 	<div class="who">
 		<h1>{beast?.name ?? c.name}</h1>
 		<p>
@@ -262,7 +266,13 @@
 				You're in {c.wildShape.beast.name} form. These are your own hit points, waiting for you.
 			{/if}
 		</p>
-		<button type="button" onclick={() => session.mutate(`Back to normal form: ${c.hpCurrent} HP`, revert)}>Revert</button>
+		<button
+			type="button"
+			onclick={() => {
+				session.mutate(`Back to normal form: ${c.hpCurrent} HP`, revert);
+				session.act('cast', 'summon');
+			}}>Revert</button
+		>
 	</div>
 {/if}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InventoryItem } from '$lib/types';
-import { HERO_W, PLAIN_LOOK, drawHero, heroGear, heroLook, runs } from './sprite';
+import { HERO_W, PLAIN_LOOK, drawHero, heroGear, heroLook, heroTint, runs } from './sprite';
 
 function item(name: string, overrides: Partial<InventoryItem> = {}): InventoryItem {
 	return {
@@ -111,5 +111,14 @@ describe('drawing race, class and gender', () => {
 		expect(drawHero({ layers: [] }, heroLook({ classKey: 'fighter', gender: 'male' }))).not.toEqual(
 			drawHero({ layers: [] }, heroLook({ classKey: 'fighter', gender: 'female' }))
 		);
+	});
+});
+
+describe('heroTint', () => {
+	it('takes the colour of what was used, or the moment\'s own', () => {
+		expect(heroTint('hit')).toBe('--color-hit');
+		expect(heroTint('heal')).toBe('--color-heal');
+		expect(heroTint('cast', 'fire')).toBe('--color-warning');
+		expect(heroTint('use', 'poison')).toBe('--color-hp-high');
 	});
 });

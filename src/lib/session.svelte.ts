@@ -1,6 +1,8 @@
 import { db } from '$lib/db';
 import type { Character } from '$lib/types';
 import { recompute } from '$lib/rules/stats';
+import type { UseFx } from '$lib/rules/usable';
+import { heroTint, type HeroAct, type HeroPose } from '$lib/sprite';
 import { migrateToBaseStats } from '$lib/character';
 
 export interface Toast {
@@ -16,13 +18,17 @@ export interface ConcentrationCheck {
 
 const UNDO_LIMIT = 30;
 const TOAST_MS = 6000;
+const HERO_MS = 1100;
 
 /** The open character. Every change is saved to IndexedDB straight away and can be undone. */
 class Session {
 	character = $state<Character | null>(null);
 	toast = $state<Toast | null>(null);
 	concentrationCheck = $state<ConcentrationCheck | null>(null);
+	/** What the pixel hero is acting out just now. */
+	heroAct = $state<HeroAct | null>(null);
 
+	private heroTimer: ReturnType<typeof setTimeout> | undefined;
 	private undoStack: Character[] = [];
 	private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -57,6 +63,13 @@ class Session {
 		const said = [label, singing && !next.bladesong ? 'Bladesong ended' : null].filter(Boolean).join('. ');
 		if (said) this.notify(said, { canUndo: true });
 		return result;
+	}
+
+	/** Have the pixel hero act something out, in the colour of the feature, item or spell's animation. */
+	act(pose: HeroPose, fx?: UseFx): void {
+		clearTimeout(this.heroTimer);
+		this.heroAct = { pose, tint: heroTint(pose, fx), n: (this.heroAct?.n ?? 0) + 1 };
+		this.heroTimer = setTimeout(() => (this.heroAct = null), HERO_MS);
 	}
 
 	/** Save bookkeeping (like the last backup time) without bumping updatedAt or adding an undo step. */
